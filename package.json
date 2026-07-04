@@ -1,4 +1,10 @@
 {
+<<<<<<< HEAD
+  "dependencies": {
+    "i": "^0.3.7"
+  }
+}
+=======
   "name": "@figma/my-make-file",
   "private": true,
   "version": "0.0.1",
@@ -88,3 +94,4 @@
     }
   }
 }
+>>>>>>> 6885e79fdb19af9e09d1d10d9a3888b64cc908ee
