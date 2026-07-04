@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { twMerge } from "tailwind-merge";
 import {
   Search, Plus, X, Crown, TrendingUp, TrendingDown,
-  Package, BarChart3, DollarSign, Gem, Sun, Moon,
+  Package, BarChart3, DollarSign, Gem, Sun, Moon, PenSquare, Trash2,
 } from "lucide-react";
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -156,8 +156,9 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function Modal({ title, onClose, onSubmit, children }: {
+function Modal({ title, onClose, onSubmit, children, submitLabel = "Save Entry", isSubmitting = false, submitDisabled = false }: {
   title: string; onClose: () => void; onSubmit: (e: React.FormEvent) => void; children: React.ReactNode;
+  submitLabel?: string; isSubmitting?: boolean; submitDisabled?: boolean;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -175,9 +176,9 @@ function Modal({ title, onClose, onSubmit, children }: {
               className="flex-1 px-4 py-2 bg-muted text-foreground rounded-lg text-sm hover:bg-muted/80 transition-colors">
               Cancel
             </button>
-            <button type="submit"
-              className="flex-1 px-4 py-2 bg-primary hover:opacity-90 text-primary-foreground rounded-lg text-sm font-medium transition-opacity">
-              Save Entry
+            <button type="submit" disabled={isSubmitting || submitDisabled}
+              className="flex-1 px-4 py-2 bg-primary hover:opacity-90 text-primary-foreground rounded-lg text-sm font-medium transition-opacity disabled:opacity-60 disabled:cursor-not-allowed">
+              {isSubmitting ? "Saving..." : submitLabel}
             </button>
           </div>
         </form>
@@ -492,9 +493,12 @@ function DashboardView({ sales, jobCosts, expenses, inquiries }: {
 }
 
 // ── daily sales ─────────────────────────────────────────────────────────────
-function DailySalesView({ sales, onAdd }: { sales: Sale[]; onAdd: (s: Sale) => void }) {
+function DailySalesView({ sales, onAdd, onUpdate, onDelete }: { sales: Sale[]; onAdd: (s: Sale) => void; onUpdate: (s: Sale) => void; onDelete: (id: string) => void }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [form, setForm] = useState({ invoiceId:"", date:"", clientName:"", contactNum:"",
     serviceType:"Custom" as ServiceType, price:"", downpayment:"", status:"Ongoing" as SaleStatus });
 
@@ -502,11 +506,17 @@ function DailySalesView({ sales, onAdd }: { sales: Sale[]; onAdd: (s: Sale) => v
     [s.clientName, s.invoiceId, s.serviceType, s.status].some(v => v.toLowerCase().includes(q.toLowerCase()))
   ), [sales, q]);
 
+  const resetForm = () => setForm({ invoiceId:"", date:"", clientName:"", contactNum:"", serviceType:"Custom", price:"", downpayment:"", status:"Ongoing" });
+  const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setIsSubmitting(true);
     const price = parseFloat(form.price) || 0;
     const dp = parseFloat(form.downpayment) || 0;
-    const entry: Sale = { id:String(Date.now()), invoiceId:form.invoiceId, date:form.date,
+    const entry: Sale = { id: editingId ?? String(Date.now()), invoiceId:form.invoiceId, date:form.date,
       clientName:form.clientName, contactNum:form.contactNum, serviceType:form.serviceType,
       price, downpayment:dp, balance:price-dp, status:form.status };
     try {
@@ -515,20 +525,25 @@ function DailySalesView({ sales, onAdd }: { sales: Sale[]; onAdd: (s: Sale) => v
           status:entry.status, downpayment:entry.downpayment, clientName:entry.clientName,
           contactNum:entry.contactNum, balance:entry.balance }) });
     } catch (_) {}
-    onAdd(entry);
-    setOpen(false);
-    setForm({ invoiceId:"", date:"", clientName:"", contactNum:"", serviceType:"Custom", price:"", downpayment:"", status:"Ongoing" });
+    if (editingId) {
+      onUpdate(entry);
+    } else {
+      onAdd(entry);
+    }
+    closeModal();
+    setIsSubmitting(false);
+    submittingRef.current = false;
   };
 
   return (
     <div className="p-5 space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <SearchBar value={q} onChange={setQ} placeholder="Search client, invoice, type…" />
-        <AddBtn onClick={() => setOpen(true)} label="Add New Sale" />
+        <AddBtn onClick={() => { resetForm(); setEditingId(null); setOpen(true); }} label="Add New Sale" />
       </div>
       <TableWrap>
         <thead><tr>
-          {["Date","Invoice #","Client Name","Contact","Type","Total Price","Downpayment","Balance","Status"].map(h=><th key={h} className={thc}>{h}</th>)}
+          {['Date','Invoice #','Client Name','Contact','Type','Total Price','Downpayment','Balance','Status','Actions'].map(h=><th key={h} className={thc}>{h}</th>)}
         </tr></thead>
         <tbody>
           {filtered.map(s => (
@@ -542,13 +557,23 @@ function DailySalesView({ sales, onAdd }: { sales: Sale[]; onAdd: (s: Sale) => v
               <td className={tdr + " text-emerald-700 dark:text-emerald-400"}>{php(s.downpayment)}</td>
               <td className={tdr + " text-amber-700 dark:text-amber-400"}>{php(s.balance)}</td>
               <td className={tdc}><StatusBadge status={s.status} /></td>
+              <td className={tdc}>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => { setEditingId(s.id); setForm({ invoiceId:s.invoiceId, date:s.date, clientName:s.clientName, contactNum:s.contactNum, serviceType:s.serviceType, price:String(s.price), downpayment:String(s.downpayment), status:s.status }); setOpen(true); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit">
+                    <PenSquare size={13} />
+                  </button>
+                  <button type="button" onClick={() => onDelete(s.id)} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Delete">
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </td>
             </TRow>
           ))}
-          {!filtered.length && <EmptyRow cols={9} />}
+          {!filtered.length && <EmptyRow cols={10} />}
         </tbody>
       </TableWrap>
       {open && (
-        <Modal title="Add New Sale Entry" onClose={() => setOpen(false)} onSubmit={submit}>
+        <Modal title={editingId ? "Edit Sale Entry" : "Add New Sale Entry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update Entry" : "Save Entry"} isSubmitting={isSubmitting}>
           <div className="grid grid-cols-2 gap-4">
             <FF label="Invoice #"><input className={ic} value={form.invoiceId} onChange={e=>setForm(f=>({...f,invoiceId:e.target.value}))} placeholder="INV-2026-xxx" required /></FF>
             <FF label="Date"><input type="date" className={ic} value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} required /></FF>
@@ -574,17 +599,26 @@ function DailySalesView({ sales, onAdd }: { sales: Sale[]; onAdd: (s: Sale) => v
 }
 
 // ── job costing ─────────────────────────────────────────────────────────────
-function JobCostingView({ jobCosts, onAdd }: { jobCosts: JobCost[]; onAdd: (j: JobCost) => void }) {
+function JobCostingView({ jobCosts, onAdd, onUpdate, onDelete }: { jobCosts: JobCost[]; onAdd: (j: JobCost) => void; onUpdate: (j: JobCost) => void; onDelete: (id: string) => void }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [form, setForm] = useState({ invoiceId:"", clientName:"", empId:"", goldUsed:"", stoneCost:"", laborCost:"", sellingPrice:"" });
 
   const filtered = useMemo(() => jobCosts.filter(j =>
     [j.invoiceId, j.clientName, j.jobCostId].some(v => v.toLowerCase().includes(q.toLowerCase()))
   ), [jobCosts, q]);
 
+  const resetForm = () => setForm({ invoiceId:"", clientName:"", empId:"", goldUsed:"", stoneCost:"", laborCost:"", sellingPrice:"" });
+  const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setIsSubmitting(true);
     const goldUsed = parseFloat(form.goldUsed) || 0;
     const goldCostPerG = GOLD_PRICE;
     const goldCost = goldUsed * goldCostPerG;
@@ -595,7 +629,7 @@ function JobCostingView({ jobCosts, onAdd }: { jobCosts: JobCost[]; onAdd: (j: J
     const profit = sellingPrice - totalCost;
     const marginPct = sellingPrice > 0 ? (profit / sellingPrice) * 100 : 0;
     const entry: JobCost = {
-      jobCostId:"JC-"+String(Date.now()).slice(-4), invoiceId:form.invoiceId,
+      jobCostId: editingId ?? "JC-"+String(Date.now()).slice(-4), invoiceId:form.invoiceId,
       clientName:form.clientName, empId:form.empId, goldUsed, goldCostPerG,
       goldCost, stoneCost, laborCost, totalCost, sellingPrice, profit, marginPct,
     };
@@ -604,16 +638,21 @@ function JobCostingView({ jobCosts, onAdd }: { jobCosts: JobCost[]; onAdd: (j: J
         body:JSON.stringify({ jobCostId:entry.jobCostId, goldUsed:entry.goldUsed,
           laborCost:entry.laborCost, invoiceId:entry.invoiceId, empId:entry.empId }) });
     } catch (_) {}
-    onAdd(entry);
-    setOpen(false);
-    setForm({ invoiceId:"", clientName:"", empId:"", goldUsed:"", stoneCost:"", laborCost:"", sellingPrice:"" });
+    if (editingId) {
+      onUpdate(entry);
+    } else {
+      onAdd(entry);
+    }
+    closeModal();
+    setIsSubmitting(false);
+    submittingRef.current = false;
   };
 
   return (
     <div className="p-5 space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <SearchBar value={q} onChange={setQ} placeholder="Search invoice, client…" />
-        <AddBtn onClick={() => setOpen(true)} label="Add Job Cost" />
+        <AddBtn onClick={() => { resetForm(); setEditingId(null); setOpen(true); }} label="Add Job Cost" />
       </div>
       <TableWrap>
         <thead><tr>
@@ -636,13 +675,23 @@ function JobCostingView({ jobCosts, onAdd }: { jobCosts: JobCost[]; onAdd: (j: J
               <td className={tdc}>
                 <span className={marginCls(j.marginPct)}>{pct(j.marginPct)}</span>
               </td>
+              <td className={tdc}>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => { setEditingId(j.jobCostId); setForm({ invoiceId:j.invoiceId, clientName:j.clientName, empId:j.empId ?? "", goldUsed:String(j.goldUsed), stoneCost:String(j.stoneCost), laborCost:String(j.laborCost), sellingPrice:String(j.sellingPrice) }); setOpen(true); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit">
+                    <PenSquare size={13} />
+                  </button>
+                  <button type="button" onClick={() => onDelete(j.jobCostId)} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Delete">
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </td>
             </TRow>
           ))}
-          {!filtered.length && <EmptyRow cols={12} />}
+          {!filtered.length && <EmptyRow cols={13} />}
         </tbody>
       </TableWrap>
       {open && (
-        <Modal title="Add Job Cost Entry" onClose={() => setOpen(false)} onSubmit={submit}>
+        <Modal title={editingId ? "Edit Job Cost Entry" : "Add Job Cost Entry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update Entry" : "Save Entry"} isSubmitting={isSubmitting}>
           <div className="grid grid-cols-2 gap-4">
             <FF label="Invoice #"><input className={ic} value={form.invoiceId} onChange={e=>setForm(f=>({...f,invoiceId:e.target.value}))} placeholder="INV-2026-xxx" required /></FF>
             <FF label="Client Name"><input className={ic} value={form.clientName} onChange={e=>setForm(f=>({...f,clientName:e.target.value}))} placeholder="Full name" required /></FF>
@@ -663,31 +712,45 @@ function JobCostingView({ jobCosts, onAdd }: { jobCosts: JobCost[]; onAdd: (j: J
 }
 
 // ── gold inventory ──────────────────────────────────────────────────────────
-function GoldInventoryView({ inventory, onAdd }: { inventory: InvEntry[]; onAdd: (e: InvEntry) => void }) {
+function GoldInventoryView({ inventory, onAdd, onUpdate, onDelete }: { inventory: InvEntry[]; onAdd: (e: InvEntry) => void; onUpdate: (e: InvEntry) => void; onDelete: (id: string) => void }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [form, setForm] = useState({ date:"", referenceId:"", itemName:"", goldIn:"", goldOut:"", scrap:"", unit:"grams" });
   const filtered = useMemo(() => inventory.filter(e =>
     [e.referenceId, e.itemName].some(v => v.toLowerCase().includes(q.toLowerCase()))
   ), [inventory, q]);
   const currentBalance = inventory.length > 0 ? inventory[inventory.length - 1].balance : 0;
 
+  const resetForm = () => setForm({ date:"", referenceId:"", itemName:"", goldIn:"", goldOut:"", scrap:"", unit:"grams" });
+  const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setIsSubmitting(true);
     const goldIn = parseFloat(form.goldIn) || 0;
     const goldOut = parseFloat(form.goldOut) || 0;
     const scrap = parseFloat(form.scrap) || 0;
     const balance = Math.max(0, currentBalance + goldIn - goldOut - scrap);
-    const entry: InvEntry = { id:String(Date.now()), date:form.date, referenceId:form.referenceId,
+    const entry: InvEntry = { id: editingId ?? String(Date.now()), date:form.date, referenceId:form.referenceId,
       itemName:form.itemName, goldIn, goldOut, scrap, balance, unit:form.unit };
     try {
       await fetch(`${BASE_URL}/inventory`, { method:"POST", headers:{"Content-Type":"application/json"},
         body:JSON.stringify({ referenceId:entry.referenceId, itemName:entry.itemName,
           quantity:goldIn||goldOut||scrap, unit:entry.unit }) });
     } catch (_) {}
-    onAdd(entry);
-    setOpen(false);
-    setForm({ date:"", referenceId:"", itemName:"", goldIn:"", goldOut:"", scrap:"", unit:"grams" });
+    if (editingId) {
+      onUpdate(entry);
+    } else {
+      onAdd(entry);
+    }
+    closeModal();
+    setIsSubmitting(false);
+    submittingRef.current = false;
   };
 
   return (
@@ -701,7 +764,7 @@ function GoldInventoryView({ inventory, onAdd }: { inventory: InvEntry[]; onAdd:
             <span className="text-sm font-bold text-primary tabular-nums">{currentBalance.toFixed(2)} g</span>
           </div>
         </div>
-        <AddBtn onClick={() => setOpen(true)} label="Add Entry" />
+        <AddBtn onClick={() => { resetForm(); setEditingId(null); setOpen(true); }} label="Add Entry" />
       </div>
       <TableWrap>
         <thead><tr>
@@ -717,13 +780,23 @@ function GoldInventoryView({ inventory, onAdd }: { inventory: InvEntry[]; onAdd:
               <td className={tdr + (e.goldOut > 0 ? " text-red-700 dark:text-red-400" : " text-muted-foreground")}>{e.goldOut > 0 ? "-"+e.goldOut.toFixed(2) : "—"}</td>
               <td className={tdr + (e.scrap > 0 ? " text-amber-700 dark:text-amber-400" : " text-muted-foreground")}>{e.scrap > 0 ? e.scrap.toFixed(2) : "—"}</td>
               <td className={tdr + " text-primary font-semibold"}>{e.balance.toFixed(2)}</td>
+              <td className={tdc}>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => { setEditingId(e.id); setForm({ date:e.date, referenceId:e.referenceId, itemName:e.itemName, goldIn:String(e.goldIn), goldOut:String(e.goldOut), scrap:String(e.scrap), unit:e.unit }); setOpen(true); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit">
+                    <PenSquare size={13} />
+                  </button>
+                  <button type="button" onClick={() => onDelete(e.id)} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Delete">
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </td>
             </TRow>
           ))}
-          {!filtered.length && <EmptyRow cols={7} />}
+          {!filtered.length && <EmptyRow cols={8} />}
         </tbody>
       </TableWrap>
       {open && (
-        <Modal title="Add Inventory Entry" onClose={() => setOpen(false)} onSubmit={submit}>
+        <Modal title={editingId ? "Edit Inventory Entry" : "Add Inventory Entry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update Entry" : "Save Entry"} isSubmitting={isSubmitting}>
           <div className="grid grid-cols-2 gap-4">
             <FF label="Date"><input type="date" className={ic} value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} required /></FF>
             <FF label="Reference / Invoice"><input className={ic} value={form.referenceId} onChange={e=>setForm(f=>({...f,referenceId:e.target.value}))} placeholder="PO-xxx or INV-xxx" required /></FF>
@@ -741,18 +814,27 @@ function GoldInventoryView({ inventory, onAdd }: { inventory: InvEntry[]; onAdd:
 }
 
 // ── inquiries ───────────────────────────────────────────────────────────────
-function InquiriesView({ inquiries, onAdd }: { inquiries: Inquiry[]; onAdd: (i: Inquiry) => void }) {
+function InquiriesView({ inquiries, onAdd, onUpdate, onDelete }: { inquiries: Inquiry[]; onAdd: (i: Inquiry) => void; onUpdate: (i: Inquiry) => void; onDelete: (id: string) => void }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [form, setForm] = useState({ customerName:"", contactInfo:"", details:"", category:"", quotedPrice:"", status:"Pending" as InqStatus });
   const filtered = useMemo(() => inquiries.filter(i =>
     [i.customerName, i.category, i.details, i.inquiryId].some(v => v.toLowerCase().includes(q.toLowerCase()))
   ), [inquiries, q]);
 
+  const resetForm = () => setForm({ customerName:"", contactInfo:"", details:"", category:"", quotedPrice:"", status:"Pending" });
+  const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const entry: Inquiry = { inquiryId:"INQ-"+String(Date.now()).slice(-4),
-      date:new Date().toISOString().slice(0,10), customerName:form.customerName,
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setIsSubmitting(true);
+    const entry: Inquiry = { inquiryId: editingId ?? "INQ-"+String(Date.now()).slice(-4),
+      date: editingId ? (inquiries.find(i => i.inquiryId === editingId)?.date ?? new Date().toISOString().slice(0,10)) : new Date().toISOString().slice(0,10), customerName:form.customerName,
       contactInfo:form.contactInfo, details:form.details, category:form.category,
       quotedPrice:parseFloat(form.quotedPrice)||0, status:form.status };
     try {
@@ -761,16 +843,21 @@ function InquiriesView({ inquiries, onAdd }: { inquiries: Inquiry[]; onAdd: (i: 
           contactInfo:entry.contactInfo, details:entry.details, category:entry.category,
           quotedPrice:entry.quotedPrice, status:entry.status }) });
     } catch (_) {}
-    onAdd(entry);
-    setOpen(false);
-    setForm({ customerName:"", contactInfo:"", details:"", category:"", quotedPrice:"", status:"Pending" });
+    if (editingId) {
+      onUpdate(entry);
+    } else {
+      onAdd(entry);
+    }
+    closeModal();
+    setIsSubmitting(false);
+    submittingRef.current = false;
   };
 
   return (
     <div className="p-5 space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <SearchBar value={q} onChange={setQ} placeholder="Search client, category…" />
-        <AddBtn onClick={() => setOpen(true)} label="Add Inquiry" />
+        <AddBtn onClick={() => { resetForm(); setEditingId(null); setOpen(true); }} label="Add Inquiry" />
       </div>
       <TableWrap>
         <thead><tr>
@@ -787,13 +874,23 @@ function InquiriesView({ inquiries, onAdd }: { inquiries: Inquiry[]; onAdd: (i: 
               <td className={tdc + " font-sans max-w-[200px] truncate text-muted-foreground"}>{i.details}</td>
               <td className={tdr + " text-amber-700 dark:text-amber-300"}>{php(i.quotedPrice)}</td>
               <td className={tdc}><StatusBadge status={i.status} /></td>
+              <td className={tdc}>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => { setEditingId(i.inquiryId); setForm({ customerName:i.customerName, contactInfo:i.contactInfo, details:i.details, category:i.category, quotedPrice:String(i.quotedPrice), status:i.status }); setOpen(true); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit">
+                    <PenSquare size={13} />
+                  </button>
+                  <button type="button" onClick={() => onDelete(i.inquiryId)} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Delete">
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </td>
             </TRow>
           ))}
-          {!filtered.length && <EmptyRow cols={8} />}
+          {!filtered.length && <EmptyRow cols={9} />}
         </tbody>
       </TableWrap>
       {open && (
-        <Modal title="Add New Inquiry" onClose={() => setOpen(false)} onSubmit={submit}>
+        <Modal title={editingId ? "Edit Inquiry" : "Add New Inquiry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update Entry" : "Save Entry"} isSubmitting={isSubmitting}>
           <div className="grid grid-cols-2 gap-4">
             <FF label="Customer Name"><input className={ic} value={form.customerName} onChange={e=>setForm(f=>({...f,customerName:e.target.value}))} placeholder="Full name" required /></FF>
             <FF label="Contact Info"><input className={ic} value={form.contactInfo} onChange={e=>setForm(f=>({...f,contactInfo:e.target.value}))} placeholder="09XX-XXX-XXXX" /></FF>
@@ -813,27 +910,41 @@ function InquiriesView({ inquiries, onAdd }: { inquiries: Inquiry[]; onAdd: (i: 
 }
 
 // ── expenses ────────────────────────────────────────────────────────────────
-function ExpensesView({ expenses, onAdd }: { expenses: Expense[]; onAdd: (e: Expense) => void }) {
+function ExpensesView({ expenses, onAdd, onUpdate, onDelete }: { expenses: Expense[]; onAdd: (e: Expense) => void; onUpdate: (e: Expense) => void; onDelete: (id: string) => void }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [form, setForm] = useState({ expDate:"", category:"Rent", description:"", amount:"" });
   const filtered = useMemo(() => expenses.filter(e =>
     [e.category, e.description, e.expenseId].some(v => v.toLowerCase().includes(q.toLowerCase()))
   ), [expenses, q]);
   const total = useMemo(() => filtered.reduce((a, e) => a + e.amount, 0), [filtered]);
 
+  const resetForm = () => setForm({ expDate:"", category:"Rent", description:"", amount:"" });
+  const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const entry: Expense = { expenseId:"EXP-"+String(Date.now()).slice(-4), expDate:form.expDate,
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setIsSubmitting(true);
+    const entry: Expense = { expenseId: editingId ?? "EXP-"+String(Date.now()).slice(-4), expDate:form.expDate,
       category:form.category, description:form.description, amount:parseFloat(form.amount)||0 };
     try {
       await fetch(`${BASE_URL}/expenses`, { method:"POST", headers:{"Content-Type":"application/json"},
         body:JSON.stringify({ expenseId:entry.expenseId, category:entry.category,
           amount:entry.amount, description:entry.description, expDate:entry.expDate }) });
     } catch (_) {}
-    onAdd(entry);
-    setOpen(false);
-    setForm({ expDate:"", category:"Rent", description:"", amount:"" });
+    if (editingId) {
+      onUpdate(entry);
+    } else {
+      onAdd(entry);
+    }
+    closeModal();
+    setIsSubmitting(false);
+    submittingRef.current = false;
   };
 
   return (
@@ -847,7 +958,7 @@ function ExpensesView({ expenses, onAdd }: { expenses: Expense[]; onAdd: (e: Exp
             <span className="text-sm font-bold text-red-700 dark:text-red-400 tabular-nums">{php(total)}</span>
           </div>
         </div>
-        <AddBtn onClick={() => setOpen(true)} label="Add Expense" />
+        <AddBtn onClick={() => { resetForm(); setEditingId(null); setOpen(true); }} label="Add Expense" />
       </div>
       <TableWrap>
         <thead><tr>
@@ -865,9 +976,19 @@ function ExpensesView({ expenses, onAdd }: { expenses: Expense[]; onAdd: (e: Exp
               </td>
               <td className={tdc + " font-sans text-muted-foreground max-w-[300px]"}>{e.description}</td>
               <td className={tdr + " text-red-700 dark:text-red-400 font-semibold"}>{php(e.amount)}</td>
+              <td className={tdc}>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => { setEditingId(e.expenseId); setForm({ expDate:e.expDate, category:e.category, description:e.description, amount:String(e.amount) }); setOpen(true); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit">
+                    <PenSquare size={13} />
+                  </button>
+                  <button type="button" onClick={() => onDelete(e.expenseId)} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Delete">
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </td>
             </TRow>
           ))}
-          {!filtered.length && <EmptyRow cols={5} />}
+          {!filtered.length && <EmptyRow cols={6} />}
         </tbody>
         <tfoot>
           <tr className="bg-muted/40 dark:bg-slate-900/50">
@@ -877,7 +998,7 @@ function ExpensesView({ expenses, onAdd }: { expenses: Expense[]; onAdd: (e: Exp
         </tfoot>
       </TableWrap>
       {open && (
-        <Modal title="Add Expense Entry" onClose={() => setOpen(false)} onSubmit={submit}>
+        <Modal title={editingId ? "Edit Expense Entry" : "Add Expense Entry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update Entry" : "Save Entry"} isSubmitting={isSubmitting}>
           <div className="grid grid-cols-2 gap-4">
             <FF label="Date"><input type="date" className={ic} value={form.expDate} onChange={e=>setForm(f=>({...f,expDate:e.target.value}))} required /></FF>
             <FF label="Category">
@@ -1145,11 +1266,11 @@ export default function App() {
       {/* Page content */}
       <main className="max-w-[1680px] mx-auto">
         {tab === "DASHBOARD"       && <DashboardView sales={sales} jobCosts={jobCosts} expenses={expenses} inquiries={inquiries} />}
-        {tab === "DAILY_SALES"     && <DailySalesView sales={sales} onAdd={s => setSales(p => [s, ...p])} />}
-        {tab === "JOB_COSTING"     && <JobCostingView jobCosts={jobCosts} onAdd={j => setJobCosts(p => [j, ...p])} />}
-        {tab === "GOLD_INVENTORY"  && <GoldInventoryView inventory={inventory} onAdd={e => setInventory(p => [...p, e])} />}
-        {tab === "INQUIRIES"       && <InquiriesView inquiries={inquiries} onAdd={i => setInquiries(p => [i, ...p])} />}
-        {tab === "EXPENSES"        && <ExpensesView expenses={expenses} onAdd={e => setExpenses(p => [e, ...p])} />}
+        {tab === "DAILY_SALES"     && <DailySalesView sales={sales} onAdd={s => setSales(p => [s, ...p])} onUpdate={s => setSales(p => p.map(item => item.id === s.id ? s : item))} onDelete={id => setSales(p => p.filter(item => item.id !== id))} />}
+        {tab === "JOB_COSTING"     && <JobCostingView jobCosts={jobCosts} onAdd={j => setJobCosts(p => [j, ...p])} onUpdate={j => setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? j : item))} onDelete={id => setJobCosts(p => p.filter(item => item.jobCostId !== id))} />}
+        {tab === "GOLD_INVENTORY"  && <GoldInventoryView inventory={inventory} onAdd={e => setInventory(p => [...p, e])} onUpdate={e => setInventory(p => p.map(item => item.id === e.id ? e : item))} onDelete={id => setInventory(p => p.filter(item => item.id !== id))} />}
+        {tab === "INQUIRIES"       && <InquiriesView inquiries={inquiries} onAdd={i => setInquiries(p => [i, ...p])} onUpdate={i => setInquiries(p => p.map(item => item.inquiryId === i.inquiryId ? i : item))} onDelete={id => setInquiries(p => p.filter(item => item.inquiryId !== id))} />}
+        {tab === "EXPENSES"        && <ExpensesView expenses={expenses} onAdd={e => setExpenses(p => [e, ...p])} onUpdate={e => setExpenses(p => p.map(item => item.expenseId === e.expenseId ? e : item))} onDelete={id => setExpenses(p => p.filter(item => item.expenseId !== id))} />}
         {tab === "PROFIT_ANALYSIS" && <ProfitAnalysisView sales={sales} jobCosts={jobCosts} expenses={expenses} />}
       </main>
     </div>
