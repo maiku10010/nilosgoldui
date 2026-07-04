@@ -15,11 +15,13 @@ const GOLD_PRICE = 5450;
 
 // ── formatters ─────────────────────────────────────────────────────────────
 const marginCls = (m: number) => {
-  if (m >= 50)  return "text-emerald-700 dark:text-emerald-300 font-semibold";
-  if (m >= 25)  return "text-emerald-700 dark:text-emerald-400";
-  if (m >= 10)  return "text-amber-700 dark:text-amber-400";
-  if (m >= 0)   return "text-orange-700 dark:text-orange-400";
-  return "text-red-700 dark:text-red-400";
+  if (m >= 50) {
+    return "inline-flex items-center justify-center px-2 py-0.5 rounded-md text-[10px] font-mono font-medium uppercase tracking-widest border bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 min-w-[56px]";
+  }
+  if (m >= 25) {
+    return "inline-flex items-center justify-center px-2 py-0.5 rounded-md text-[10px] font-mono font-medium uppercase tracking-widest border bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30 min-w-[56px]";
+  }
+  return "inline-flex items-center justify-center px-2 py-0.5 rounded-md text-[10px] font-mono font-medium uppercase tracking-widest border bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30 min-w-[56px]";
 };
 
 const php = (n: number) =>
@@ -476,7 +478,9 @@ function DashboardView({ sales, jobCosts, expenses, inquiries }: {
                   <td className={tdr + " text-red-700 dark:text-red-400"}>{php(j.totalCost)}</td>
                   <td className={tdr + " text-amber-700 dark:text-amber-300"}>{php(j.sellingPrice)}</td>
                   <td className={tdr + " text-emerald-700 dark:text-emerald-400 font-semibold"}>{php(j.profit)}</td>
-                  <td className={twMerge(tdr, marginCls(j.marginPct))}>{pct(j.marginPct)}</td>
+                  <td className={tdc}>
+                    <span className={marginCls(j.marginPct)}>{pct(j.marginPct)}</span>
+                  </td>
                 </TRow>
               ))}
             </tbody>
@@ -629,7 +633,9 @@ function JobCostingView({ jobCosts, onAdd }: { jobCosts: JobCost[]; onAdd: (j: J
               <td className={tdr + " text-red-700 dark:text-red-400"}>{php(j.totalCost)}</td>
               <td className={tdr + " text-amber-700 dark:text-amber-300"}>{php(j.sellingPrice)}</td>
               <td className={tdr + " text-emerald-700 dark:text-emerald-400 font-semibold"}>{php(j.profit)}</td>
-              <td className={tdr + " " + marginCls(j.marginPct)}>{pct(j.marginPct)}</td>
+              <td className={tdc}>
+                <span className={marginCls(j.marginPct)}>{pct(j.marginPct)}</span>
+              </td>
             </TRow>
           ))}
           {!filtered.length && <EmptyRow cols={12} />}
