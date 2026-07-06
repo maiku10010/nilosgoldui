@@ -13,10 +13,16 @@ export function ExpensesView({ expenses, onAdd }: { expenses: Expense[]; onAdd: 
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ expDate:"", category:"Rent", description:"", amount:"" });
+  
+  // ✅ Guard against empty fields to keep string match filter completely safe
   const filtered = useMemo(() => expenses.filter(e =>
-    [e.category, e.description, e.expenseId].some(v => v.toLowerCase().includes(q.toLowerCase()))
+    [(e.category || ""), (e.description || ""), (e.expenseId || "")].some(v => 
+      v.toLowerCase().includes(q.toLowerCase())
+    )
   ), [expenses, q]);
-  const total = useMemo(() => filtered.reduce((a, e) => a + e.amount, 0), [filtered]);
+
+  // ✅ Force type coercion inside reduce accumulation so math works on numbers, not strings
+  const total = useMemo(() => filtered.reduce((a, e) => a + (Number(e.amount) || 0), 0), [filtered]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,19 +56,27 @@ export function ExpensesView({ expenses, onAdd }: { expenses: Expense[]; onAdd: 
           {["Date","Expense ID","Category","Description","Amount"].map(h=><th key={h} className={thc}>{h}</th>)}
         </tr></thead>
         <tbody>
-          {filtered.map(e => (
-            <TRow key={e.expenseId}>
-              <td className={tdc}>{fmtDate(e.expDate)}</td>
-              <td className={tdc + " text-muted-foreground"}>{e.expenseId}</td>
-              <td className={tdc}>
-                <span className="px-2 py-0.5 rounded text-[10px] border bg-muted dark:bg-slate-800/60 border-border text-muted-foreground uppercase tracking-wide">
-                  {e.category}
-                </span>
-              </td>
-              <td className={tdc + " font-sans text-muted-foreground max-w-[300px]"}>{e.description}</td>
-              <td className={tdr + " text-red-700 dark:text-red-400 font-semibold"}>{php(e.amount)}</td>
-            </TRow>
-          ))}
+          {filtered.map((e, index) => {
+            // ✅ Clean extraction of raw numeric strings before handing to UI cells
+            const amountNum = Number(e.amount) || 0;
+
+            return (
+              // ✅ Combined array index with row id ensures unique layout mapping keys
+              <TRow key={`${e.expenseId || 'exp'}-${index}`}>
+                <td className={tdc}>{fmtDate(e.expDate)}</td>
+                <td className={tdc + " text-muted-foreground"}>{e.expenseId}</td>
+                <td className={tdc}>
+                  <span className="px-2 py-0.5 rounded text-[10px] border bg-muted dark:bg-slate-800/60 border-border text-muted-foreground uppercase tracking-wide">
+                    {e.category}
+                  </span>
+                </td>
+                <td className={tdc + " font-sans text-muted-foreground max-w-[300px]"}>{e.description}</td>
+                
+                {/* ✅ Hand safe formatted numeric values */}
+                <td className={tdr + " text-red-700 dark:text-red-400 font-semibold"}>{php(amountNum)}</td>
+              </TRow>
+            );
+          })}
           {!filtered.length && <EmptyRow cols={5} />}
         </tbody>
         <tfoot>

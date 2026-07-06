@@ -4,7 +4,7 @@
 // Get a free hosted Postgres database in seconds: `npx create-db`
 
 generator client {
-  provider = "prisma-client"
+  provider = "prisma-client-js"
   output   = "../src/generated/prisma"
 }
 
@@ -28,7 +28,7 @@ model Sales {
   price       Decimal  @default(0.00)
   status      String
   downpayment Decimal  @default(0.00)
-  salesDate   DateTime @default(now())
+  date        DateTime @default(now())
 
   clientId String
   client   Client @relation(fields: [clientId], references: [clientId])
@@ -43,7 +43,7 @@ model Inventory {
   scraps      Decimal  @default(0.00)
   totalGold   Decimal  @default(0.00)
   unit        String
-  updatedAt   DateTime @updatedAt
+  date        DateTime @default(now())
 }
 
 model Job_Cost {
@@ -74,7 +74,7 @@ model Expenses {
   category    String
   amount      Decimal  @default(0.00)
   description String
-  expDate     DateTime @default(now())
+  date        DateTime @default(now())
 }
 
 model Inquiries {
@@ -85,7 +85,7 @@ model Inquiries {
   category     String
   quotedPrice  Decimal  @default(0.00)
   status       String   @default("Pending")
-  inqDate      DateTime @default(now())
+  date         DateTime @default(now())
 
   clientId String?
   client   Client? @relation(fields: [clientId], references: [clientId])

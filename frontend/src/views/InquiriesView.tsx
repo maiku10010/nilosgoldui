@@ -13,8 +13,12 @@ export function InquiriesView({ inquiries, onAdd }: { inquiries: Inquiry[]; onAd
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ customerName:"", contactInfo:"", details:"", category:"", quotedPrice:"", status:"Pending" as InqStatus });
+  
+  // ✅ Guard against null/undefined fields during string operations in search
   const filtered = useMemo(() => inquiries.filter(i =>
-    [i.customerName, i.category, i.details, i.inquiryId].some(v => v.toLowerCase().includes(q.toLowerCase()))
+    [(i.customerName || ""), (i.category || ""), (i.details || ""), (i.inquiryId || "")].some(v => 
+      v.toLowerCase().includes(q.toLowerCase())
+    )
   ), [inquiries, q]);
 
   const submit = async (e: React.FormEvent) => {
@@ -45,18 +49,26 @@ export function InquiriesView({ inquiries, onAdd }: { inquiries: Inquiry[]; onAd
           {["Date","Inquiry ID","Client Name","Contact","Category","Details","Quoted Price","Status"].map(h=><th key={h} className={thc}>{h}</th>)}
         </tr></thead>
         <tbody>
-          {filtered.map(i => (
-            <TRow key={i.inquiryId}>
-              <td className={tdc}>{fmtDate(i.date)}</td>
-              <td className={tdc + " text-muted-foreground"}>{i.inquiryId}</td>
-              <td className={tdc + " font-sans font-medium"}>{i.customerName}</td>
-              <td className={tdc + " text-muted-foreground"}>{i.contactInfo}</td>
-              <td className={tdc}>{i.category}</td>
-              <td className={tdc + " font-sans max-w-[200px] truncate text-muted-foreground"}>{i.details}</td>
-              <td className={tdr + " text-amber-700 dark:text-amber-300"}>{php(i.quotedPrice)}</td>
-              <td className={tdc}><StatusBadge status={i.status} /></td>
-            </TRow>
-          ))}
+          {filtered.map((i, index) => {
+            // ✅ Coerce the price safely into a standard JavaScript number
+            const priceNum = Number(i.quotedPrice) || 0;
+
+            return (
+              // ✅ Combine the ID with loop index to ensure a unique key prop
+              <TRow key={`${i.inquiryId || 'inq'}-${index}`}>
+                <td className={tdc}>{fmtDate(i.date)}</td>
+                <td className={tdc + " text-muted-foreground"}>{i.inquiryId}</td>
+                <td className={tdc + " font-sans font-medium"}>{i.customerName}</td>
+                <td className={tdc + " text-muted-foreground"}>{i.contactInfo}</td>
+                <td className={tdc}>{i.category}</td>
+                <td className={tdc + " font-sans max-w-[200px] truncate text-muted-foreground"}>{i.details}</td>
+                
+                {/* ✅ Hand safe numeric primitive to the currency formatter */}
+                <td className={tdr + " text-amber-700 dark:text-amber-300"}>{php(priceNum)}</td>
+                <td className={tdc}><StatusBadge status={i.status} /></td>
+              </TRow>
+            );
+          })}
           {!filtered.length && <EmptyRow cols={8} />}
         </tbody>
       </TableWrap>

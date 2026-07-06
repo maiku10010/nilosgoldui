@@ -13,10 +13,14 @@ export function GoldInventoryView({ inventory, onAdd }: { inventory: InvEntry[];
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ date:"", referenceId:"", itemName:"", goldIn:"", goldOut:"", scrap:"", unit:"grams" });
+  
   const filtered = useMemo(() => inventory.filter(e =>
-    [e.referenceId, e.itemName].some(v => v.toLowerCase().includes(q.toLowerCase()))
+    [(e.referenceId || ""), (e.itemName || "")].some(v => v.toLowerCase().includes(q.toLowerCase()))
   ), [inventory, q]);
-  const currentBalance = inventory.length > 0 ? inventory[inventory.length - 1].balance : 0;
+
+  // ✅ Defensively calculate current balance by converting the string to a number
+  const rawBalance = inventory.length > 0 ? inventory[inventory.length - 1].balance : 0;
+  const currentBalance = Number(rawBalance) || 0;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,17 +58,36 @@ export function GoldInventoryView({ inventory, onAdd }: { inventory: InvEntry[];
           {["Date","Reference / Invoice","Item Description","Gold In (g)","Gold Out (g)","Scrap (g)","Balance (g)"].map(h=><th key={h} className={thc}>{h}</th>)}
         </tr></thead>
         <tbody>
-          {filtered.map(e => (
-            <TRow key={e.id}>
-              <td className={tdc}>{fmtDate(e.date)}</td>
-              <td className={tdc + " text-primary/80 dark:text-amber-400/80"}>{e.referenceId}</td>
-              <td className={tdc + " font-sans"}>{e.itemName}</td>
-              <td className={tdr + (e.goldIn > 0 ? " text-emerald-700 dark:text-emerald-400" : " text-muted-foreground")}>{e.goldIn > 0 ? "+"+e.goldIn.toFixed(2) : "—"}</td>
-              <td className={tdr + (e.goldOut > 0 ? " text-red-700 dark:text-red-400" : " text-muted-foreground")}>{e.goldOut > 0 ? "-"+e.goldOut.toFixed(2) : "—"}</td>
-              <td className={tdr + (e.scrap > 0 ? " text-amber-700 dark:text-amber-400" : " text-muted-foreground")}>{e.scrap > 0 ? e.scrap.toFixed(2) : "—"}</td>
-              <td className={tdr + " text-primary font-semibold"}>{e.balance.toFixed(2)}</td>
-            </TRow>
-          ))}
+          {filtered.map((e, index) => {
+            // ✅ Safely normalize incoming database strings to regular JavaScript numbers
+            const goldInNum = Number(e.goldIn) || 0;
+            const goldOutNum = Number(e.goldOut) || 0;
+            const scrapNum = Number(e.scrap) || 0;
+            const balanceNum = Number(e.balance) || 0;
+
+            return (
+              // ✅ Combined row ID with array index to eliminate potential duplicate key warnings
+              <TRow key={`${e.id || 'inv'}-${index}`}>
+                <td className={tdc}>{fmtDate(e.date)}</td>
+                <td className={tdc + " text-primary/80 dark:text-amber-400/80"}>{e.referenceId}</td>
+                <td className={tdc + " font-sans"}>{e.itemName}</td>
+                
+                {/* ✅ Render using our safely parsed local numbers */}
+                <td className={tdr + (goldInNum > 0 ? " text-emerald-700 dark:text-emerald-400" : " text-muted-foreground")}>
+                  {goldInNum > 0 ? "+"+goldInNum.toFixed(2) : "—"}
+                </td>
+                <td className={tdr + (goldOutNum > 0 ? " text-red-700 dark:text-red-400" : " text-muted-foreground")}>
+                  {goldOutNum > 0 ? "-"+goldOutNum.toFixed(2) : "—"}
+                </td>
+                <td className={tdr + (scrapNum > 0 ? " text-amber-700 dark:text-amber-400" : " text-muted-foreground")}>
+                  {scrapNum > 0 ? scrapNum.toFixed(2) : "—"}
+                </td>
+                <td className={tdr + " text-primary font-semibold"}>
+                  {balanceNum.toFixed(2)}
+                </td>
+              </TRow>
+            );
+          })}
           {!filtered.length && <EmptyRow cols={7} />}
         </tbody>
       </TableWrap>

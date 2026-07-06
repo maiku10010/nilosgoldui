@@ -13,7 +13,7 @@ import { GoldInventoryView } from "../views/GoldInventoryView";
 import { InquiriesView } from "../views/InquiriesView";
 import { ExpensesView } from "../views/ExpensesView";
 import { ProfitAnalysisView } from "../views/ProfitAnalysisView";
-import { api } from "../data/api";
+import { api } from "../lib/api";
 
 export default function App() {
   const [dark, setDark] = useState(() => {
@@ -30,33 +30,43 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   // Apply dark class and persist preference
+// 1. DATA FETCHING EFFECT (Runs only once on mount)
   useEffect(() => {
     Promise.all([
-      api.sales.getAll().then(d => { if (Array.isArray(d)) setSales(d); }),
-      api.jobCosting.getAll().then(d => { if (Array.isArray(d)) setJobCosts(d); }),
-      api.inventory.getAll().then(d => { if (Array.isArray(d)) setInventory(d); }),
-      api.inquiries.getAll().then(d => { if (Array.isArray(d)) setInquiries(d); }),
-      api.expenses.getAll().then(d => { if (Array.isArray(d)) setExpenses(d); })
+      api.sales.getAll(),
+      api.jobCosting.getAll(),
+      api.inventory.getAll(),
+      api.inquiries.getAll(),
+      api.expenses.getAll()
     ])
-    .then(([salesData, jobCostData, inventoryData, inquiriesData, expensesData]) => {
-        setSales(salesData);
-        setJobCosts(jobCostData);
-        setInventory(inventoryData);
-        setInquiries(inquiriesData);
-        setExpenses(expensesData);
+      .then(([salesData, jobCostData, inventoryData, inquiriesData, expensesData]) => {
+        if (Array.isArray(salesData)) setSales(salesData);
+        if (Array.isArray(jobCostData)) setJobCosts(jobCostData);
+        if (Array.isArray(inventoryData)) setInventory(inventoryData);
+        if (Array.isArray(inquiriesData)) setInquiries(inquiriesData);
+        if (Array.isArray(expensesData)) setExpenses(expensesData);
+        
         setLoading(false);
       })
       .catch(err => {
         console.error("Error connecting to Goldsmith Master Control API:", err);
         setLoading(false);
       });
+  }, []); // <-- Empty dependency array ensures data is only fetched once
+
+  // 2. DARK MODE PREFERENCE EFFECT (Runs whenever 'dark' state toggles)
+  useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
-    try { localStorage.setItem("nilo-theme", dark ? "dark" : "light"); } catch {}
-  }, [dark]);
+    try {
+      localStorage.setItem("nilo-theme", dark ? "dark" : "light");
+    } catch (e) {
+      console.warn("Could not save theme preference to localStorage:", e);
+    }
+  }, [dark]); // <-- Only re-runs when the 'dark' variable changes
 
   // Wire API endpoints — graceful fallback to seed data when server is offline
   useEffect(() => { fetch(`${BASE_URL}/sales`).then(r=>r.json()).then(d=>{ if (Array.isArray(d)) setSales(d); }).catch(()=>{}); }, []);
-  useEffect(() => { fetch(`${BASE_URL}/job-cost`).then(r=>r.json()).then(d=>{ if (Array.isArray(d)) setJobCosts(d); }).catch(()=>{}); }, []);
+  useEffect(() => { fetch(`${BASE_URL}/job_costing`).then(r=>r.json()).then(d=>{ if (Array.isArray(d)) setJobCosts(d); }).catch(()=>{}); }, []);
   useEffect(() => { fetch(`${BASE_URL}/inventory`).then(r=>r.json()).then(d=>{ if (Array.isArray(d)) setInventory(d); }).catch(()=>{}); }, []);
   useEffect(() => { fetch(`${BASE_URL}/inquiries`).then(r=>r.json()).then(d=>{ if (Array.isArray(d)) setInquiries(d); }).catch(()=>{}); }, []);
   useEffect(() => { fetch(`${BASE_URL}/expenses`).then(r=>r.json()).then(d=>{ if (Array.isArray(d)) setExpenses(d); }).catch(()=>{}); }, []);

@@ -10,33 +10,41 @@ import { TableWrap, TRow } from "../components/ui/Table";
 export function DashboardView({ sales, jobCosts, expenses, inquiries }: {
   sales: Sale[]; jobCosts: JobCost[]; expenses: Expense[]; inquiries: Inquiry[];
 }) {
-  const totalSales    = useMemo(() => sales.reduce((a, s) => a + s.price, 0), [sales]);
-  const cashCollected = useMemo(() => sales.reduce((a, s) => a + s.downpayment, 0), [sales]);
-  const receivables   = totalSales - cashCollected;
+  const totalSales = useMemo(() => sales.reduce((a, s) => a + (Number(s.price) || 0), 0), [sales]);
+  const cashCollected = useMemo(() => sales.reduce((a, s) => a + (Number(s.downpayment) || 0), 0), [sales]);
+  const receivables = totalSales - cashCollected;
 
-  const totalRevenue  = useMemo(() => jobCosts.reduce((a, j) => a + j.sellingPrice, 0), [jobCosts]);
-  const totalJobCost  = useMemo(() => jobCosts.reduce((a, j) => a + j.totalCost, 0), [jobCosts]);
-  const grossProfit   = totalRevenue - totalJobCost;
-  const avgMargin     = useMemo(() =>
-    jobCosts.length ? jobCosts.reduce((a, j) => a + j.marginPct, 0) / jobCosts.length : 0, [jobCosts]);
+  const totalRevenue = useMemo(() =>
+    jobCosts.reduce((a, j) => a + (Number((j as any).sellingPrice) || 0), 0), [jobCosts]);
 
-  const totalExpenses = useMemo(() => expenses.reduce((a, e) => a + e.amount, 0), [expenses]);
-  const expByCat      = useMemo(() => expenses.reduce((acc, e) => {
-    acc[e.category] = (acc[e.category] || 0) + e.amount; return acc;
+  const totalJobCost = useMemo(() =>
+    jobCosts.reduce((a, j) => a + (Number((j as any).totalCost) || Number(j.laborCost) || 0), 0), [jobCosts]);
+  const grossProfit = totalRevenue - totalJobCost;
+  const avgMargin = useMemo(() =>
+    jobCosts.length ? jobCosts.reduce((a, j) => a + (Number(j.marginPct) || 0), 0) / jobCosts.length : 0, [jobCosts]);
+
+  const totalExpenses = useMemo(() => expenses.reduce((a, e) => a + (Number(e.amount) || 0), 0), [expenses]);
+  const expByCat = useMemo(() => expenses.reduce((acc, e) => {
+    const amt = Number(e.amount) || 0;
+    acc[e.category] = (acc[e.category] || 0) + amt; return acc;
   }, {} as Record<string, number>), [expenses]);
 
-  const netProfit   = grossProfit - totalExpenses;
-  const netMargin   = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
-  const totalInq    = inquiries.length;
-  const closedInq   = inquiries.filter(i => i.status === "Yes").length;
-  const convRate    = totalInq > 0 ? (closedInq / totalInq) * 100 : 0;
+  const netProfit = grossProfit - totalExpenses;
+  const netMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+  const totalInq = inquiries.length;
+  const closedInq = inquiries.filter(i => i.status === "Yes").length;
+  const convRate = totalInq > 0 ? (closedInq / totalInq) * 100 : 0;
 
   const recentSales = useMemo(() =>
-    [...sales].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 7), [sales]);
-  const recentJC    = useMemo(() => [...jobCosts].slice(0, 6), [jobCosts]);
+    [...sales].sort((a, b) => {
+      const dateA = String((a as any).date || "");
+      const dateB = String((b as any).date || "");
+      return dateB.localeCompare(dateA);
+    }).slice(0, 7), [sales]);
+  const recentJC = useMemo(() => [...jobCosts].slice(0, 6), [jobCosts]);
 
   const catColors: Record<string, string> = {
-    "Rent":"#d4a017","Staff Salary":"#f59e0b","Utilities":"#38bdf8","Supplies":"#a78bfa","Tax & Permits":"#ef4444",
+    "Rent": "#d4a017", "Staff Salary": "#f59e0b", "Utilities": "#38bdf8", "Supplies": "#a78bfa", "Tax & Permits": "#ef4444",
   };
 
   const cardCls = "bg-card border border-border rounded-xl p-5";
@@ -54,9 +62,9 @@ export function DashboardView({ sales, jobCosts, expenses, inquiries }: {
           </div>
           <div className="space-y-3">
             {[
-              { label:"Total Sales", val:php(totalSales), cls:"text-amber-700 dark:text-amber-300 font-semibold" },
-              { label:"Cash Collected", val:php(cashCollected), cls:"text-emerald-700 dark:text-emerald-400" },
-              { label:"Receivables", val:php(receivables), cls:"text-amber-700 dark:text-amber-400" },
+              { label: "Total Sales", val: php(totalSales), cls: "text-amber-700 dark:text-amber-300 font-semibold" },
+              { label: "Cash Collected", val: php(cashCollected), cls: "text-emerald-700 dark:text-emerald-400" },
+              { label: "Receivables", val: php(receivables), cls: "text-amber-700 dark:text-amber-400" },
             ].map(r => (
               <div key={r.label} className="flex justify-between items-center">
                 <span className="text-[11px] text-muted-foreground">{r.label}</span>
@@ -79,8 +87,8 @@ export function DashboardView({ sales, jobCosts, expenses, inquiries }: {
           </div>
           <div className="space-y-3">
             {[
-              { label:"Total Revenue", val:php(totalRevenue), cls:"text-amber-700 dark:text-amber-300" },
-              { label:"Total Job Cost", val:php(totalJobCost), cls:"text-red-700 dark:text-red-400" },
+              { label: "Total Revenue", val: php(totalRevenue), cls: "text-amber-700 dark:text-amber-300" },
+              { label: "Total Job Cost", val: php(totalJobCost), cls: "text-red-700 dark:text-red-400" },
             ].map(r => (
               <div key={r.label} className="flex justify-between items-center">
                 <span className="text-[11px] text-muted-foreground">{r.label}</span>
@@ -139,8 +147,8 @@ export function DashboardView({ sales, jobCosts, expenses, inquiries }: {
           <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-3">Inquiry Funnel</div>
           <div className="space-y-2">
             {[
-              { label:"Total Inquiries", val:totalInq, w:100, color:"#d4a017" },
-              { label:"Closed / Won", val:closedInq, w:convRate, color:"#059669" },
+              { label: "Total Inquiries", val: totalInq, w: 100, color: "#d4a017" },
+              { label: "Closed / Won", val: closedInq, w: convRate, color: "#059669" },
             ].map(r => (
               <div key={r.label}>
                 <div className="flex justify-between mb-1">
@@ -148,7 +156,7 @@ export function DashboardView({ sales, jobCosts, expenses, inquiries }: {
                   <span className="text-xs text-foreground font-semibold tabular-nums">{r.val}</span>
                 </div>
                 <div className="w-full bg-muted dark:bg-slate-800 rounded-full h-1">
-                  <div className="h-1 rounded-full" style={{ width:`${r.w}%`, background:r.color }} />
+                  <div className="h-1 rounded-full" style={{ width: `${r.w}%`, background: r.color }} />
                 </div>
               </div>
             ))}
@@ -168,19 +176,26 @@ export function DashboardView({ sales, jobCosts, expenses, inquiries }: {
           </p>
           <TableWrap>
             <thead><tr>
-              {["Date","Invoice #","Client","Type","Total","Status"].map(h=><th key={h} className={thc}>{h}</th>)}
+              {["Date", "Invoice #", "Client", "Type", "Total", "Status"].map(h => <th key={h} className={thc}>{h}</th>)}
             </tr></thead>
             <tbody>
-              {recentSales.map(s => (
-                <TRow key={s.id}>
-                  <td className={tdc}>{fmtDate(s.date)}</td>
-                  <td className={tdc + " text-primary/80 dark:text-amber-400/80"}>{s.invoiceId}</td>
-                  <td className={tdc + " font-sans font-medium"}>{s.clientName}</td>
-                  <td className={tdc}>{s.serviceType}</td>
-                  <td className={tdr}>{php(s.price)}</td>
-                  <td className={tdc}><StatusBadge status={s.status} /></td>
-                </TRow>
-              ))}
+              {recentSales.map((s, index) => {
+                const priceNum = Number(s.price) || 0;
+                
+                // ✅ Safe raw parsing to strip timestamp strings and prevent offset calculation errors
+                const cleanDateString = s.date ? String(s.date).split("T")[0] : "";
+
+                return (
+                  <TRow key={`${s.invoiceId || 'no-id'}-${index}`}>
+                    <td className={tdc}>{fmtDate(cleanDateString)}</td>
+                    <td className={tdc + " text-primary/80 dark:text-amber-400/80"}>{s.invoiceId}</td>
+                    <td className={tdc + " font-sans font-medium"}>{s.clientName}</td>
+                    <td className={tdc}>{s.serviceType}</td>
+                    <td className={tdr}>{php(priceNum)}</td>
+                    <td className={tdc}><StatusBadge status={s.status} /></td>
+                  </TRow>
+                );
+              })}
             </tbody>
           </TableWrap>
         </div>
@@ -190,20 +205,28 @@ export function DashboardView({ sales, jobCosts, expenses, inquiries }: {
           </p>
           <TableWrap>
             <thead><tr>
-              {["Invoice #","Client","Gold (g)","Total Cost","Selling","Profit","Margin"].map(h=><th key={h} className={thc}>{h}</th>)}
+              {["Invoice #", "Client", "Gold (g)", "Total Cost", "Selling", "Profit", "Margin"].map(h => <th key={h} className={thc}>{h}</th>)}
             </tr></thead>
             <tbody>
-              {recentJC.map(j => (
-                <TRow key={j.jobCostId}>
-                  <td className={tdc + " text-primary/80 dark:text-amber-400/80"}>{j.invoiceId}</td>
-                  <td className={tdc + " font-sans font-medium"}>{j.clientName}</td>
-                  <td className={tdr}>{j.goldUsed.toFixed(2)}</td>
-                  <td className={tdr + " text-red-700 dark:text-red-400"}>{php(j.totalCost)}</td>
-                  <td className={tdr + " text-amber-700 dark:text-amber-300"}>{php(j.sellingPrice)}</td>
-                  <td className={tdr + " text-emerald-700 dark:text-emerald-400 font-semibold"}>{php(j.profit)}</td>
-                  <td className={tdr}><MarginBadge margin={j.marginPct} /></td>
-                </TRow>
-              ))}
+              {recentJC.map((j, index) => {
+                const gold = Number(j.goldUsed) || 0;
+                const cost = Number(j.totalCost) || 0;
+                const selling = Number(j.sellingPrice) || 0;
+                const profit = Number(j.profit) || 0;
+                const margin = Number(j.marginPct) || 0;
+
+                return (
+                  <TRow key={`${j.jobCostId || j.invoiceId || 'jc'}-${index}`}>
+                    <td className={tdc + " text-primary/80 dark:text-amber-400/80"}>{j.invoiceId}</td>
+                    <td className={tdc + " font-sans font-medium"}>{j.clientName}</td>
+                    <td className={tdr}>{gold.toFixed(2)}</td>
+                    <td className={tdr + " text-red-700 dark:text-red-400"}>{php(cost)}</td>
+                    <td className={tdr + " text-amber-700 dark:text-amber-300"}>{php(selling)}</td>
+                    <td className={tdr + " text-emerald-700 dark:text-emerald-400 font-semibold"}>{php(profit)}</td>
+                    <td className={tdr}><MarginBadge margin={margin} /></td>
+                  </TRow>
+                );
+              })}
             </tbody>
           </TableWrap>
         </div>
