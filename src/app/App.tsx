@@ -31,6 +31,10 @@ const fmtDate = (d: string) =>
   new Date(d + "T00:00:00").toLocaleDateString("en-PH", {
     month: "short", day: "2-digit", year: "numeric",
   });
+const todayISO = () => {
+  const now = new Date();
+  return [now.getFullYear(), String(now.getMonth() + 1).padStart(2, "0"), String(now.getDate()).padStart(2, "0")].join("-");
+};
 
 const numeric = (value: unknown) => Number(value ?? 0);
 const apiDate = (value: unknown) => value ? String(value).slice(0, 10) : new Date().toISOString().slice(0, 10);
@@ -462,7 +466,7 @@ function DailySalesView({ sales, onAdd, onUpdate, onDelete }: { sales: Sale[]; o
     [s.clientName, s.invoiceId, s.serviceType, s.status].some(v => v.toLowerCase().includes(q.toLowerCase()))
   ), [sales, q]);
 
-  const resetForm = () => setForm({ invoiceId:"", date:"", clientName:"", contactNum:"", serviceType:"Custom", price:"", downpayment:"", status:"Ongoing" });
+  const resetForm = () => setForm({ invoiceId:"", date:todayISO(), clientName:"", contactNum:"", serviceType:"Custom", price:"", downpayment:"", status:"Ongoing" });
   const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
 
   const submit = async (e: React.FormEvent) => {
@@ -535,9 +539,9 @@ function DailySalesView({ sales, onAdd, onUpdate, onDelete }: { sales: Sale[]; o
         <Modal title={editingId ? "Edit Sale Entry" : "Add New Sale Entry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update Entry" : "Save Entry"} isSubmitting={isSubmitting}>
           <div className="grid grid-cols-2 gap-4">
             <FF label="Invoice #"><input className={ic} value={form.invoiceId} onChange={e=>setForm(f=>({...f,invoiceId:e.target.value}))} placeholder="INV-2026-xxx" required disabled={Boolean(editingId)} /></FF>
-            <FF label="Date"><input type="date" className={ic} value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} required /></FF>
-            <FF label="Client Name"><input className={ic} value={form.clientName} onChange={e=>setForm(f=>({...f,clientName:e.target.value}))} placeholder="Full name" required /></FF>
-            <FF label="Contact #"><input className={ic} value={form.contactNum} onChange={e=>setForm(f=>({...f,contactNum:e.target.value}))} placeholder="09XX-XXX-XXXX" /></FF>
+            <FF label="Date"><input type="date" max={todayISO()} className={ic} value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} required /></FF>
+            <FF label="Client Name"><input className={ic} value={form.clientName} onChange={e=>setForm(f=>({...f,clientName:e.target.value}))} placeholder="Full name" maxLength={120} required /></FF>
+            <FF label="Contact #"><input className={ic} value={form.contactNum} onChange={e=>setForm(f=>({...f,contactNum:e.target.value}))} placeholder="09XX-XXX-XXXX" maxLength={30} required /></FF>
             <FF label="Service Type">
               <select className={ic} value={form.serviceType} onChange={e=>setForm(f=>({...f,serviceType:e.target.value as ServiceType}))}>
                 {(["Custom","Repair","Resize","Cleaning"] as ServiceType[]).map(t=><option key={t}>{t}</option>)}
@@ -548,8 +552,8 @@ function DailySalesView({ sales, onAdd, onUpdate, onDelete }: { sales: Sale[]; o
                 {(["Ongoing","Paid","Released"] as SaleStatus[]).map(t=><option key={t}>{t}</option>)}
               </select>
             </FF>
-            <FF label="Total Price (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.price} onChange={e=>setForm(f=>({...f,price:e.target.value}))} placeholder="0.00" required /></FF>
-            <FF label="Downpayment (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.downpayment} onChange={e=>setForm(f=>({...f,downpayment:e.target.value}))} placeholder="0.00" /></FF>
+            <FF label="Total Price (₱)"><input type="number" min="0.01" step="0.01" className={ic} value={form.price} onChange={e=>setForm(f=>({...f,price:e.target.value}))} placeholder="0.00" required /></FF>
+            <FF label="Downpayment (₱)"><input type="number" min="0" max={form.price || undefined} step="0.01" className={ic} value={form.downpayment} onChange={e=>setForm(f=>({...f,downpayment:e.target.value}))} placeholder="0.00" /></FF>
           </div>
         </Modal>
       )}
@@ -657,13 +661,13 @@ function JobCostingView({ jobCosts, onAdd, onUpdate, onDelete }: { jobCosts: Job
             <FF label="Invoice #"><input className={ic} value={form.invoiceId} onChange={e=>setForm(f=>({...f,invoiceId:e.target.value}))} placeholder="INV-2026-xxx" required disabled={Boolean(editingId)} /></FF>
             <FF label="Client Name"><input className={ic} value={form.clientName} onChange={e=>setForm(f=>({...f,clientName:e.target.value}))} placeholder="Full name" required /></FF>
             <FF label="Employee ID (opt.)"><input className={ic} value={form.empId} onChange={e=>setForm(f=>({...f,empId:e.target.value}))} placeholder="EMP-xxx" /></FF>
-            <FF label="Gold Used (g)"><input type="number" min="0" step="0.01" className={ic} value={form.goldUsed} onChange={e=>setForm(f=>({...f,goldUsed:e.target.value}))} placeholder="0.00" /></FF>
+            <FF label="Gold Used (g)"><input type="number" min="0" step="0.01" className={ic} value={form.goldUsed} onChange={e=>setForm(f=>({...f,goldUsed:e.target.value}))} placeholder="0.00" required /></FF>
             <FF label={`Gold Cost/g (auto ₱${GOLD_PRICE.toLocaleString()})`}>
               <input className={ic + " opacity-60 cursor-not-allowed"} value={`₱${GOLD_PRICE.toLocaleString()}`} readOnly />
             </FF>
-            <FF label="Stone Cost (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.stoneCost} onChange={e=>setForm(f=>({...f,stoneCost:e.target.value}))} placeholder="0.00" /></FF>
-            <FF label="Labor Cost (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.laborCost} onChange={e=>setForm(f=>({...f,laborCost:e.target.value}))} placeholder="0.00" /></FF>
-            <FF label="Selling Price (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.sellingPrice} onChange={e=>setForm(f=>({...f,sellingPrice:e.target.value}))} placeholder="0.00" required /></FF>
+            <FF label="Stone Cost (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.stoneCost} onChange={e=>setForm(f=>({...f,stoneCost:e.target.value}))} placeholder="0.00" required /></FF>
+            <FF label="Labor Cost (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.laborCost} onChange={e=>setForm(f=>({...f,laborCost:e.target.value}))} placeholder="0.00" required /></FF>
+            <FF label="Selling Price (₱)"><input type="number" min="0.01" step="0.01" className={ic} value={form.sellingPrice} onChange={e=>setForm(f=>({...f,sellingPrice:e.target.value}))} placeholder="0.00" required /></FF>
           </div>
           <p className="text-[10px] text-muted-foreground font-mono">Profit and margin % are auto-calculated on save.</p>
         </Modal>
@@ -685,7 +689,7 @@ function GoldInventoryView({ inventory, onAdd, onUpdate, onDelete }: { inventory
   ), [inventory, q]);
   const currentBalance = inventory.length > 0 ? inventory[inventory.length - 1].balance : 0;
 
-  const resetForm = () => setForm({ date:"", referenceId:"", itemName:"", goldIn:"", goldOut:"", scrap:"", unit:"grams" });
+  const resetForm = () => setForm({ date:todayISO(), referenceId:"", itemName:"", goldIn:"", goldOut:"", scrap:"", unit:"grams" });
   const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
 
   const submit = async (e: React.FormEvent) => {
@@ -696,7 +700,11 @@ function GoldInventoryView({ inventory, onAdd, onUpdate, onDelete }: { inventory
     const goldIn = parseFloat(form.goldIn) || 0;
     const goldOut = parseFloat(form.goldOut) || 0;
     const scrap = parseFloat(form.scrap) || 0;
-    const balance = Math.max(0, currentBalance + goldIn - goldOut - scrap);
+    if (goldIn + goldOut + scrap <= 0 || (!editingId && goldOut + scrap > currentBalance + goldIn)) {
+      alert(goldIn + goldOut + scrap <= 0 ? "Enter at least one gold movement." : "Gold out and scrap exceed the available balance.");
+      setIsSubmitting(false); submittingRef.current = false; return;
+    }
+    const balance = currentBalance + goldIn - goldOut - scrap;
     const entry: InvEntry = { id: editingId ?? String(Date.now()), date:form.date, referenceId:form.referenceId,
       itemName:form.itemName, goldIn, goldOut, scrap, balance, unit:form.unit };
     try {
@@ -761,12 +769,12 @@ function GoldInventoryView({ inventory, onAdd, onUpdate, onDelete }: { inventory
       {open && (
         <Modal title={editingId ? "Edit Inventory Entry" : "Add Inventory Entry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update Entry" : "Save Entry"} isSubmitting={isSubmitting}>
           <div className="grid grid-cols-2 gap-4">
-            <FF label="Date"><input type="date" className={ic} value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} required /></FF>
+            <FF label="Date"><input type="date" max={todayISO()} className={ic} value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} required /></FF>
             <FF label="Reference / Invoice"><input className={ic} value={form.referenceId} onChange={e=>setForm(f=>({...f,referenceId:e.target.value}))} placeholder="PO-xxx or INV-xxx" required disabled={Boolean(editingId)} /></FF>
             <div className="col-span-2"><FF label="Item Description"><input className={ic} value={form.itemName} onChange={e=>setForm(f=>({...f,itemName:e.target.value}))} placeholder="Describe the transaction" required /></FF></div>
             <FF label="Gold In (g)"><input type="number" min="0" step="0.01" className={ic} value={form.goldIn} onChange={e=>setForm(f=>({...f,goldIn:e.target.value}))} placeholder="0.00" /></FF>
-            <FF label="Gold Out (g)"><input type="number" min="0" step="0.01" className={ic} value={form.goldOut} onChange={e=>setForm(f=>({...f,goldOut:e.target.value}))} placeholder="0.00" /></FF>
-            <FF label="Scrap (g)"><input type="number" min="0" step="0.01" className={ic} value={form.scrap} onChange={e=>setForm(f=>({...f,scrap:e.target.value}))} placeholder="0.00" /></FF>
+            <FF label="Gold Out (g)"><input type="number" min="0" max={!editingId ? Math.max(0, currentBalance + (Number(form.goldIn) || 0) - (Number(form.scrap) || 0)).toFixed(2) : undefined} step="0.01" className={ic} value={form.goldOut} onChange={e=>setForm(f=>({...f,goldOut:e.target.value}))} placeholder="0.00" /></FF>
+            <FF label="Scrap (g)"><input type="number" min="0" max={!editingId ? Math.max(0, currentBalance + (Number(form.goldIn) || 0) - (Number(form.goldOut) || 0)).toFixed(2) : undefined} step="0.01" className={ic} value={form.scrap} onChange={e=>setForm(f=>({...f,scrap:e.target.value}))} placeholder="0.00" /></FF>
             <FF label="Unit"><select className={ic} value={form.unit} onChange={e=>setForm(f=>({...f,unit:e.target.value}))}><option>grams</option><option>troy oz</option></select></FF>
           </div>
           <p className="text-[10px] text-muted-foreground font-mono">Current balance: {currentBalance.toFixed(2)} g — new balance auto-calculated.</p>
@@ -797,7 +805,7 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete }: { inquiries: In
     submittingRef.current = true;
     setIsSubmitting(true);
     const entry: Inquiry = { inquiryId: editingId ?? "INQ-"+String(Date.now()).slice(-4),
-      date: editingId ? (inquiries.find(i => i.inquiryId === editingId)?.date ?? new Date().toISOString().slice(0,10)) : new Date().toISOString().slice(0,10), customerName:form.customerName,
+      date: editingId ? (inquiries.find(i => i.inquiryId === editingId)?.date ?? todayISO()) : todayISO(), customerName:form.customerName,
       contactInfo:form.contactInfo, details:form.details, category:form.category,
       quotedPrice:parseFloat(form.quotedPrice)||0, status:form.status };
     try {
@@ -860,7 +868,7 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete }: { inquiries: In
             <FF label="Customer Name"><input className={ic} value={form.customerName} onChange={e=>setForm(f=>({...f,customerName:e.target.value}))} placeholder="Full name" required /></FF>
             <FF label="Contact Info"><input className={ic} value={form.contactInfo} onChange={e=>setForm(f=>({...f,contactInfo:e.target.value}))} placeholder="09XX-XXX-XXXX" /></FF>
             <FF label="Product Category"><input className={ic} value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))} placeholder="e.g. Custom Ring" required /></FF>
-            <FF label="Quoted Price (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.quotedPrice} onChange={e=>setForm(f=>({...f,quotedPrice:e.target.value}))} placeholder="0.00" /></FF>
+            <FF label="Quoted Price (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.quotedPrice} onChange={e=>setForm(f=>({...f,quotedPrice:e.target.value}))} placeholder="0.00" required /></FF>
             <div className="col-span-2"><FF label="Details / Notes"><textarea className={ic + " h-20 resize-none"} value={form.details} onChange={e=>setForm(f=>({...f,details:e.target.value}))} placeholder="Describe the customer's request…" /></FF></div>
             <FF label="Status">
               <select className={ic} value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value as InqStatus}))}>
@@ -887,7 +895,7 @@ function ExpensesView({ expenses, onAdd, onUpdate, onDelete }: { expenses: Expen
   ), [expenses, q]);
   const total = useMemo(() => filtered.reduce((a, e) => a + e.amount, 0), [filtered]);
 
-  const resetForm = () => setForm({ expDate:"", category:"Rent", description:"", amount:"" });
+  const resetForm = () => setForm({ expDate:todayISO(), category:"Rent", description:"", amount:"" });
   const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
 
   const submit = async (e: React.FormEvent) => {
@@ -967,14 +975,14 @@ function ExpensesView({ expenses, onAdd, onUpdate, onDelete }: { expenses: Expen
       {open && (
         <Modal title={editingId ? "Edit Expense Entry" : "Add Expense Entry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update Entry" : "Save Entry"} isSubmitting={isSubmitting}>
           <div className="grid grid-cols-2 gap-4">
-            <FF label="Date"><input type="date" className={ic} value={form.expDate} onChange={e=>setForm(f=>({...f,expDate:e.target.value}))} required /></FF>
+            <FF label="Date"><input type="date" max={todayISO()} className={ic} value={form.expDate} onChange={e=>setForm(f=>({...f,expDate:e.target.value}))} required /></FF>
             <FF label="Category">
               <select className={ic} value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))}>
                 {["Rent","Staff Salary","Utilities","Supplies","Tax & Permits","Other"].map(c=><option key={c}>{c}</option>)}
               </select>
             </FF>
             <div className="col-span-2"><FF label="Description"><input className={ic} value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="Describe the expense" required /></FF></div>
-            <FF label="Amount (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} placeholder="0.00" required /></FF>
+            <FF label="Amount (₱)"><input type="number" min="0.01" step="0.01" className={ic} value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} placeholder="0.00" required /></FF>
           </div>
         </Modal>
       )}
@@ -983,37 +991,59 @@ function ExpensesView({ expenses, onAdd, onUpdate, onDelete }: { expenses: Expen
 }
 
 // ── profit analysis ─────────────────────────────────────────────────────────
-const MONTHLY = [
-  { month:"Jan", revenue:285000, cost:201000, expenses:68000 },
-  { month:"Feb", revenue:322000, cost:227000, expenses:70000 },
-  { month:"Mar", revenue:398000, cost:278000, expenses:72500 },
-  { month:"Apr", revenue:778000, cost:478000, expenses:76500 },
-  { month:"May", revenue:445000, cost:312000, expenses:74000 },
-];
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const PIE_COLORS = ["#d4a017","#f59e0b","#38bdf8","#a78bfa","#ef4444"];
 
 function ProfitAnalysisView({ sales, jobCosts, expenses }: {
   sales: Sale[]; jobCosts: JobCost[]; expenses: Expense[];
 }) {
-  const totalRevenue = jobCosts.reduce((a, j) => a + j.sellingPrice, 0);
-  const totalCost    = jobCosts.reduce((a, j) => a + j.totalCost, 0);
+  const currentYear = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [startMonth, setStartMonth] = useState(0);
+  const [endMonth, setEndMonth] = useState(new Date().getMonth());
+  const availableYears = useMemo(() => {
+    const years = new Set(Array.from({ length: 11 }, (_, i) => currentYear - i));
+    [...sales.map(s => s.date), ...expenses.map(e => e.expDate)].forEach(date => {
+      const year = Number(date.slice(0, 4));
+      if (Number.isInteger(year) && year <= currentYear) years.add(year);
+    });
+    return [...years].sort((a, b) => b - a);
+  }, [currentYear, sales, expenses]);
+  const inSelectedPeriod = (date: string) => {
+    const [year, month] = date.slice(0, 10).split("-").map(Number);
+    return year === selectedYear && month - 1 >= startMonth && month - 1 <= endMonth;
+  };
+  const selectedSales = sales.filter(s => inSelectedPeriod(s.date));
+  const salesByInvoice = new Map(sales.map(s => [s.invoiceId, s]));
+  const selectedJobCosts = jobCosts.filter(j => {
+    const sale = salesByInvoice.get(j.invoiceId);
+    return Boolean(sale && inSelectedPeriod(sale.date));
+  });
+  const selectedExpenses = expenses.filter(e => inSelectedPeriod(e.expDate));
+  const totalRevenue = selectedSales.reduce((a, s) => a + s.price, 0);
+  const totalCost    = selectedJobCosts.reduce((a, j) => a + j.totalCost, 0);
   const grossProfit  = totalRevenue - totalCost;
-  const totalExp     = expenses.reduce((a, e) => a + e.amount, 0);
+  const totalExp     = selectedExpenses.reduce((a, e) => a + e.amount, 0);
   const netProfit    = grossProfit - totalExp;
   const netMargin    = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+  const chartData = Array.from({ length: endMonth - startMonth + 1 }, (_, offset) => {
+    const monthIndex = startMonth + offset;
+    const revenue = selectedSales.filter(s => Number(s.date.slice(5, 7)) - 1 === monthIndex).reduce((sum, s) => sum + s.price, 0);
+    const cost = selectedJobCosts.filter(j => Number(salesByInvoice.get(j.invoiceId)?.date.slice(5, 7)) - 1 === monthIndex).reduce((sum, j) => sum + j.totalCost, 0);
+    const monthExpenses = selectedExpenses.filter(e => Number(e.expDate.slice(5, 7)) - 1 === monthIndex).reduce((sum, e) => sum + e.amount, 0);
+    return { month: MONTH_NAMES[monthIndex].slice(0, 3), revenue, cost, netProfit: revenue - cost - monthExpenses };
+  });
+  const rangeLabel = startMonth === endMonth
+    ? `${MONTH_NAMES[startMonth]} ${selectedYear}`
+    : `${MONTH_NAMES[startMonth].slice(0, 3)}–${MONTH_NAMES[endMonth].slice(0, 3)} ${selectedYear}`;
 
-  const chartData = [
-    ...MONTHLY,
-    { month:"Jun", revenue:totalRevenue, cost:totalCost, expenses:totalExp },
-  ].map(m => ({ ...m, netProfit:m.revenue - m.cost - m.expenses }));
-
-  const expByCat = expenses.reduce((acc, e) => {
+  const expByCat = selectedExpenses.reduce((acc, e) => {
     acc[e.category] = (acc[e.category]||0) + e.amount; return acc;
   }, {} as Record<string,number>);
   const pieData = Object.entries(expByCat).map(([name, value]) => ({ name, value }));
 
   const byService = (["Custom","Repair","Resize","Cleaning"] as ServiceType[]).map(type => {
-    const jcs = jobCosts.filter(j => sales.find(s => s.invoiceId === j.invoiceId && s.serviceType === type));
+    const jcs = selectedJobCosts.filter(j => salesByInvoice.get(j.invoiceId)?.serviceType === type);
     const margin = jcs.length ? jcs.reduce((a, j) => a + j.marginPct, 0) / jcs.length : 0;
     return { type, margin:parseFloat(margin.toFixed(1)), count:jcs.length };
   });
@@ -1024,9 +1054,9 @@ function ProfitAnalysisView({ sales, jobCosts, expenses }: {
     <div className="p-5 space-y-5">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {[
-          { label:"Gross Profit (Jun)", val:php(grossProfit), sub:"Revenue minus job costs", cls:"text-emerald-700 dark:text-emerald-400" },
-          { label:"Total Expenses (Jun)", val:php(totalExp), sub:"Operating overhead", cls:"text-red-700 dark:text-red-400" },
-          { label:"Net Profit (Jun)", val:php(netProfit), sub:`${pct(netMargin)} net margin`, cls:netProfit>=0?"text-emerald-700 dark:text-emerald-400":"text-red-700 dark:text-red-400" },
+          { label:`Gross Profit (${rangeLabel})`, val:php(grossProfit), sub:"Revenue minus job costs", cls:"text-emerald-700 dark:text-emerald-400" },
+          { label:`Total Expenses (${rangeLabel})`, val:php(totalExp), sub:"Operating overhead", cls:"text-red-700 dark:text-red-400" },
+          { label:`Net Profit (${rangeLabel})`, val:php(netProfit), sub:`${pct(netMargin)} net margin`, cls:netProfit>=0?"text-emerald-700 dark:text-emerald-400":"text-red-700 dark:text-red-400" },
         ].map(k => (
           <div key={k.label} className={cardCls}>
             <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-2">{k.label}</div>
@@ -1038,7 +1068,26 @@ function ProfitAnalysisView({ sales, jobCosts, expenses }: {
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
         <div className={cardCls + " xl:col-span-2"}>
-          <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-4">Monthly Revenue vs. Cost vs. Net Profit (Jan–Jun 2026)</p>
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+            <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">Monthly Revenue vs. Cost vs. Net Profit ({rangeLabel})</p>
+            <div className="flex flex-wrap gap-2">
+              <label className="text-[10px] text-muted-foreground">From
+                <select aria-label="Start month" className={`${ic} ml-2 w-auto py-1.5`} value={startMonth} onChange={e=>setStartMonth(Number(e.target.value))}>
+                  {MONTH_NAMES.map((month, i)=><option key={month} value={i} disabled={i > endMonth}>{month}</option>)}
+                </select>
+              </label>
+              <label className="text-[10px] text-muted-foreground">To
+                <select aria-label="End month" className={`${ic} ml-2 w-auto py-1.5`} value={endMonth} onChange={e=>setEndMonth(Number(e.target.value))}>
+                  {MONTH_NAMES.map((month, i)=><option key={month} value={i} disabled={i < startMonth || (selectedYear === currentYear && i > new Date().getMonth())}>{month}</option>)}
+                </select>
+              </label>
+              <label className="text-[10px] text-muted-foreground">Year
+                <select aria-label="Year" className={`${ic} ml-2 w-auto py-1.5`} value={selectedYear} onChange={e=>{ const year=Number(e.target.value); setSelectedYear(year); if (year === currentYear && endMonth > new Date().getMonth()) setEndMonth(new Date().getMonth()); }}>
+                  {availableYears.map(year=><option key={year} value={year}>{year}</option>)}
+                </select>
+              </label>
+            </div>
+          </div>
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={chartData} margin={{ top:4, right:4, bottom:0, left:10 }}>
               <defs>
@@ -1063,7 +1112,7 @@ function ProfitAnalysisView({ sales, jobCosts, expenses }: {
         </div>
 
         <div className={cardCls}>
-          <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-4">Expense Breakdown (Jun)</p>
+          <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-4">Expense Breakdown ({rangeLabel})</p>
           <ResponsiveContainer width="100%" height={180}>
             <PieChart>
               <Pie data={pieData} cx="50%" cy="50%" innerRadius={45} outerRadius={75} dataKey="value" strokeWidth={0}>
@@ -1166,7 +1215,7 @@ export default function App() {
   if (!user) return <LoginScreen onLogin={setUser} />;
 
   const goldStock  = inventory.length > 0 ? inventory[inventory.length - 1].balance : 0;
-  const totalRev   = jobCosts.reduce((a, j) => a + j.sellingPrice, 0);
+  const totalRev   = sales.reduce((a, s) => a + s.price, 0);
   const totalCost  = jobCosts.reduce((a, j) => a + j.totalCost, 0);
   const totalExp   = expenses.reduce((a, e) => a + e.amount, 0);
   const netProfit  = totalRev - totalCost - totalExp;
@@ -1206,11 +1255,13 @@ export default function App() {
             <KPICard label="Live Gold Price / g" value={php(GOLD_PRICE)} vc="text-primary" />
             <KPICard label="Gold Stock (Physical)" value={`${goldStock.toFixed(2)} g`} vc="text-primary" />
             <KPICard
-              label="Net Profit (Jun 2026)"
+              label="Net Profit (All Time)"
               value={php(netProfit)}
               sub={`${pct(netMargin)} Margin`}
               vc="text-emerald-700 dark:text-emerald-400"
-              badge={{ text:"HEALTHY", cls:"bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/25" }}
+              badge={netProfit >= 0
+                ? { text:"HEALTHY", cls:"bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/25" }
+                : { text:"REVIEW", cls:"bg-red-500/15 text-red-700 dark:text-red-400 border border-red-500/25" }}
             />
           </div>
 
