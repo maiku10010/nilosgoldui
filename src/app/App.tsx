@@ -459,7 +459,7 @@ function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onVie
           </TableWrap>
         </div>
         <div>
-          <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-3">
+          <p className="dashboard-recent-title font-mono text-muted-foreground uppercase tracking-widest mb-3">
             Job Costing <span className="text-primary/70">— Recent Entries</span>
           </p>
           <TableWrap>
@@ -608,13 +608,13 @@ function JobCostingView({ jobCosts, onAdd, onUpdate, onDelete }: { jobCosts: Job
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
-  const [form, setForm] = useState({ invoiceId:"", clientName:"", empId:"", goldUsed:"", stoneCost:"", laborCost:"", sellingPrice:"" });
+  const [form, setForm] = useState({ invoiceId:"", clientName:"", empId:"", goldUsed:"", goldCostPerG:String(GOLD_PRICE), stoneCost:"", laborCost:"", sellingPrice:"" });
 
   const filtered = sortRecords(useMemo(() => jobCosts.filter(j =>
     [j.invoiceId, j.clientName, j.jobCostId].some(v => v.toLowerCase().includes(q.toLowerCase()))
   ), [jobCosts, q]), sort);
 
-  const resetForm = () => setForm({ invoiceId:"", clientName:"", empId:"", goldUsed:"", stoneCost:"", laborCost:"", sellingPrice:"" });
+  const resetForm = () => setForm({ invoiceId:"", clientName:"", empId:"", goldUsed:"", goldCostPerG:String(GOLD_PRICE), stoneCost:"", laborCost:"", sellingPrice:"" });
   const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
 
   const submit = async (e: React.FormEvent) => {
@@ -623,7 +623,7 @@ function JobCostingView({ jobCosts, onAdd, onUpdate, onDelete }: { jobCosts: Job
     submittingRef.current = true;
     setIsSubmitting(true);
     const goldUsed = parseFloat(form.goldUsed) || 0;
-    const goldCostPerG = GOLD_PRICE;
+    const goldCostPerG = parseFloat(form.goldCostPerG) || 0;
     const goldCost = goldUsed * goldCostPerG;
     const stoneCost = parseFloat(form.stoneCost) || 0;
     const laborCost = parseFloat(form.laborCost) || 0;
@@ -665,7 +665,7 @@ function JobCostingView({ jobCosts, onAdd, onUpdate, onDelete }: { jobCosts: Job
         </tr></thead>
         <tbody>
           {filtered.map(j => (
-            <TRow key={j.jobCostId} onClick={() => { setEditingId(j.jobCostId); setForm({ invoiceId:j.invoiceId, clientName:j.clientName, empId:j.empId ?? "", goldUsed:String(j.goldUsed), stoneCost:String(j.stoneCost), laborCost:String(j.laborCost), sellingPrice:String(j.sellingPrice) }); setOpen(true); }}>
+            <TRow key={j.jobCostId} onClick={() => { setEditingId(j.jobCostId); setForm({ invoiceId:j.invoiceId, clientName:j.clientName, empId:j.empId ?? "", goldUsed:String(j.goldUsed), goldCostPerG:String(j.goldCostPerG), stoneCost:String(j.stoneCost), laborCost:String(j.laborCost), sellingPrice:String(j.sellingPrice) }); setOpen(true); }}>
               <td className={tdc + " text-muted-foreground"}>{j.jobCostId}</td>
               <td className={tdc + " text-primary/80 dark:text-amber-400/80"}>{j.invoiceId}</td>
               <td className={tdc + " font-sans font-medium"}>{j.clientName}</td>
@@ -682,7 +682,7 @@ function JobCostingView({ jobCosts, onAdd, onUpdate, onDelete }: { jobCosts: Job
               </td>
               <td className={tdc}>
                 <div className="flex items-center gap-2">
-                  <button type="button" onClick={() => { setEditingId(j.jobCostId); setForm({ invoiceId:j.invoiceId, clientName:j.clientName, empId:j.empId ?? "", goldUsed:String(j.goldUsed), stoneCost:String(j.stoneCost), laborCost:String(j.laborCost), sellingPrice:String(j.sellingPrice) }); setOpen(true); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit">
+                  <button type="button" onClick={() => { setEditingId(j.jobCostId); setForm({ invoiceId:j.invoiceId, clientName:j.clientName, empId:j.empId ?? "", goldUsed:String(j.goldUsed), goldCostPerG:String(j.goldCostPerG), stoneCost:String(j.stoneCost), laborCost:String(j.laborCost), sellingPrice:String(j.sellingPrice) }); setOpen(true); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit">
                     <PenSquare size={13} />
                   </button>
                   <button type="button" onClick={() => onDelete(j.jobCostId)} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Delete">
@@ -702,8 +702,8 @@ function JobCostingView({ jobCosts, onAdd, onUpdate, onDelete }: { jobCosts: Job
             <FF label="Client Name"><input className={ic} value={form.clientName} onChange={e=>setForm(f=>({...f,clientName:e.target.value}))} placeholder="Full name" required /></FF>
             <FF label="Employee ID (opt.)"><input className={ic} value={form.empId} onChange={e=>setForm(f=>({...f,empId:e.target.value}))} placeholder="EMP-xxx" /></FF>
             <FF label="Gold Used (g)"><input type="number" min="0" step="0.01" className={ic} value={form.goldUsed} onChange={e=>setForm(f=>({...f,goldUsed:e.target.value}))} placeholder="0.00" required /></FF>
-            <FF label={`Gold Cost/g (auto ₱${GOLD_PRICE.toLocaleString()})`}>
-              <input className={ic + " opacity-60 cursor-not-allowed"} value={`₱${GOLD_PRICE.toLocaleString()}`} readOnly />
+            <FF label="Gold Cost / Price per g (₱)">
+              <input type="number" min="0.01" step="0.01" className={ic} value={form.goldCostPerG} onChange={e=>setForm(f=>({...f,goldCostPerG:e.target.value}))} placeholder="0.00" required />
             </FF>
             <FF label="Stone Cost (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.stoneCost} onChange={e=>setForm(f=>({...f,stoneCost:e.target.value}))} placeholder="0.00" required /></FF>
             <FF label="Labor Cost (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.laborCost} onChange={e=>setForm(f=>({...f,laborCost:e.target.value}))} placeholder="0.00" required /></FF>
@@ -1256,7 +1256,7 @@ function KPICard({ label, value, sub, badge, vc = "" }: {
 export default function App() {
   const [user, setUser] = useState<any>(() => { try { return JSON.parse(localStorage.getItem("nilo-user") || "null"); } catch { return null; } });
   const [dark, setDark] = useState(() => {
-    try { return localStorage.getItem("nilo-theme") === "dark"; }
+    try { return localStorage.getItem("nilo-theme-v2") === "dark"; }
     catch { return false; }
   });
   const [tab, setTab] = useState<Tab>("DASHBOARD");
@@ -1273,7 +1273,7 @@ export default function App() {
   // Apply dark class and persist preference
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
-    try { localStorage.setItem("nilo-theme", dark ? "dark" : "light"); } catch {}
+    try { localStorage.setItem("nilo-theme-v2", dark ? "dark" : "light"); } catch {}
   }, [dark]);
 
   // Wire API endpoints — graceful fallback to seed data when server is offline
