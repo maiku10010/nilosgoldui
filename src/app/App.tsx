@@ -211,13 +211,13 @@ function AddBtn({ onClick, label }: { onClick: () => void; label: string }) {
 
 // Table primitives – both light and dark adaptive
 const thc = [
-  "px-3 py-2.5 text-left text-[10px] text-muted-foreground uppercase tracking-widest font-medium whitespace-nowrap",
+  "px-3 py-2.5 text-left text-[10px] text-muted-foreground uppercase tracking-widest font-medium whitespace-nowrap border-r border-border/50 last:border-r-0",
   "bg-muted/60 dark:bg-slate-900/70",
   "border-b border-border",
 ].join(" ");
 
 const tdc = [
-  "px-3 py-2.5 text-xs whitespace-nowrap border-t border-border",
+  "px-3 py-2.5 text-xs whitespace-nowrap border-t border-border border-r border-border/50 last:border-r-0",
   "text-foreground/80 dark:text-slate-300",
 ].join(" ");
 
@@ -1311,6 +1311,7 @@ function ProfitAnalysisView({ sales, jobCosts, expenses, selectedYear, setSelect
               formatter={(v: any) => [v + "%", "Avg Margin"]}
               contentStyle={{ background:"var(--card)", border:"1px solid var(--border)", borderRadius:"8px", fontFamily:"JetBrains Mono", fontSize:"11px", color:"var(--foreground)" }}
               labelStyle={{ color:"var(--muted-foreground)" }}
+              itemStyle={{ color:"var(--foreground)" }}
             />
             <Bar dataKey="margin" name="Margin %" radius={[4,4,0,0]}>
               {byService.map((_, i) => <Cell key={i} fill={["#1746a2","#d4a017","#496bb2","#111318"][i]} />)}
