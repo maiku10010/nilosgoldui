@@ -41,20 +41,21 @@ const normalizeSale = (row: any): Sale => ({
   clientId: row.clientId ?? row.client?.clientId,
   clientName: row.clientName ?? row.client?.clientName ?? "",
   contactNum: row.contactNum ?? row.client?.contactNum ?? "",
-  serviceType: row.serviceType,
+  serviceType: row.serviceType ?? "Custom",
   price: numeric(row.price),
   downpayment: numeric(row.downpayment),
   balance: numeric(row.balance ?? numeric(row.price) - numeric(row.downpayment)),
-  status: row.status,
+  status: row.status ?? "Ongoing",
 });
 const normalizeJobCost = (row: any): JobCost => {
   const sellingPrice = numeric(row.sellingPrice ?? row.sale?.price);
   const goldCost = numeric(row.goldCost ?? numeric(row.goldUsed) * GOLD_PRICE);
   const totalCost = numeric(row.totalCost ?? goldCost + numeric(row.laborCost) + numeric(row.stoneCost));
-  return { jobCostId: row.jobCostId, invoiceId: row.invoiceId, clientName: row.clientName ?? row.sale?.client?.clientName ?? "", empId: row.empId, goldUsed: numeric(row.goldUsed), goldCostPerG: numeric(row.goldCostPerG ?? GOLD_PRICE), goldCost, stoneCost: numeric(row.stoneCost), laborCost: numeric(row.laborCost), totalCost, sellingPrice, profit: numeric(row.profit ?? sellingPrice - totalCost), marginPct: numeric(row.marginPct ?? (sellingPrice ? ((sellingPrice - totalCost) / sellingPrice) * 100 : 0)) };
+  return { jobCostId: String(row.jobCostId ?? ""), invoiceId: String(row.invoiceId ?? ""), clientName: String(row.clientName ?? row.sale?.client?.clientName ?? ""), empId: row.empId, goldUsed: numeric(row.goldUsed), goldCostPerG: numeric(row.goldCostPerG ?? GOLD_PRICE), goldCost, stoneCost: numeric(row.stoneCost), laborCost: numeric(row.laborCost), totalCost, sellingPrice, profit: numeric(row.profit ?? sellingPrice - totalCost), marginPct: numeric(row.marginPct ?? (sellingPrice ? ((sellingPrice - totalCost) / sellingPrice) * 100 : 0)) };
 const normalizeInventory = (row: any): InvEntry => ({ id: row.referenceId, date: apiDate(row.updatedAt ?? row.date), referenceId: row.referenceId, itemName: row.itemName ?? row.referenceId, goldIn: numeric(row.goldIn), goldOut: numeric(row.goldOut), scrap: numeric(row.scraps ?? row.scrap), balance: numeric(row.balance ?? row.totalGold), unit: row.unit ?? "grams" });
-const normalizeInquiry = (row: any): Inquiry => ({ inquiryId: row.inquiryId, date: apiDate(row.inqDate ?? row.date), customerName: row.customerName, contactInfo: row.contactInfo, details: row.details, category: row.category, quotedPrice: numeric(row.quotedPrice), status: row.status });
-const normalizeExpense = (row: any): Expense => ({ expenseId: row.expenseId, expDate: apiDate(row.expDate ?? row.date), category: row.category, description: row.description, amount: numeric(row.amount) });
+const normalizeInquiry = (row: any): Inquiry => ({ inquiryId: String(row.inquiryId ?? ""), date: apiDate(row.inqDate ?? row.date), customerName: String(row.customerName ?? ""), contactInfo: String(row.contactInfo ?? ""), details: String(row.details ?? ""), category: String(row.category ?? ""), quotedPrice: numeric(row.quotedPrice), status: row.status ?? "Pending" });
+const normalizeExpense = (row: any): Expense => ({ expenseId: String(row.expenseId ?? ""), expDate: apiDate(row.expDate ?? row.date), category: String(row.category ?? ""), description: String(row.description ?? ""), amount: numeric(row.amount) });
+const asRows = (value: unknown): any[] => Array.isArray(value) ? value : [];
 
 // ── types ──────────────────────────────────────────────────────────────────
 type ServiceType = "Custom" | "Repair" | "Resize" | "Cleaning";
@@ -1186,6 +1187,7 @@ function KPICard({ label, value, sub, badge, vc = "" }: {
 
 // ── app ────────────────────────────────────────────────────────────────────
 export default function App() {
+  const [user, setUser] = useState<any>(() => { try { return JSON.parse(localStorage.getItem("nilo-user") || "null"); } catch { return null; } });
   const [dark, setDark] = useState(() => {
     try { return localStorage.getItem("nilo-theme") !== "light"; }
     catch { return true; }
@@ -1204,11 +1206,13 @@ export default function App() {
   }, [dark]);
 
   // Wire API endpoints — graceful fallback to seed data when server is offline
-  useEffect(() => { fetch(`${BASE_URL}/sales`).then(r=>r.ok ? r.json() : Promise.reject(r)).then(rows=>setSales(rows.map(normalizeSale))).catch(()=>{}); }, []);
-  useEffect(() => { fetch(`${BASE_URL}/job-cost`).then(r=>r.ok ? r.json() : Promise.reject(r)).then(rows=>setJobCosts(rows.map(normalizeJobCost))).catch(()=>{}); }, []);
-  useEffect(() => { fetch(`${BASE_URL}/inventory`).then(r=>r.ok ? r.json() : Promise.reject(r)).then(rows=>setInventory(rows.map(normalizeInventory))).catch(()=>{}); }, []);
-  useEffect(() => { fetch(`${BASE_URL}/inquiries`).then(r=>r.ok ? r.json() : Promise.reject(r)).then(rows=>setInquiries(rows.map(normalizeInquiry))).catch(()=>{}); }, []);
-  useEffect(() => { fetch(`${BASE_URL}/expenses`).then(r=>r.ok ? r.json() : Promise.reject(r)).then(rows=>setExpenses(rows.map(normalizeExpense))).catch(()=>{}); }, []);
+  useEffect(() => { fetch(`${BASE_URL}/sales`).then(r=>r.ok ? r.json() : Promise.reject(r)).then(rows=>setSales(asRows(rows).map(normalizeSale))).catch(()=>{}); }, []);
+  useEffect(() => { fetch(`${BASE_URL}/job-cost`).then(r=>r.ok ? r.json() : Promise.reject(r)).then(rows=>setJobCosts(asRows(rows).map(normalizeJobCost))).catch(()=>{}); }, []);
+  useEffect(() => { fetch(`${BASE_URL}/inventory`).then(r=>r.ok ? r.json() : Promise.reject(r)).then(rows=>setInventory(asRows(rows).map(normalizeInventory))).catch(()=>{}); }, []);
+  useEffect(() => { fetch(`${BASE_URL}/inquiries`).then(r=>r.ok ? r.json() : Promise.reject(r)).then(rows=>setInquiries(asRows(rows).map(normalizeInquiry))).catch(()=>{}); }, []);
+  useEffect(() => { fetch(`${BASE_URL}/expenses`).then(r=>r.ok ? r.json() : Promise.reject(r)).then(rows=>setExpenses(asRows(rows).map(normalizeExpense))).catch(()=>{}); }, []);
+
+  if (!user) return <LoginScreen onLogin={setUser} />;
 
   const goldStock  = inventory.length > 0 ? inventory[inventory.length - 1].balance : 0;
   const totalRev   = jobCosts.reduce((a, j) => a + j.sellingPrice, 0);
@@ -1299,4 +1303,35 @@ export default function App() {
       </main>
     </div>
   );
+}
+
+function LoginScreen({ onLogin }: { onLogin: (user: any) => void }) {
+  const [userName, setUserName] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault(); setBusy(true); setError("");
+    try {
+      const response = await fetch(`${BASE_URL}/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userName, password }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Unable to sign in");
+      localStorage.setItem("nilo-user", JSON.stringify(data.user));
+      localStorage.setItem("nilo-token", data.token);
+      onLogin(data.user);
+    } catch (err: any) { setError(err.message); } finally { setBusy(false); }
+  };
+  return <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
+    <form onSubmit={submit} className="w-full max-w-sm rounded-2xl border border-amber-500/20 bg-slate-900 p-8 shadow-2xl">
+      <div className="mx-auto mb-4 w-12 h-12 rounded-xl bg-gradient-to-br from-amber-400 to-amber-700 flex items-center justify-center"><Crown className="text-white" /></div>
+      <h1 className="text-center text-xl font-semibold text-white">Nilo&apos;s Goldsmith</h1>
+      <p className="text-center text-xs text-slate-400 mt-1 mb-7">Master Control System</p>
+      <label className="block text-xs text-slate-300 mb-1">Username</label>
+      <input value={userName} onChange={e=>setUserName(e.target.value)} className="w-full mb-4 rounded-lg bg-slate-800 border border-slate-700 px-3 py-2.5 text-white outline-none focus:border-amber-400" autoComplete="username" />
+      <label className="block text-xs text-slate-300 mb-1">Password</label>
+      <input type="password" value={password} onChange={e=>setPassword(e.target.value)} className="w-full mb-5 rounded-lg bg-slate-800 border border-slate-700 px-3 py-2.5 text-white outline-none focus:border-amber-400" autoComplete="current-password" />
+      {error && <p className="text-sm text-red-400 mb-4">{error}</p>}
+      <button disabled={busy} className="w-full rounded-lg bg-amber-500 py-2.5 font-semibold text-slate-950 hover:bg-amber-400 disabled:opacity-50">{busy ? "Signing in…" : "Sign in"}</button>
+    </form>
+  </div>;
 }
