@@ -10,7 +10,7 @@ import {
 } from "recharts";
 
 // ── config ─────────────────────────────────────────────────────────────────
-const BASE_URL = "http://localhost:3000";
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
 const GOLD_PRICE = 5450;
 
 // ── formatters ─────────────────────────────────────────────────────────────
@@ -31,6 +31,30 @@ const fmtDate = (d: string) =>
   new Date(d + "T00:00:00").toLocaleDateString("en-PH", {
     month: "short", day: "2-digit", year: "numeric",
   });
+
+const numeric = (value: unknown) => Number(value ?? 0);
+const apiDate = (value: unknown) => value ? String(value).slice(0, 10) : new Date().toISOString().slice(0, 10);
+const normalizeSale = (row: any): Sale => ({
+  id: row.invoiceId,
+  invoiceId: row.invoiceId,
+  date: apiDate(row.salesDate ?? row.date),
+  clientId: row.clientId ?? row.client?.clientId,
+  clientName: row.clientName ?? row.client?.clientName ?? "",
+  contactNum: row.contactNum ?? row.client?.contactNum ?? "",
+  serviceType: row.serviceType,
+  price: numeric(row.price),
+  downpayment: numeric(row.downpayment),
+  balance: numeric(row.balance ?? numeric(row.price) - numeric(row.downpayment)),
+  status: row.status,
+});
+const normalizeJobCost = (row: any): JobCost => {
+  const sellingPrice = numeric(row.sellingPrice ?? row.sale?.price);
+  const goldCost = numeric(row.goldCost ?? numeric(row.goldUsed) * GOLD_PRICE);
+  const totalCost = numeric(row.totalCost ?? goldCost + numeric(row.laborCost) + numeric(row.stoneCost));
+  return { jobCostId: row.jobCostId, invoiceId: row.invoiceId, clientName: row.clientName ?? row.sale?.client?.clientName ?? "", empId: row.empId, goldUsed: numeric(row.goldUsed), goldCostPerG: numeric(row.goldCostPerG ?? GOLD_PRICE), goldCost, stoneCost: numeric(row.stoneCost), laborCost: numeric(row.laborCost), totalCost, sellingPrice, profit: numeric(row.profit ?? sellingPrice - totalCost), marginPct: numeric(row.marginPct ?? (sellingPrice ? ((sellingPrice - totalCost) / sellingPrice) * 100 : 0)) };
+const normalizeInventory = (row: any): InvEntry => ({ id: row.referenceId, date: apiDate(row.updatedAt ?? row.date), referenceId: row.referenceId, itemName: row.itemName ?? row.referenceId, goldIn: numeric(row.goldIn), goldOut: numeric(row.goldOut), scrap: numeric(row.scraps ?? row.scrap), balance: numeric(row.balance ?? row.totalGold), unit: row.unit ?? "grams" });
+const normalizeInquiry = (row: any): Inquiry => ({ inquiryId: row.inquiryId, date: apiDate(row.inqDate ?? row.date), customerName: row.customerName, contactInfo: row.contactInfo, details: row.details, category: row.category, quotedPrice: numeric(row.quotedPrice), status: row.status });
+const normalizeExpense = (row: any): Expense => ({ expenseId: row.expenseId, expDate: apiDate(row.expDate ?? row.date), category: row.category, description: row.description, amount: numeric(row.amount) });
 
 // ── types ──────────────────────────────────────────────────────────────────
 type ServiceType = "Custom" | "Repair" | "Resize" | "Cleaning";
@@ -740,8 +764,8 @@ function GoldInventoryView({ inventory, onAdd, onUpdate, onDelete }: { inventory
       itemName:form.itemName, goldIn, goldOut, scrap, balance, unit:form.unit };
     try {
       await fetch(`${BASE_URL}/inventory`, { method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({ referenceId:entry.referenceId, itemName:entry.itemName,
-          quantity:goldIn||goldOut||scrap, unit:entry.unit }) });
+        body:JSON.stringify({ referenceId:entry.referenceId, goldIn:entry.goldIn,
+          goldOut:entry.goldOut, scraps:entry.scrap, totalGold:entry.balance, unit:entry.unit }) });
     } catch (_) {}
     if (editingId) {
       onUpdate(entry);
@@ -1180,11 +1204,11 @@ export default function App() {
   }, [dark]);
 
   // Wire API endpoints — graceful fallback to seed data when server is offline
-  useEffect(() => { fetch(`${BASE_URL}/sales`).then(r=>r.json()).then(setSales).catch(()=>{}); }, []);
-  useEffect(() => { fetch(`${BASE_URL}/job-cost`).then(r=>r.json()).then(setJobCosts).catch(()=>{}); }, []);
-  useEffect(() => { fetch(`${BASE_URL}/inventory`).then(r=>r.json()).then(setInventory).catch(()=>{}); }, []);
-  useEffect(() => { fetch(`${BASE_URL}/inquiries`).then(r=>r.json()).then(setInquiries).catch(()=>{}); }, []);
-  useEffect(() => { fetch(`${BASE_URL}/expenses`).then(r=>r.json()).then(setExpenses).catch(()=>{}); }, []);
+  useEffect(() => { fetch(`${BASE_URL}/sales`).then(r=>r.ok ? r.json() : Promise.reject(r)).then(rows=>setSales(rows.map(normalizeSale))).catch(()=>{}); }, []);
+  useEffect(() => { fetch(`${BASE_URL}/job-cost`).then(r=>r.ok ? r.json() : Promise.reject(r)).then(rows=>setJobCosts(rows.map(normalizeJobCost))).catch(()=>{}); }, []);
+  useEffect(() => { fetch(`${BASE_URL}/inventory`).then(r=>r.ok ? r.json() : Promise.reject(r)).then(rows=>setInventory(rows.map(normalizeInventory))).catch(()=>{}); }, []);
+  useEffect(() => { fetch(`${BASE_URL}/inquiries`).then(r=>r.ok ? r.json() : Promise.reject(r)).then(rows=>setInquiries(rows.map(normalizeInquiry))).catch(()=>{}); }, []);
+  useEffect(() => { fetch(`${BASE_URL}/expenses`).then(r=>r.ok ? r.json() : Promise.reject(r)).then(rows=>setExpenses(rows.map(normalizeExpense))).catch(()=>{}); }, []);
 
   const goldStock  = inventory.length > 0 ? inventory[inventory.length - 1].balance : 0;
   const totalRev   = jobCosts.reduce((a, j) => a + j.sellingPrice, 0);
