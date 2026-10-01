@@ -12,7 +12,7 @@ import {
 
 // ── config ─────────────────────────────────────────────────────────────────
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "https://nilosgold.vercel.app").replace(/\/$/, "");
-const GOLD_PRICE = 5450;
+const apiFetch = (input: RequestInfo | URL, init: RequestInit = {}) => fetch(input, { ...init, credentials: "include" });
 
 // ── formatters ─────────────────────────────────────────────────────────────
 const marginCls = (m: number) => {
@@ -42,7 +42,7 @@ const apiDate = (value: unknown) => value ? String(value).slice(0, 10) : new Dat
 const statusLabel = (value: unknown): string => {
   const labels: Record<string, string> = {
     PENDING: "Pending", APPROVED: "Approved", REJECTED: "Rejected", FINISHED: "Finished",
-    IN_PROGRESS: "In Progress", CANCELLED: "Cancelled", PARTIAL: "Partial", PAID: "Paid",
+    IN_PROGRESS: "In Progress", READY_FOR_PICKUP: "Ready for Pickup", CANCELLED: "Cancelled", PARTIAL: "Partial", PAID: "Paid",
   };
   const status = String(value ?? "Pending");
   return labels[status] ?? status;
@@ -64,14 +64,14 @@ const normalizeSale = (row: any): Sale => ({
 });
 const normalizeJobCost = (row: any): JobCost => {
   const sellingPrice = numeric(row.sellingPrice ?? row.sales?.price ?? row.sale?.price);
-  const goldCostPerG = numeric(row.goldCostPerG ?? GOLD_PRICE);
+  const goldCostPerG = numeric(row.goldCostPerG);
   const goldCost = numeric(row.goldCost ?? numeric(row.goldUsed) * goldCostPerG);
   const totalCost = numeric(row.totalCost ?? goldCost + numeric(row.laborCost) + numeric(row.stoneCost));
   const sale = row.sales ?? row.sale;
   return { jobCostId: String(row.jobCostId ?? ""), invoiceId: String(row.invoiceId ?? sale?.invoiceId ?? ""), clientName: String(row.clientName ?? sale?.client?.clientName ?? row.inquiry?.customerName ?? ""), empId: row.empId, inquiryId: row.inquiryId ?? row.inquiry?.inquiryId, status: statusLabel(row.status), sale: sale ? normalizeSale(sale) : undefined, goldUsed: numeric(row.goldUsed), goldCostPerG, goldCost, stoneCost: numeric(row.stoneCost), laborCost: numeric(row.laborCost), totalCost, sellingPrice, profit: numeric(row.profit ?? sellingPrice - totalCost), marginPct: numeric(row.marginPct ?? (sellingPrice ? ((sellingPrice - totalCost) / sellingPrice) * 100 : 0)) };
 };
 const normalizeInventory = (row: any): InvEntry => ({ id: row.referenceId, date: apiDate(row.updatedAt ?? row.date), referenceId: row.referenceId, itemName: row.itemName ?? row.referenceId, goldIn: numeric(row.goldIn), goldOut: numeric(row.goldOut), scrap: numeric(row.scraps ?? row.scrap), balance: numeric(row.balance ?? row.totalGold), unit: row.unit ?? "grams" });
-const normalizeInquiry = (row: any): Inquiry => ({ inquiryId: String(row.inquiryId ?? ""), date: apiDate(row.inqDate ?? row.date), customerName: String(row.customerName ?? ""), contactInfo: String(row.contactInfo ?? ""), details: String(row.details ?? ""), category: String(row.category ?? ""), quotedPrice: numeric(row.quotedPrice), status: statusLabel(row.status) as InqStatus });
+const normalizeInquiry = (row: any): Inquiry => ({ inquiryId: String(row.inquiryId ?? ""), date: apiDate(row.inqDate ?? row.date), customerName: String(row.customerName ?? ""), contactInfo: String(row.contactInfo ?? ""), email: String(row.email ?? ""), details: String(row.details ?? ""), category: String(row.category ?? ""), quotedPrice: numeric(row.quotedPrice), status: statusLabel(row.status) as InqStatus });
 const normalizeExpense = (row: any): Expense => ({ expenseId: String(row.expenseId ?? ""), expDate: apiDate(row.expDate ?? row.date), category: String(row.category ?? ""), description: String(row.description ?? ""), amount: numeric(row.amount) });
 const asRows = (value: unknown): any[] => Array.isArray(value) ? value : [];
 
@@ -97,7 +97,7 @@ interface InvEntry {
   goldIn: number; goldOut: number; scrap: number; balance: number; unit: string;
 }
 interface Inquiry {
-  inquiryId: string; date: string; customerName: string; contactInfo: string;
+  inquiryId: string; date: string; customerName: string; contactInfo: string; email: string;
   details: string; category: string; quotedPrice: number; status: InqStatus;
 }
 interface Expense {
@@ -106,7 +106,7 @@ interface Expense {
 
 const TABS = [
   "DASHBOARD", "DAILY_SALES", "JOB_COSTING", "GOLD_INVENTORY",
-  "INQUIRIES", "EXPENSES", "PROFIT_ANALYSIS",
+  "INQUIRIES", "EXPENSES", "PROFIT_ANALYSIS", "APPROVALS", "AUDIT_LOGS",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -120,6 +120,7 @@ function StatusBadge({ status }: { status: string }) {
     Released:"bg-sky-500/15 text-sky-700 dark:text-sky-400 border-sky-500/30",
     Finished:"bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30",
     Approved:"bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30",
+    "Ready for Pickup":"bg-sky-500/15 text-sky-700 dark:text-sky-400 border-sky-500/30",
     Yes:     "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30",
     No:      "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30",
     Rejected: "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30",
@@ -295,8 +296,9 @@ const ChartTip = ({ active, payload, label }: any) => {
 };
 
 // ── dashboard view ─────────────────────────────────────────────────────────
-function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onView }: {
+function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onView, isAdmin }: {
   sales: Sale[]; jobCosts: JobCost[]; expenses: Expense[]; inquiries: Inquiry[];
+  isAdmin: boolean;
   rangeLabel: string; onView: (title: string, record: Record<string, unknown>) => void;
 }) {
   const [salesSort, setSalesSort] = useState<SortSpec>({ key: "date", direction: -1 });
@@ -367,7 +369,7 @@ function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onVie
         <div className={cardCls}>
           <div className="flex items-center gap-2 mb-4">
             <TrendingUp size={13} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <span className="text-sm font-mono text-muted-foreground uppercase tracking-widest">Gross Profit · {rangeLabel}</span>
+            <span className="text-sm font-mono text-muted-foreground uppercase tracking-widest">Revenue and Job Cost · {rangeLabel}</span>
           </div>
           <div className="space-y-3">
             {[
@@ -379,7 +381,16 @@ function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onVie
                 <span className={`text-sm tabular-nums ${r.cls}`}>{r.val}</span>
               </div>
             ))}
-            <div className="h-px bg-border" />
+            {isAdmin && <div className="h-px bg-border" />}
+            {isAdmin && <div className="flex justify-between items-center">
+              <span className="text-[11px] text-muted-foreground">Gross Profit</span>
+              <span className="text-base tabular-nums text-emerald-700 dark:text-emerald-400 font-bold">{php(grossProfit)}</span>
+            </div>}
+            {isAdmin && <div className="flex justify-between items-center">
+              <span className="text-[11px] text-muted-foreground">Avg Margin</span>
+              <span className="text-sm tabular-nums text-emerald-700 dark:text-emerald-300">{pct(avgMargin)}</span>
+            </div>}
+            {/*
             <div className="flex justify-between items-center">
               <span className="text-[11px] text-muted-foreground">Gross Profit</span>
               <span className="text-base tabular-nums text-emerald-700 dark:text-emerald-400 font-bold">{php(grossProfit)}</span>
@@ -388,6 +399,7 @@ function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onVie
               <span className="text-[11px] text-muted-foreground">Avg Margin</span>
               <span className="text-sm tabular-nums text-emerald-700 dark:text-emerald-300">{pct(avgMargin)}</span>
             </div>
+            */}
           </div>
         </div>
 
@@ -417,6 +429,7 @@ function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onVie
 
         {/* Net Profit + Funnel */}
         <div className={cardCls}>
+          {isAdmin && <>
           <div className="flex items-center gap-2 mb-3">
             <Gem size={13} className="text-primary shrink-0" />
             <span className="text-sm font-mono text-muted-foreground uppercase tracking-widest">Net Profit · {rangeLabel}</span>
@@ -428,7 +441,8 @@ function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onVie
             <div className="text-[11px] text-muted-foreground mt-0.5">{pct(netMargin)} net margin</div>
           </div>
           <div className="h-px bg-border mb-4" />
-          <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-3">Inquiry Funnel</div>
+          </>}
+          {!isAdmin && <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-3">Inquiry Funnel</div>}
           <div className="space-y-2">
             {[
               { label:"Total Inquiries", val:totalInq, w:100, color:"#d4a017" },
@@ -468,7 +482,7 @@ function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onVie
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {recentJC.map(j => <button key={j.jobCostId} type="button" onClick={() => onView("Job cost details", j as unknown as Record<string, unknown>)} className="rounded-xl border border-border bg-card p-4 text-left hover:bg-muted/40">
               <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold">{j.clientName}</p><p className="truncate text-xs text-primary">{j.invoiceId}</p></div><StatusBadge status={j.status}/></div>
-              <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><span className="text-muted-foreground">Total cost</span><span className="text-right tabular-nums">{php(j.totalCost)}</span><span className="text-muted-foreground">Profit</span><span className="text-right font-semibold tabular-nums text-emerald-700">{php(j.profit)}</span></div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><span className="text-muted-foreground">Total cost</span><span className="text-right tabular-nums">{php(j.totalCost)}</span>{isAdmin && <><span className="text-muted-foreground">Profit</span><span className="text-right font-semibold tabular-nums text-emerald-700">{php(j.profit)}</span></>}</div>
             </button>)}
             {!recentJC.length && <div className="rounded-xl border border-border bg-card p-6 text-center text-xs text-muted-foreground">No job costing in this timeline</div>}
           </div>
@@ -555,11 +569,12 @@ function DailySalesView({ sales, onUpdate, onDelete }: { sales: Sale[]; onUpdate
     setIsSubmitting(true);
     try {
       if (!editingId) throw new Error("Finish an approved job costing to create a Daily Sales entry.");
-      const response = await fetch(`${BASE_URL}/sales/${encodeURIComponent(editingId)}`, { method:"PUT", headers:{"Content-Type":"application/json"},
+      const response = await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(editingId)}`, { method:"PUT", headers:{"Content-Type":"application/json"},
         body:JSON.stringify({ invoiceId:form.invoiceId, date:form.date, serviceType:form.serviceType, price:Number(form.price),
           downpayment:Number(form.downpayment), clientName:form.clientName, contactNum:form.contactNum }) });
-      if (!response.ok) throw new Error((await response.json()).error ?? "Sale could not be saved");
       const saved = await response.json();
+      if (response.status === 202) { alert(saved.message); closeModal(); setIsSubmitting(false); submittingRef.current = false; return; }
+      if (!response.ok) throw new Error(saved.error ?? "Sale could not be saved");
       onUpdate(normalizeSale(saved));
     } catch (error) { alert(error instanceof Error ? error.message : "Sale could not be saved"); setIsSubmitting(false); submittingRef.current = false; return; }
     closeModal();
@@ -626,9 +641,11 @@ function DailySalesView({ sales, onUpdate, onDelete }: { sales: Sale[]; onUpdate
 }
 
 // ── job costing ─────────────────────────────────────────────────────────────
-function JobCostingView({ jobCosts, inquiries, selectedInquiryId, clearSelectedInquiry, onAdd, onUpdate, onDelete, onFinish }: {
+function JobCostingView({ jobCosts, inquiries, selectedInquiryId, clearSelectedInquiry, currentGoldRate, onAdd, onUpdate, onDelete, onApprove, onReady, onFinish }: {
   jobCosts: JobCost[]; inquiries: Inquiry[]; selectedInquiryId: string | null; clearSelectedInquiry: () => void;
+  currentGoldRate: number | null;
   onAdd: (j: JobCost) => void; onUpdate: (j: JobCost) => void; onDelete: (j: JobCost) => void; onFinish: (j: JobCost) => void;
+  onApprove: (j: JobCost) => void; onReady: (j: JobCost) => void;
 }) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortSpec>({ key: "invoiceId", direction: -1 });
@@ -638,7 +655,7 @@ function JobCostingView({ jobCosts, inquiries, selectedInquiryId, clearSelectedI
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const pendingInquiries = inquiries.filter(i => i.status === "Pending");
-  const blankForm = () => ({ inquiryId:"", invoiceId:"", clientName:"", contactNum:"", empId:"", serviceType:"Custom" as ServiceType, goldUsed:"", goldCostPerG:String(GOLD_PRICE), stoneCost:"", laborCost:"", sellingPrice:"" });
+  const blankForm = () => ({ inquiryId:"", invoiceId:"", clientName:"", contactNum:"", empId:"", serviceType:"Custom" as ServiceType, goldUsed:"", goldCostPerG:currentGoldRate ? String(currentGoldRate) : "", stoneCost:"", laborCost:"", sellingPrice:"" });
   const [form, setForm] = useState(blankForm);
   const selectInquiry = (inquiryId: string) => {
     const inquiry = pendingInquiries.find(item => item.inquiryId === inquiryId);
@@ -683,9 +700,11 @@ function JobCostingView({ jobCosts, inquiries, selectedInquiryId, clearSelectedI
         ? { invoiceId:form.invoiceId, clientName:form.clientName, empId:form.empId || undefined, goldUsed, goldCostPerG, stoneCost, laborCost, sellingPrice }
         : { inquiryId:form.inquiryId, clientName:form.clientName, contactNum:form.contactNum, empId:form.empId || undefined, serviceType:form.serviceType, goldUsed, goldCostPerG, stoneCost, laborCost, sellingPrice };
       if (!editingId && !form.inquiryId) throw new Error("Choose a pending inquiry before creating job costing.");
-      const response = await fetch(`${BASE_URL}/job-cost${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
-      if (!response.ok) throw new Error((await response.json()).error ?? "Job costing could not be saved.");
-      const saved = normalizeJobCost(await response.json());
+      const response = await apiFetch(`${BASE_URL}/job-cost${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
+      const data = await response.json();
+      if (response.status === 202) { alert(data.message); closeModal(); return; }
+      if (!response.ok) throw new Error(data.error ?? "Job costing could not be saved.");
+      const saved = normalizeJobCost(data);
       if (editingId) onUpdate(saved); else onAdd(saved);
       closeModal();
     } catch (error) {
@@ -733,7 +752,9 @@ function JobCostingView({ jobCosts, inquiries, selectedInquiryId, clearSelectedI
             <td className="border-t border-border px-1 py-2"><StatusBadge status={j.status} /></td>
             <td className="border-t border-border px-1 py-2"><div className="flex flex-wrap items-center gap-1">
               <button type="button" onClick={() => editJob(j)} className="rounded p-1 text-muted-foreground hover:bg-muted" title="Edit"><PenSquare size={12}/></button>
-              {j.status === "Approved" && <button type="button" onClick={() => finishJob(j)} className="rounded px-1.5 py-1 text-[9px] font-semibold text-emerald-700 hover:bg-emerald-500/10">Finish</button>}
+              {j.status === "Pending" && <button type="button" onClick={e => { e.stopPropagation(); onApprove(j); }} className="rounded px-1.5 py-1 text-[9px] font-semibold text-blue-700 hover:bg-blue-500/10">Approve</button>}
+              {["Approved", "In Progress"].includes(j.status) && <button type="button" onClick={e => { e.stopPropagation(); onReady(j); }} className="rounded px-1.5 py-1 text-[9px] font-semibold text-sky-700 hover:bg-sky-500/10">Ready</button>}
+              {["Approved", "Ready for Pickup"].includes(j.status) && <button type="button" onClick={e => { e.stopPropagation(); finishJob(j); }} className="rounded px-1.5 py-1 text-[9px] font-semibold text-emerald-700 hover:bg-emerald-500/10">Finish</button>}
               <button type="button" onClick={() => onDelete(j)} className="rounded p-1 text-muted-foreground hover:bg-muted" title="Delete"><Trash2 size={12}/></button>
             </div></td>
           </TRow>)}{!filtered.length && <EmptyRow cols={14}/>}</tbody>
@@ -751,14 +772,16 @@ function JobCostingView({ jobCosts, inquiries, selectedInquiryId, clearSelectedI
           </dl>
           <div className="mt-3 flex flex-wrap gap-2">
             <button type="button" onClick={() => editJob(j)} className="rounded-lg border border-border px-3 py-1.5 text-xs">Edit</button>
-            {j.status === "Approved" && <button type="button" onClick={() => finishJob(j)} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs text-white">Finish Sale</button>}
+            {j.status === "Pending" && <button type="button" onClick={() => onApprove(j)} className="rounded-lg bg-blue-700 px-3 py-1.5 text-xs text-white">Approve Costing</button>}
+            {["Approved", "In Progress"].includes(j.status) && <button type="button" onClick={() => onReady(j)} className="rounded-lg bg-sky-700 px-3 py-1.5 text-xs text-white">Ready for Pickup</button>}
+            {["Approved", "Ready for Pickup"].includes(j.status) && <button type="button" onClick={() => finishJob(j)} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs text-white">Finish Sale</button>}
             <button type="button" onClick={() => onDelete(j)} className="rounded-lg border border-border px-3 py-1.5 text-xs">Delete</button>
           </div>
         </article>)}
         {!filtered.length && <div className="rounded-xl border border-border p-8 text-center text-sm text-muted-foreground">No matching records</div>}
       </div>
 
-      {open && <Modal title={editingId ? "Edit Job Costing" : "Approve Inquiry for Job Costing"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update Costing" : "Approve & Create Invoice"} isSubmitting={isSubmitting}>
+      {open && <Modal title={editingId ? "Edit Job Costing" : "Cost a Pending Inquiry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update Costing" : "Save Pending Costing"} isSubmitting={isSubmitting}>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {!editingId && <FF label="Pending Inquiry"><select className={ic} value={form.inquiryId} onChange={e=>selectInquiry(e.target.value)} required><option value="">Select an inquiry</option>{pendingInquiries.map(i=><option key={i.inquiryId} value={i.inquiryId}>{i.customerName} · {i.category} · {i.inquiryId}</option>)}</select></FF>}
           {editingId && <FF label="Invoice #"><input className={ic} value={form.invoiceId} readOnly /></FF>}
@@ -811,11 +834,13 @@ function GoldInventoryView({ inventory, onAdd, onUpdate, onDelete }: { inventory
     const entry: InvEntry = { id: editingId ?? "", date:form.date, referenceId:form.referenceId,
       itemName:form.itemName, goldIn, goldOut, scrap, balance, unit:form.unit };
     try {
-      const response = await fetch(`${BASE_URL}/inventory${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"},
+      const response = await apiFetch(`${BASE_URL}/inventory${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"},
         body:JSON.stringify({ referenceId:entry.referenceId, date:entry.date, itemName:entry.itemName, goldIn:entry.goldIn,
           goldOut:entry.goldOut, scraps:entry.scrap, totalGold:entry.balance, unit:entry.unit }) });
-      if (!response.ok) throw new Error((await response.json()).error ?? "Inventory entry could not be saved");
-      const saved = await response.json(); entry.id = saved.referenceId; entry.referenceId = saved.referenceId; entry.date = apiDate(saved.updatedAt ?? saved.date);
+      const saved = await response.json();
+      if (response.status === 202) { alert(saved.message); closeModal(); setIsSubmitting(false); submittingRef.current = false; return; }
+      if (!response.ok) throw new Error(saved.error ?? "Inventory entry could not be saved");
+      entry.id = saved.referenceId; entry.referenceId = saved.referenceId; entry.date = apiDate(saved.updatedAt ?? saved.date);
     } catch (error) { alert(error instanceof Error ? error.message : "Inventory entry could not be saved"); setIsSubmitting(false); submittingRef.current = false; return; }
     if (editingId) {
       onUpdate(entry);
@@ -896,12 +921,12 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
-  const [form, setForm] = useState({ customerName:"", contactInfo:"", details:"", category:"", quotedPrice:"", status:"Pending" as InqStatus });
+  const [form, setForm] = useState({ customerName:"", contactInfo:"", email:"", details:"", category:"", quotedPrice:"", status:"Pending" as InqStatus });
   const filtered = sortRecords(useMemo(() => inquiries.filter(i =>
-    [i.customerName, i.category, i.details, i.inquiryId].some(v => v.toLowerCase().includes(q.toLowerCase()))
+    [i.customerName, i.category, i.details, i.email, i.inquiryId].some(v => v.toLowerCase().includes(q.toLowerCase()))
   ), [inquiries, q]), sort);
 
-  const resetForm = () => setForm({ customerName:"", contactInfo:"", details:"", category:"", quotedPrice:"", status:"Pending" });
+  const resetForm = () => setForm({ customerName:"", contactInfo:"", email:"", details:"", category:"", quotedPrice:"", status:"Pending" });
   const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
 
   const submit = async (e: React.FormEvent) => {
@@ -911,15 +936,17 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
     setIsSubmitting(true);
     const entry: Inquiry = { inquiryId: editingId ?? "",
       date: editingId ? (inquiries.find(i => i.inquiryId === editingId)?.date ?? todayISO()) : todayISO(), customerName:form.customerName,
-      contactInfo:form.contactInfo, details:form.details, category:form.category,
+      contactInfo:form.contactInfo, email:form.email, details:form.details, category:form.category,
       quotedPrice:parseFloat(form.quotedPrice)||0, status:form.status };
     try {
-      const response = await fetch(`${BASE_URL}/inquiries${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"},
+      const response = await apiFetch(`${BASE_URL}/inquiries${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"},
         body:JSON.stringify({ date:entry.date, customerName:entry.customerName,
-          contactInfo:entry.contactInfo, details:entry.details, category:entry.category,
+          contactInfo:entry.contactInfo, email:entry.email, details:entry.details, category:entry.category,
           quotedPrice:entry.quotedPrice }) });
-      if (!response.ok) throw new Error((await response.json()).error ?? "Inquiry could not be saved");
-      Object.assign(entry, normalizeInquiry(await response.json()));
+      const data = await response.json();
+      if (response.status === 202) { alert(data.message); closeModal(); setIsSubmitting(false); submittingRef.current = false; return; }
+      if (!response.ok) throw new Error(data.error ?? "Inquiry could not be saved");
+      Object.assign(entry, normalizeInquiry(data));
     } catch (error) { alert(error instanceof Error ? error.message : "Inquiry could not be saved"); setIsSubmitting(false); submittingRef.current = false; return; }
     if (editingId) {
       onUpdate(entry);
@@ -939,15 +966,16 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
       </div>
       <TableWrap>
         <thead><tr>
-          {[["Date","date"],["Inquiry ID","inquiryId"],["Client Name","customerName"],["Contact","contactInfo"],["Category","category"],["Details","details"],["Quoted Price","quotedPrice"],["Status","status"]].map(([h,k])=><SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}<th className={thc}>Actions</th>
+          {[["Date","date"],["Inquiry ID","inquiryId"],["Client Name","customerName"],["Contact","contactInfo"],["Email","email"],["Category","category"],["Details","details"],["Quoted Price","quotedPrice"],["Status","status"]].map(([h,k])=><SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}<th className={thc}>Actions</th>
         </tr></thead>
         <tbody>
           {filtered.map(i => (
-            <TRow key={i.inquiryId} onClick={() => { if (i.status === "Pending") { setEditingId(i.inquiryId); setForm({ customerName:i.customerName, contactInfo:i.contactInfo, details:i.details, category:i.category, quotedPrice:String(i.quotedPrice), status:i.status }); setOpen(true); } }}>
+            <TRow key={i.inquiryId} onClick={() => { if (i.status === "Pending") { setEditingId(i.inquiryId); setForm({ customerName:i.customerName, contactInfo:i.contactInfo, email:i.email, details:i.details, category:i.category, quotedPrice:String(i.quotedPrice), status:i.status }); setOpen(true); } }}>
               <td className={tdc}>{fmtDate(i.date)}</td>
               <td className={tdc + " text-muted-foreground"}>{i.inquiryId}</td>
               <td className={tdc + " font-sans font-medium"}>{i.customerName}</td>
               <td className={tdc + " text-muted-foreground"}>{i.contactInfo}</td>
+              <td className={tdc + " text-muted-foreground"}>{i.email}</td>
               <td className={tdc}>{i.category}</td>
               <td className={tdc + " font-sans max-w-[200px] truncate text-muted-foreground"}>{i.details}</td>
               <td className={tdr + " text-amber-700 dark:text-amber-300"}>{php(i.quotedPrice)}</td>
@@ -955,7 +983,7 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
               <td className={tdc}>
                 <div className="flex items-center gap-2">
                   {i.status === "Pending" && <button type="button" onClick={() => onStartCosting(i.inquiryId)} className="rounded-lg bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary hover:bg-primary/20">Start Costing</button>}
-                  {i.status === "Pending" && <button type="button" onClick={() => { setEditingId(i.inquiryId); setForm({ customerName:i.customerName, contactInfo:i.contactInfo, details:i.details, category:i.category, quotedPrice:String(i.quotedPrice), status:i.status }); setOpen(true); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit">
+                  {i.status === "Pending" && <button type="button" onClick={e => { e.stopPropagation(); setEditingId(i.inquiryId); setForm({ customerName:i.customerName, contactInfo:i.contactInfo, email:i.email, details:i.details, category:i.category, quotedPrice:String(i.quotedPrice), status:i.status }); setOpen(true); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit">
                     <PenSquare size={13} />
                   </button>}
                   {i.status === "Pending" && <button type="button" onClick={() => onDelete(i.inquiryId)} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Delete">
@@ -965,7 +993,7 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
               </td>
             </TRow>
           ))}
-          {!filtered.length && <EmptyRow cols={9} />}
+          {!filtered.length && <EmptyRow cols={10} />}
         </tbody>
       </TableWrap>
       {open && (
@@ -973,6 +1001,7 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
           <div className="grid grid-cols-2 gap-4">
             <FF label="Customer Name"><input className={ic} value={form.customerName} onChange={e=>setForm(f=>({...f,customerName:e.target.value}))} placeholder="Full name" required /></FF>
             <FF label="Contact Info"><input className={ic} value={form.contactInfo} onChange={e=>setForm(f=>({...f,contactInfo:e.target.value}))} placeholder="09XX-XXX-XXXX" /></FF>
+            <FF label="Email for receipt / pickup"><input type="email" className={ic} value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="customer@example.com" /></FF>
             <FF label="Product Category"><input className={ic} value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))} placeholder="e.g. Custom Ring" required /></FF>
             <FF label="Quoted Price (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.quotedPrice} onChange={e=>setForm(f=>({...f,quotedPrice:e.target.value}))} placeholder="0.00" required /></FF>
             <div className="col-span-2"><FF label="Details / Notes"><textarea className={ic + " h-20 resize-none"} value={form.details} onChange={e=>setForm(f=>({...f,details:e.target.value}))} placeholder="Describe the customer's request…" /></FF></div>
@@ -1010,11 +1039,13 @@ function ExpensesView({ expenses, onAdd, onUpdate, onDelete }: { expenses: Expen
     const entry: Expense = { expenseId: editingId ?? "", expDate:form.expDate,
       category:form.category, description:form.description, amount:parseFloat(form.amount)||0 };
     try {
-      const response = await fetch(`${BASE_URL}/expenses${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"},
+      const response = await apiFetch(`${BASE_URL}/expenses${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"},
         body:JSON.stringify({ expenseId:entry.expenseId, category:entry.category,
           amount:entry.amount, description:entry.description, expDate:entry.expDate }) });
-      if (!response.ok) throw new Error((await response.json()).error ?? "Expense could not be saved");
-      const saved = await response.json(); entry.expenseId = saved.expenseId; entry.expDate = apiDate(saved.expDate ?? saved.date);
+      const saved = await response.json();
+      if (response.status === 202) { alert(saved.message); closeModal(); setIsSubmitting(false); submittingRef.current = false; return; }
+      if (!response.ok) throw new Error(saved.error ?? "Expense could not be saved");
+      entry.expenseId = saved.expenseId; entry.expDate = apiDate(saved.expDate ?? saved.date);
     } catch (error) { alert(error instanceof Error ? error.message : "Expense could not be saved"); setIsSubmitting(false); submittingRef.current = false; return; }
     if (editingId) {
       onUpdate(entry);
@@ -1310,9 +1341,66 @@ function KPICard({ label, value, sub, badge, vc = "" }: {
   );
 }
 
+function ApprovalQueueView({ onResolved }: { onResolved: () => void }) {
+  const [rows, setRows] = useState<any[]>([]);
+  const [error, setError] = useState("");
+  const load = () => apiFetch(BASE_URL + "/approvals").then(async response => {
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error ?? "Approval requests could not be loaded.");
+    setRows(asRows(data));
+  }).catch(err => setError(err instanceof Error ? err.message : "Approval requests could not be loaded."));
+  useEffect(() => { void load(); }, []);
+  const resolve = async (row: any, action: "approve" | "reject") => {
+    const note = action === "reject" ? window.prompt("Optional reason for rejecting this change:") : "";
+    if (action === "reject" && note === null) return;
+    try {
+      const response = await apiFetch(BASE_URL + "/approvals/" + encodeURIComponent(row.requestId) + "/" + action, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ note }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Approval could not be completed.");
+      alert(data.message);
+      await load();
+      onResolved();
+    } catch (err) { alert(err instanceof Error ? err.message : "Approval could not be completed."); }
+  };
+  const pending = rows.filter(row => row.status === "PENDING");
+  return <div className="p-5 space-y-4">
+    <div className="flex items-center justify-between"><div><h2 className="text-lg font-semibold">Admin Approval Queue</h2><p className="text-sm text-muted-foreground">Staff edits and archive requests leave records unchanged until approved.</p></div><button type="button" onClick={load} className="rounded-lg border border-border px-3 py-2 text-sm">Refresh</button></div>
+    {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+    {!pending.length && !error && <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">No pending requests.</div>}
+    {pending.map(row => <article key={row.requestId} className="rounded-xl border border-border bg-card p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div><div className="flex items-center gap-2"><h3 className="font-semibold">{row.action} · {String(row.entityType).replace("_", " ")}</h3><StatusBadge status="Pending" /></div><p className="mt-1 text-xs text-muted-foreground">{row.entityId} · requested by {row.requester?.empName ?? "Staff"} · {new Date(row.createdAt).toLocaleString("en-PH")}</p></div>
+        <div className="flex gap-2"><button type="button" onClick={() => resolve(row, "reject")} className="rounded-lg border border-border px-3 py-2 text-sm">Reject</button><button type="button" onClick={() => resolve(row, "approve")} className="rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground">Approve</button></div>
+      </div>
+      {row.action === "UPDATE" && <div className="mt-4 grid gap-3 md:grid-cols-2"><div className="rounded-lg bg-muted/50 p-3"><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Current values</p><pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words text-xs">{JSON.stringify(row.beforeData, null, 2)}</pre></div><div className="rounded-lg bg-blue-50/60 p-3 dark:bg-blue-950/20"><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Requested values</p><pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words text-xs">{JSON.stringify(row.proposedData, null, 2)}</pre></div></div>}
+    </article>)}
+    {rows.some(row => row.status !== "PENDING") && <details className="rounded-xl border border-border bg-card p-4"><summary className="cursor-pointer text-sm font-medium">Recently reviewed requests</summary><div className="mt-3 space-y-2">{rows.filter(row => row.status !== "PENDING").slice(0, 15).map(row => <div key={row.requestId} className="flex flex-wrap justify-between gap-2 border-t border-border pt-2 text-sm"><span>{row.action} {row.entityType} · {row.entityId}</span><StatusBadge status={statusLabel(row.status)} /></div>)}</div></details>}
+  </div>;
+}
+
+function AuditLogsView() {
+  const [rows, setRows] = useState<any[]>([]);
+  const [error, setError] = useState("");
+  const load = () => apiFetch(BASE_URL + "/audit-logs?limit=150").then(async response => {
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error ?? "Audit logs could not be loaded.");
+    setRows(asRows(data)); setError("");
+  }).catch(err => setError(err instanceof Error ? err.message : "Audit logs could not be loaded."));
+  useEffect(() => { void load(); }, []);
+  return <div className="p-5 space-y-4">
+    <div className="flex items-center justify-between"><div><h2 className="text-lg font-semibold">Audit Logs</h2><p className="text-sm text-muted-foreground">Recent sign-ins, changes, archive requests, and Admin decisions.</p></div><button type="button" onClick={load} className="rounded-lg border border-border px-3 py-2 text-sm">Refresh</button></div>
+    {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+    <TableWrap><thead><tr>{["When","User","Role","Action","Record","Details"].map(label=><th key={label} className={thc}>{label}</th>)}</tr></thead><tbody>
+      {rows.map(row => <tr key={row.logId} className="border-b border-border align-top"><td className={tdc}>{new Date(row.createdAt).toLocaleString("en-PH")}</td><td className={tdc}>{row.actorName}</td><td className={tdc}>{row.actorRole}</td><td className={tdc}><StatusBadge status={row.action} /></td><td className={tdc}>{row.entityType ? row.entityType + " · " + (row.entityId ?? "—") : "—"}</td><td className="max-w-[420px] whitespace-pre-wrap break-words px-3 py-2 text-xs text-muted-foreground">{JSON.stringify(row.details ?? {})}</td></tr>)}
+      {!rows.length && !error && <EmptyRow cols={6} />}
+    </tbody></TableWrap>
+  </div>;
+}
+
 // ── app ────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [user, setUser] = useState<any>(() => { try { return JSON.parse(localStorage.getItem("nilo-user") || "null"); } catch { return null; } });
+  const [user, setUser] = useState<any>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [dark, setDark] = useState(() => {
     try { return localStorage.getItem("nilo-theme-v2") === "dark"; }
     catch { return false; }
@@ -1328,6 +1416,9 @@ export default function App() {
   const [inventory, setInventory] = useState<InvEntry[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [goldRate, setGoldRate] = useState<number | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const isAdmin = String(user?.empRole ?? "").toLowerCase() === "admin";
 
   // Apply dark class and persist preference
   useEffect(() => {
@@ -1335,23 +1426,92 @@ export default function App() {
     try { localStorage.setItem("nilo-theme-v2", dark ? "dark" : "light"); } catch {}
   }, [dark]);
 
-  // Wire API endpoints — graceful fallback to seed data when server is offline
-  useEffect(() => { fetch(`${BASE_URL}/sales`).then(r=>r.ok ? r.json() : Promise.reject(r)).then(rows=>setSales(asRows(rows).map(normalizeSale))).catch(()=>{}); }, []);
-  useEffect(() => { fetch(`${BASE_URL}/job-cost`).then(r=>r.ok ? r.json() : Promise.reject(r)).then(rows=>setJobCosts(asRows(rows).map(normalizeJobCost))).catch(()=>{}); }, []);
-  useEffect(() => { fetch(`${BASE_URL}/inventory`).then(r=>r.ok ? r.json() : Promise.reject(r)).then(rows=>setInventory(asRows(rows).map(normalizeInventory))).catch(()=>{}); }, []);
-  useEffect(() => { fetch(`${BASE_URL}/inquiries`).then(r=>r.ok ? r.json() : Promise.reject(r)).then(rows=>setInquiries(asRows(rows).map(normalizeInquiry))).catch(()=>{}); }, []);
-  useEffect(() => { fetch(`${BASE_URL}/expenses`).then(r=>r.ok ? r.json() : Promise.reject(r)).then(rows=>setExpenses(asRows(rows).map(normalizeExpense))).catch(()=>{}); }, []);
+  // Restore the server-side session before loading any business data.
+  useEffect(() => {
+    let active = true;
+    apiFetch(BASE_URL + "/auth/me").then(async response => {
+      if (!response.ok) return null;
+      return (await response.json()).user ?? null;
+    }).then(foundUser => { if (active) setUser(foundUser); })
+      .catch(() => { if (active) setUser(null); })
+      .finally(() => { if (active) setAuthReady(true); });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!user?.empId) {
+      setSales([]); setJobCosts([]); setInventory([]); setInquiries([]); setExpenses([]);
+      return;
+    }
+    let active = true;
+    const load = async (path: string) => {
+      const response = await apiFetch(BASE_URL + path);
+      const data = await response.json();
+      if (response.status === 401) throw Object.assign(new Error(data.error ?? "Session expired."), { unauthorized: true });
+      if (!response.ok) throw new Error(data.error ?? "Data could not be loaded.");
+      return data;
+    };
+    Promise.all([load("/sales"), load("/job-cost"), load("/inventory"), load("/inquiries"), load("/expenses")])
+      .then(([salesRows, jobRows, inventoryRows, inquiryRows, expenseRows]) => {
+        if (!active) return;
+        setSales(asRows(salesRows).map(normalizeSale)); setJobCosts(asRows(jobRows).map(normalizeJobCost));
+        setInventory(asRows(inventoryRows).map(normalizeInventory)); setInquiries(asRows(inquiryRows).map(normalizeInquiry));
+        setExpenses(asRows(expenseRows).map(normalizeExpense));
+      })
+      .catch(error => {
+        if (!active) return;
+        if ((error as { unauthorized?: boolean }).unauthorized) { setUser(null); setAuthReady(true); }
+        else console.error("Could not load application data:", error);
+      });
+    return () => { active = false; };
+  }, [user?.empId, reloadKey]);
+
+  useEffect(() => {
+    if (!user?.empId) { setGoldRate(null); return; }
+    let active = true;
+    const loadGoldRate = async () => {
+      try {
+        const response = await apiFetch(BASE_URL + "/gold/price");
+        if (!response.ok) throw new Error("Live gold pricing is unavailable.");
+        const data = await response.json();
+        if (active && Number.isFinite(Number(data.ratePerGram)) && Number(data.ratePerGram) > 0) setGoldRate(Number(data.ratePerGram));
+      } catch { if (active) setGoldRate(null); }
+    };
+    void loadGoldRate();
+    const timer = window.setInterval(loadGoldRate, 5 * 60 * 1000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [user?.empId]);
+
+  useEffect(() => {
+    if (user && !isAdmin && ["PROFIT_ANALYSIS", "APPROVALS", "AUDIT_LOGS"].includes(tab)) setTab("DASHBOARD");
+  }, [user, isAdmin, tab]);
 
   const deleteFromApi = async (resource: string, id: string, remove: () => void) => {
     if (!window.confirm("Delete this record permanently?")) return;
     try {
-      const response = await fetch(`${BASE_URL}/${resource}/${encodeURIComponent(id)}`, { method: "DELETE" });
-      if (!response.ok) throw new Error((await response.json()).error ?? "Delete failed");
+      const response = await apiFetch(`${BASE_URL}/${resource}/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const data = await response.json();
+      if (response.status === 202) { alert(data.message ?? "Sent to an Administrator for approval."); return; }
+      if (!response.ok) throw new Error(data.error ?? "Delete failed");
       remove();
     } catch (error) { alert(error instanceof Error ? error.message : "Delete failed"); }
   };
 
-  if (!user) return <LoginScreen onLogin={setUser} />;
+  const signOut = async () => {
+    try {
+      const response = await apiFetch(`${BASE_URL}/auth/logout`, { method: "POST" });
+      if (!response.ok) throw new Error((await response.json()).error ?? "Sign out could not be confirmed.");
+    } catch (error) {
+      alert(error instanceof Error ? `${error.message} The local session has been cleared.` : "The local session has been cleared.");
+    } finally {
+      setUser(null);
+      setSales([]); setJobCosts([]); setInventory([]); setInquiries([]); setExpenses([]);
+      setAuthReady(true);
+    }
+  };
+
+  if (!authReady) return <div className="min-h-screen bg-background flex items-center justify-center text-sm text-muted-foreground">Restoring your secure session…</div>;
+  if (!user) return <LoginScreen onLogin={foundUser => { setUser(foundUser); setAuthReady(true); }} />;
 
   const inTimeline = (date: string) => {
     const [year, month] = date.slice(0, 10).split("-").map(Number);
@@ -1379,7 +1539,7 @@ export default function App() {
   const TAB_LABELS: Record<Tab, string> = {
     DASHBOARD:"Dashboard", DAILY_SALES:"Daily Sales", JOB_COSTING:"Job Costing",
     GOLD_INVENTORY:"Gold Inventory", INQUIRIES:"Inquiries", EXPENSES:"Expenses",
-    PROFIT_ANALYSIS:"Profit Analysis",
+    PROFIT_ANALYSIS:"Profit Analysis", APPROVALS:"Approvals", AUDIT_LOGS:"Audit Logs",
   };
 
   return (
@@ -1404,9 +1564,9 @@ export default function App() {
           {/* KPI strip */}
           <div className="flex gap-2 flex-1 overflow-x-auto">
             <KPICard label="Today" value={today} />
-            <KPICard label="Live Gold Price / g" value={php(GOLD_PRICE)} vc="text-primary" />
+            <KPICard label="Live Gold Price / g" value={goldRate === null ? "Unavailable" : php(goldRate)} vc="text-primary" />
             <KPICard label="Gold Stock (Physical)" value={`${goldStock.toFixed(2)} g`} vc="text-primary" />
-            <KPICard
+            {isAdmin && <KPICard
               label={`Net Profit (${timelineLabel})`}
               value={php(netProfit)}
               sub={`${pct(netMargin)} Margin`}
@@ -1414,7 +1574,7 @@ export default function App() {
               badge={netProfit >= 0
                 ? { text:"HEALTHY", cls:"bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/25" }
                 : { text:"REVIEW", cls:"bg-red-500/15 text-red-700 dark:text-red-400 border border-red-500/25" }}
-            />
+            />}
           </div>
 
           {/* Theme toggle */}
@@ -1425,11 +1585,12 @@ export default function App() {
           >
             {dark ? <Sun size={16} /> : <Moon size={16} />}
           </button>
+          <button type="button" onClick={signOut} className="shrink-0 rounded-lg border border-sidebar-border px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-sidebar-accent hover:text-foreground transition-colors">Sign out</button>
         </div>
 
         {/* Tab nav */}
         <nav className="flex items-center overflow-x-auto px-5 gap-0.5 py-2">
-          {TABS.map(t => (
+          {TABS.filter(t => isAdmin || !["PROFIT_ANALYSIS", "APPROVALS", "AUDIT_LOGS"].includes(t)).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -1447,13 +1608,15 @@ export default function App() {
 
       {/* Page content */}
       <main className="max-w-[1680px] mx-auto">
-        {tab === "DASHBOARD"       && <DashboardView sales={visibleSales} jobCosts={visibleJobCosts} expenses={visibleExpenses} inquiries={visibleInquiries} rangeLabel={timelineLabel} onView={(title, record) => setViewRecord({ title, record })} />}
+        {tab === "DASHBOARD"       && <DashboardView sales={visibleSales} jobCosts={visibleJobCosts} expenses={visibleExpenses} inquiries={visibleInquiries} rangeLabel={timelineLabel} isAdmin={isAdmin} onView={(title, record) => setViewRecord({ title, record })} />}
         {tab === "DAILY_SALES"     && <DailySalesView sales={sales.filter(isCompletedSale)} onUpdate={s => setSales(p => p.map(item => item.invoiceId === s.invoiceId ? s : item))} onDelete={id => deleteFromApi("sales", id, () => { const removed = sales.find(item => item.invoiceId === id); const linkedJob = jobCosts.find(item => item.jobCostId === removed?.jobCostId); setSales(p => p.filter(item => item.invoiceId !== id)); if (removed?.jobCostId) setJobCosts(p => p.filter(item => item.jobCostId !== removed.jobCostId)); if (linkedJob?.inquiryId) setInquiries(p => p.map(i => i.inquiryId === linkedJob.inquiryId ? { ...i, status:"Pending" } : i)); })} />}
-        {tab === "JOB_COSTING"     && <JobCostingView jobCosts={jobCosts} inquiries={inquiries} selectedInquiryId={selectedInquiryForCosting} clearSelectedInquiry={() => setSelectedInquiryForCosting(null)} onAdd={j => { setJobCosts(p => [j, ...p]); if (j.sale) setSales(p => [j.sale!, ...p.filter(s => s.invoiceId !== j.sale!.invoiceId)]); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status:"Approved" } : i)); }} onUpdate={j => { setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? j : item)); if (j.sale) setSales(p => p.map(s => s.invoiceId === j.sale!.invoiceId ? j.sale! : s)); }} onDelete={j => deleteFromApi("job-cost", j.jobCostId, () => { setJobCosts(p => p.filter(item => item.jobCostId !== j.jobCostId)); setSales(p => p.filter(s => s.invoiceId !== j.invoiceId)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status:"Pending" } : i)); })} onFinish={async j => { try { const response = await fetch(`${BASE_URL}/sales/${encodeURIComponent(j.invoiceId)}/finish`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ invoiceId:j.invoiceId, clientName:j.clientName }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Sale could not be finished."); const sale = normalizeSale(data); setSales(p => [sale, ...p.filter(item => item.invoiceId !== sale.invoiceId)]); setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? { ...item, status:"Finished", sale } : item)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status:"Finished" } : i)); } catch (error) { alert(error instanceof Error ? error.message : "Sale could not be finished."); } }} />}
+        {tab === "JOB_COSTING"     && <JobCostingView jobCosts={jobCosts} inquiries={inquiries} selectedInquiryId={selectedInquiryForCosting} clearSelectedInquiry={() => setSelectedInquiryForCosting(null)} currentGoldRate={goldRate} onAdd={j => { setJobCosts(p => [j, ...p]); if (j.sale) setSales(p => [j.sale!, ...p.filter(s => s.invoiceId !== j.sale!.invoiceId)]); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status:"Approved" } : i)); }} onUpdate={j => { setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? j : item)); if (j.sale) setSales(p => p.map(s => s.invoiceId === j.sale!.invoiceId ? j.sale! : s)); }} onDelete={j => deleteFromApi("job-cost", j.jobCostId, () => { setJobCosts(p => p.filter(item => item.jobCostId !== j.jobCostId)); setSales(p => p.filter(s => s.invoiceId !== j.invoiceId)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status:"Pending" } : i)); })} onApprove={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/approve`, { method:"POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Costing could not be approved."); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Costing could not be approved."); } }} onReady={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/ready`, { method:"POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Item could not be marked ready."); const reason = data.notification?.sent ? (data.notification.reason ?? "Customer notification sent.") : (data.notification?.reason ?? "Customer notification could not be sent."); alert(`Marked ready for pickup. ${reason}`); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Item could not be marked ready."); } }} onFinish={async j => { try { const response = await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(j.invoiceId)}/finish`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ invoiceId:j.invoiceId, clientName:j.clientName }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Sale could not be finished."); const sale = normalizeSale(data); setSales(p => [sale, ...p.filter(item => item.invoiceId !== sale.invoiceId)]); setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? { ...item, status:"Finished", sale } : item)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status:"Finished" } : i)); const reason = data.notification?.sent ? (data.notification.reason ?? "Receipt email sent.") : (data.notification?.reason ?? "Receipt email could not be sent."); alert(`Sale completed. ${reason}`); } catch (error) { alert(error instanceof Error ? error.message : "Sale could not be finished."); } }} />}
         {tab === "GOLD_INVENTORY"  && <GoldInventoryView inventory={inventory} onAdd={e => setInventory(p => [...p, e])} onUpdate={e => setInventory(p => p.map(item => item.id === e.id ? e : item))} onDelete={id => deleteFromApi("inventory", id, () => setInventory(p => p.filter(item => item.id !== id)))} />}
         {tab === "INQUIRIES"       && <InquiriesView inquiries={inquiries} onAdd={i => setInquiries(p => [i, ...p])} onUpdate={i => setInquiries(p => p.map(item => item.inquiryId === i.inquiryId ? i : item))} onDelete={id => deleteFromApi("inquiries", id, () => setInquiries(p => p.filter(item => item.inquiryId !== id)))} onStartCosting={id => { setSelectedInquiryForCosting(id); setTab("JOB_COSTING"); }} />}
         {tab === "EXPENSES"        && <ExpensesView expenses={expenses} onAdd={e => setExpenses(p => [e, ...p])} onUpdate={e => setExpenses(p => p.map(item => item.expenseId === e.expenseId ? e : item))} onDelete={id => deleteFromApi("expenses", id, () => setExpenses(p => p.filter(item => item.expenseId !== id)))} />}
         {tab === "PROFIT_ANALYSIS" && <ProfitAnalysisView sales={sales.filter(isCompletedSale)} jobCosts={jobCosts} expenses={expenses} selectedYear={selectedYear} setSelectedYear={setSelectedYear} startMonth={startMonth} setStartMonth={setStartMonth} endMonth={endMonth} setEndMonth={setEndMonth} />}
+        {tab === "APPROVALS" && isAdmin && <ApprovalQueueView onResolved={() => setReloadKey(k => k + 1)} />}
+        {tab === "AUDIT_LOGS" && isAdmin && <AuditLogsView />}
       </main>
       <RecordDetails title={viewRecord?.title ?? "Record details"} record={viewRecord?.record ?? null} onClose={() => setViewRecord(null)} />
     </div>
@@ -1468,11 +1631,9 @@ function LoginScreen({ onLogin }: { onLogin: (user: any) => void }) {
   const submit = async (event: React.FormEvent) => {
     event.preventDefault(); setBusy(true); setError("");
     try {
-      const response = await fetch(`${BASE_URL}/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userName, password }) });
+      const response = await apiFetch(`${BASE_URL}/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userName, password }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Unable to sign in");
-      localStorage.setItem("nilo-user", JSON.stringify(data.user));
-      localStorage.setItem("nilo-token", data.token);
       onLogin(data.user);
     } catch (err: any) { setError(err.message); } finally { setBusy(false); }
   };
