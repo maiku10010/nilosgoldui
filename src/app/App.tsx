@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, createContext, useContext } from "react";
 import goldsmithLogo from "../assets/nilosgold_logo.jpg";
 import {
   Search, Plus, X, Crown, TrendingUp, TrendingDown,
@@ -9,10 +9,27 @@ import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
 } from "recharts";
+import { hasMinimumDownPayment, isValidEmail, isValidPHContact } from "../validation";
 
 // ── config ─────────────────────────────────────────────────────────────────
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "https://nilosgold.vercel.app").replace(/\/$/, "");
 const apiFetch = (input: RequestInfo | URL, init: RequestInit = {}) => fetch(input, { ...init, credentials: "include" });
+
+type ConfirmationRequest = { title: string; message: string; confirmLabel?: string; onConfirm: () => void | Promise<void> };
+const ConfirmationContext = createContext<(request: ConfirmationRequest) => void>(() => undefined);
+const useConfirmation = () => useContext(ConfirmationContext);
+
+function ConfirmationDialog({ request, onClose }: { request: ConfirmationRequest; onClose: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const confirm = async () => { setBusy(true); try { await request.onConfirm(); onClose(); } finally { setBusy(false); } };
+  return <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="confirmation-title">
+    <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-2xl mx-4">
+      <h2 id="confirmation-title" className="text-base font-semibold">{request.title}</h2>
+      <p className="mt-2 text-sm text-muted-foreground">{request.message}</p>
+      <div className="mt-6 flex justify-end gap-3"><button type="button" disabled={busy} onClick={onClose} className="rounded-lg bg-muted px-4 py-2 text-sm">Cancel</button><button type="button" disabled={busy} onClick={confirm} className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-60">{busy ? "Working…" : (request.confirmLabel ?? "Confirm")}</button></div>
+    </div>
+  </div>;
+}
 
 // ── formatters ─────────────────────────────────────────────────────────────
 const marginCls = (m: number) => {
@@ -68,7 +85,7 @@ const normalizeJobCost = (row: any): JobCost => {
   const goldCost = numeric(row.goldCost ?? numeric(row.goldUsed) * goldCostPerG);
   const totalCost = numeric(row.totalCost ?? goldCost + numeric(row.laborCost) + numeric(row.stoneCost));
   const sale = row.sales ?? row.sale;
-  return { jobCostId: String(row.jobCostId ?? ""), invoiceId: String(row.invoiceId ?? sale?.invoiceId ?? ""), clientName: String(row.clientName ?? sale?.client?.clientName ?? row.inquiry?.customerName ?? ""), empId: row.empId, inquiryId: row.inquiryId ?? row.inquiry?.inquiryId, status: statusLabel(row.status), sale: sale ? normalizeSale(sale) : undefined, goldUsed: numeric(row.goldUsed), goldCostPerG, goldCost, stoneCost: numeric(row.stoneCost), laborCost: numeric(row.laborCost), totalCost, sellingPrice, profit: numeric(row.profit ?? sellingPrice - totalCost), marginPct: numeric(row.marginPct ?? (sellingPrice ? ((sellingPrice - totalCost) / sellingPrice) * 100 : 0)) };
+  return { jobCostId: String(row.jobCostId ?? ""), invoiceId: String(row.invoiceId ?? sale?.invoiceId ?? ""), clientName: String(row.clientName ?? sale?.client?.clientName ?? row.inquiry?.customerName ?? ""), itemName: row.itemName ?? "", deadline: row.deadline || row.deliveryDate ? String(row.deadline ?? row.deliveryDate).slice(0, 10) : "", empId: row.empId, inquiryId: row.inquiryId ?? row.inquiry?.inquiryId, status: statusLabel(row.status), sale: sale ? normalizeSale(sale) : undefined, goldUsed: numeric(row.goldUsed), goldCostPerG, goldCost, stoneCost: numeric(row.stoneCost), laborCost: numeric(row.laborCost), totalCost, sellingPrice, profit: numeric(row.profit ?? sellingPrice - totalCost), marginPct: numeric(row.marginPct ?? (sellingPrice ? ((sellingPrice - totalCost) / sellingPrice) * 100 : 0)) };
 };
 const normalizeInventory = (row: any): InvEntry => ({ id: row.referenceId, date: apiDate(row.updatedAt ?? row.date), referenceId: row.referenceId, itemName: row.itemName ?? row.referenceId, goldIn: numeric(row.goldIn), goldOut: numeric(row.goldOut), scrap: numeric(row.scraps ?? row.scrap), balance: numeric(row.balance ?? row.totalGold), unit: row.unit ?? "grams" });
 const normalizeInquiry = (row: any): Inquiry => ({ inquiryId: String(row.inquiryId ?? ""), date: apiDate(row.inqDate ?? row.date), customerName: String(row.customerName ?? ""), contactInfo: String(row.contactInfo ?? ""), email: String(row.email ?? ""), details: String(row.details ?? ""), category: String(row.category ?? ""), quotedPrice: numeric(row.quotedPrice), status: statusLabel(row.status) as InqStatus });
@@ -86,7 +103,7 @@ interface Sale {
   price: number; downpayment: number; balance: number; status: SaleStatus;
 }
 interface JobCost {
-  jobCostId: string; invoiceId: string; clientName: string; empId?: string;
+  jobCostId: string; invoiceId: string; clientName: string; itemName: string; deadline: string; empId?: string;
   inquiryId?: string; status: string; sale?: Sale;
   goldUsed: number; goldCostPerG: number; goldCost: number;
   stoneCost: number; laborCost: number; totalCost: number;
@@ -569,9 +586,12 @@ function DailySalesView({ sales, onUpdate, onDelete }: { sales: Sale[]; onUpdate
     setIsSubmitting(true);
     try {
       if (!editingId) throw new Error("Finish an approved job costing to create a Daily Sales entry.");
+      const price = Number(form.price); const downpayment = Number(form.downpayment);
+      if (!isValidPHContact(form.contactNum)) throw new Error("Enter a valid Philippine contact number (09XXXXXXXXX or +639XXXXXXXXX).");
+      if (!Number.isFinite(price) || !hasMinimumDownPayment(downpayment, price) || downpayment > price) throw new Error("Down payment must be at least 25% of the total price and no greater than the total price.");
       const response = await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(editingId)}`, { method:"PUT", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({ invoiceId:form.invoiceId, date:form.date, serviceType:form.serviceType, price:Number(form.price),
-          downpayment:Number(form.downpayment), clientName:form.clientName, contactNum:form.contactNum }) });
+        body:JSON.stringify({ invoiceId:form.invoiceId, date:form.date, serviceType:form.serviceType, price,
+          downpayment, clientName:form.clientName, contactNum:form.contactNum }) });
       const saved = await response.json();
       if (response.status === 202) { alert(saved.message); closeModal(); setIsSubmitting(false); submittingRef.current = false; return; }
       if (!response.ok) throw new Error(saved.error ?? "Sale could not be saved");
@@ -655,7 +675,7 @@ function JobCostingView({ jobCosts, inquiries, selectedInquiryId, clearSelectedI
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const pendingInquiries = inquiries.filter(i => i.status === "Pending");
-  const blankForm = () => ({ inquiryId:"", invoiceId:"", clientName:"", contactNum:"", empId:"", serviceType:"Custom" as ServiceType, goldUsed:"", goldCostPerG:currentGoldRate ? String(currentGoldRate) : "", stoneCost:"", laborCost:"", sellingPrice:"" });
+  const blankForm = () => ({ inquiryId:"", invoiceId:"", clientName:"", itemName:"", deadline:"", contactNum:"", empId:"", serviceType:"Custom" as ServiceType, goldUsed:"", goldCostPerG:currentGoldRate ? String(currentGoldRate) : "", stoneCost:"", laborCost:"", sellingPrice:"" });
   const [form, setForm] = useState(blankForm);
   const selectInquiry = (inquiryId: string) => {
     const inquiry = pendingInquiries.find(item => item.inquiryId === inquiryId);
@@ -676,7 +696,7 @@ function JobCostingView({ jobCosts, inquiries, selectedInquiryId, clearSelectedI
   const resetForm = () => setForm(blankForm());
   const editJob = (j: JobCost) => {
     setEditingId(j.jobCostId);
-    setForm({ inquiryId:j.inquiryId ?? "", invoiceId:j.invoiceId, clientName:j.clientName, contactNum:j.sale?.contactNum ?? "", empId:j.empId ?? "", serviceType:j.sale?.serviceType ?? "Custom", goldUsed:String(j.goldUsed), goldCostPerG:String(j.goldCostPerG), stoneCost:String(j.stoneCost), laborCost:String(j.laborCost), sellingPrice:String(j.sellingPrice) });
+    setForm({ inquiryId:j.inquiryId ?? "", invoiceId:j.invoiceId, clientName:j.clientName, itemName:j.itemName, deadline:j.deadline, contactNum:j.sale?.contactNum ?? "", empId:j.empId ?? "", serviceType:j.sale?.serviceType ?? "Custom", goldUsed:String(j.goldUsed), goldCostPerG:String(j.goldCostPerG), stoneCost:String(j.stoneCost), laborCost:String(j.laborCost), sellingPrice:String(j.sellingPrice) });
     setOpen(true);
   };
   const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
@@ -697,8 +717,8 @@ function JobCostingView({ jobCosts, inquiries, selectedInquiryId, clearSelectedI
     }
     try {
       const payload = editingId
-        ? { invoiceId:form.invoiceId, clientName:form.clientName, empId:form.empId || undefined, goldUsed, goldCostPerG, stoneCost, laborCost, sellingPrice }
-        : { inquiryId:form.inquiryId, clientName:form.clientName, contactNum:form.contactNum, empId:form.empId || undefined, serviceType:form.serviceType, goldUsed, goldCostPerG, stoneCost, laborCost, sellingPrice };
+        ? { invoiceId:form.invoiceId, clientName:form.clientName, itemName:form.itemName, deadline:form.deadline || undefined, empId:form.empId || undefined, goldUsed, goldCostPerG, stoneCost, laborCost, sellingPrice }
+        : { inquiryId:form.inquiryId, clientName:form.clientName, itemName:form.itemName, deadline:form.deadline || undefined, contactNum:form.contactNum, empId:form.empId || undefined, serviceType:form.serviceType, goldUsed, goldCostPerG, stoneCost, laborCost, sellingPrice };
       if (!editingId && !form.inquiryId) throw new Error("Choose a pending inquiry before creating job costing.");
       const response = await apiFetch(`${BASE_URL}/job-cost${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
       const data = await response.json();
@@ -715,7 +735,7 @@ function JobCostingView({ jobCosts, inquiries, selectedInquiryId, clearSelectedI
   };
 
   const finishJob = (job: JobCost) => {
-    if (!job.invoiceId || !window.confirm(`Finish ${job.clientName} · invoice ${job.invoiceId}?`)) return;
+    if (!job.invoiceId) return;
     onFinish(job);
   };
   const fields = (job: JobCost) => [
@@ -792,7 +812,9 @@ function JobCostingView({ jobCosts, inquiries, selectedInquiryId, clearSelectedI
           <FF label="Gold Cost / Price per g (₱)"><input type="number" min="0.01" step="0.01" className={ic} value={form.goldCostPerG} onChange={e=>setForm(f=>({...f,goldCostPerG:e.target.value}))} required /></FF>
           <FF label="Stone Cost (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.stoneCost} onChange={e=>setForm(f=>({...f,stoneCost:e.target.value}))} required /></FF>
           <FF label="Labor Cost (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.laborCost} onChange={e=>setForm(f=>({...f,laborCost:e.target.value}))} required /></FF>
-          <FF label="Selling Price (₱)"><input type="number" min="0.01" step="0.01" className={ic} value={form.sellingPrice} onChange={e=>setForm(f=>({...f,sellingPrice:e.target.value}))} required /></FF>
+            <FF label="Item Name (optional)"><input className={ic} value={form.itemName} onChange={e=>setForm(f=>({...f,itemName:e.target.value}))} placeholder="e.g. Gold ring" maxLength={120} /></FF>
+            <FF label="Delivery Date / Deadline (optional)"><input type="date" className={ic} value={form.deadline} onChange={e=>setForm(f=>({...f,deadline:e.target.value}))} /></FF>
+            <FF label="Selling Price (₱)"><input type="number" min="0.01" step="0.01" className={ic} value={form.sellingPrice} onChange={e=>setForm(f=>({...f,sellingPrice:e.target.value}))} required /></FF>
         </div>
         <p className="text-xs text-muted-foreground">Invoice number and job costing ID are assigned automatically. Profit and margin are calculated from these costs.</p>
       </Modal>}
@@ -801,7 +823,7 @@ function JobCostingView({ jobCosts, inquiries, selectedInquiryId, clearSelectedI
 }
 
 // ── gold inventory ──────────────────────────────────────────────────────────
-function GoldInventoryView({ inventory, onAdd, onUpdate, onDelete }: { inventory: InvEntry[]; onAdd: (e: InvEntry) => void; onUpdate: (e: InvEntry) => void; onDelete: (id: string) => void }) {
+function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: { inventory: InvEntry[]; goldRate: number | null; onAdd: (e: InvEntry) => void; onUpdate: (e: InvEntry) => void; onDelete: (id: string) => void }) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortSpec>({ key: "date", direction: -1 });
   const toggleSort = (key: string) => setSort(s => ({ key, direction: s.key === key ? (s.direction === 1 ? -1 : 1) : 1 }));
@@ -860,7 +882,7 @@ function GoldInventoryView({ inventory, onAdd, onUpdate, onDelete }: { inventory
           <div className="flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-lg px-3 py-2">
             <Package size={13} className="text-primary" />
             <span className="text-[11px] font-mono text-muted-foreground uppercase tracking-widest">Balance:</span>
-            <span className="text-sm font-bold text-primary tabular-nums">{currentBalance.toFixed(2)} g</span>
+            <span className="text-right text-sm font-bold text-primary tabular-nums"><span className="block">{currentBalance.toFixed(2)} g</span><span className="block text-[10px] font-normal text-muted-foreground">{goldRate ? php(currentBalance * goldRate) : "Gold price unavailable"}</span></span>
           </div>
         </div>
         <AddBtn onClick={() => { resetForm(); setEditingId(null); setOpen(true); }} label="Add Entry" />
@@ -939,6 +961,8 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
       contactInfo:form.contactInfo, email:form.email, details:form.details, category:form.category,
       quotedPrice:parseFloat(form.quotedPrice)||0, status:form.status };
     try {
+      if (!isValidPHContact(form.contactInfo)) throw new Error("Enter a valid Philippine contact number (09XXXXXXXXX or +639XXXXXXXXX).");
+      if (form.email && !isValidEmail(form.email)) throw new Error("Enter a valid email address.");
       const response = await apiFetch(`${BASE_URL}/inquiries${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"},
         body:JSON.stringify({ date:entry.date, customerName:entry.customerName,
           contactInfo:entry.contactInfo, email:entry.email, details:entry.details, category:entry.category,
@@ -1399,7 +1423,7 @@ function AuditLogsView() {
 }
 
 // ── app ────────────────────────────────────────────────────────────────────
-export default function App() {
+function AppContent() {
   const [user, setUser] = useState<any>(null);
   const [authReady, setAuthReady] = useState(false);
   const [dark, setDark] = useState(() => {
@@ -1419,6 +1443,7 @@ export default function App() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [goldRate, setGoldRate] = useState<number | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
   const isAdmin = String(user?.empRole ?? "").toLowerCase() === "admin";
 
   // Apply dark class and persist preference
@@ -1488,15 +1513,17 @@ export default function App() {
   }, [user, isAdmin, tab]);
 
   const deleteFromApi = async (resource: string, id: string, remove: () => void) => {
-    if (!window.confirm("Delete this record permanently?")) return;
-    try {
-      const response = await apiFetch(`${BASE_URL}/${resource}/${encodeURIComponent(id)}`, { method: "DELETE" });
-      const data = await response.json();
-      if (response.status === 202) { alert(data.message ?? "Sent to an Administrator for approval."); return; }
-      if (!response.ok) throw new Error(data.error ?? "Delete failed");
-      remove();
-    } catch (error) { alert(error instanceof Error ? error.message : "Delete failed"); }
+    setConfirmation({ title: "Delete record", message: "This action will archive the record and may affect linked records. Continue?", confirmLabel: "Delete", onConfirm: async () => {
+      try {
+        const response = await apiFetch(`${BASE_URL}/${resource}/${encodeURIComponent(id)}`, { method: "DELETE" });
+        const data = await response.json();
+        if (response.status === 202) { alert(data.message ?? "Sent to an Administrator for approval."); return; }
+        if (!response.ok) throw new Error(data.error ?? "Delete failed");
+        remove();
+      } catch (error) { alert(error instanceof Error ? error.message : "Delete failed"); }
+    }});
   };
+  const requestConfirmation = (request: ConfirmationRequest) => setConfirmation(request);
 
   const signOut = async () => {
     try {
@@ -1612,7 +1639,7 @@ export default function App() {
         {tab === "DASHBOARD"       && <DashboardView sales={visibleSales} jobCosts={visibleJobCosts} expenses={visibleExpenses} inquiries={visibleInquiries} rangeLabel={timelineLabel} isAdmin={isAdmin} onView={(title, record) => setViewRecord({ title, record })} />}
         {tab === "DAILY_SALES"     && <DailySalesView sales={sales.filter(isCompletedSale)} onUpdate={s => setSales(p => p.map(item => item.invoiceId === s.invoiceId ? s : item))} onDelete={id => deleteFromApi("sales", id, () => { const removed = sales.find(item => item.invoiceId === id); const linkedJob = jobCosts.find(item => item.jobCostId === removed?.jobCostId); setSales(p => p.filter(item => item.invoiceId !== id)); if (removed?.jobCostId) setJobCosts(p => p.filter(item => item.jobCostId !== removed.jobCostId)); if (linkedJob?.inquiryId) setInquiries(p => p.map(i => i.inquiryId === linkedJob.inquiryId ? { ...i, status:"Pending" } : i)); })} />}
         {tab === "JOB_COSTING"     && <JobCostingView jobCosts={jobCosts} inquiries={inquiries} selectedInquiryId={selectedInquiryForCosting} clearSelectedInquiry={() => setSelectedInquiryForCosting(null)} currentGoldRate={goldRate} onAdd={j => { setJobCosts(p => [j, ...p]); if (j.sale) setSales(p => [j.sale!, ...p.filter(s => s.invoiceId !== j.sale!.invoiceId)]); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status:"Approved" } : i)); }} onUpdate={j => { setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? j : item)); if (j.sale) setSales(p => p.map(s => s.invoiceId === j.sale!.invoiceId ? j.sale! : s)); }} onDelete={j => deleteFromApi("job-cost", j.jobCostId, () => { setJobCosts(p => p.filter(item => item.jobCostId !== j.jobCostId)); setSales(p => p.filter(s => s.invoiceId !== j.invoiceId)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status:"Pending" } : i)); })} onApprove={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/approve`, { method:"POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Costing could not be approved."); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Costing could not be approved."); } }} onReady={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/ready`, { method:"POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Item could not be marked ready."); const reason = data.notification?.sent ? (data.notification.reason ?? "Customer notification sent.") : (data.notification?.reason ?? "Customer notification could not be sent."); alert(`Marked ready for pickup. ${reason}`); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Item could not be marked ready."); } }} onFinish={async j => { try { const response = await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(j.invoiceId)}/finish`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ invoiceId:j.invoiceId, clientName:j.clientName }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Sale could not be finished."); const sale = normalizeSale(data); setSales(p => [sale, ...p.filter(item => item.invoiceId !== sale.invoiceId)]); setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? { ...item, status:"Finished", sale } : item)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status:"Finished" } : i)); const reason = data.notification?.sent ? (data.notification.reason ?? "Receipt email sent.") : (data.notification?.reason ?? "Receipt email could not be sent."); alert(`Sale completed. ${reason}`); } catch (error) { alert(error instanceof Error ? error.message : "Sale could not be finished."); } }} />}
-        {tab === "GOLD_INVENTORY"  && <GoldInventoryView inventory={inventory} onAdd={e => setInventory(p => [...p, e])} onUpdate={e => setInventory(p => p.map(item => item.id === e.id ? e : item))} onDelete={id => deleteFromApi("inventory", id, () => setInventory(p => p.filter(item => item.id !== id)))} />}
+        {tab === "GOLD_INVENTORY"  && <GoldInventoryView inventory={inventory} goldRate={goldRate} onAdd={e => setInventory(p => [...p, e])} onUpdate={e => setInventory(p => p.map(item => item.id === e.id ? e : item))} onDelete={id => deleteFromApi("inventory", id, () => setInventory(p => p.filter(item => item.id !== id)))} />}
         {tab === "INQUIRIES"       && <InquiriesView inquiries={inquiries} onAdd={i => setInquiries(p => [i, ...p])} onUpdate={i => setInquiries(p => p.map(item => item.inquiryId === i.inquiryId ? i : item))} onDelete={id => deleteFromApi("inquiries", id, () => setInquiries(p => p.filter(item => item.inquiryId !== id)))} onStartCosting={id => { setSelectedInquiryForCosting(id); setTab("JOB_COSTING"); }} />}
         {tab === "EXPENSES"        && <ExpensesView expenses={expenses} onAdd={e => setExpenses(p => [e, ...p])} onUpdate={e => setExpenses(p => p.map(item => item.expenseId === e.expenseId ? e : item))} onDelete={id => deleteFromApi("expenses", id, () => setExpenses(p => p.filter(item => item.expenseId !== id)))} />}
         {tab === "PROFIT_ANALYSIS" && <ProfitAnalysisView sales={sales.filter(isCompletedSale)} jobCosts={jobCosts} expenses={expenses} selectedYear={selectedYear} setSelectedYear={setSelectedYear} startMonth={startMonth} setStartMonth={setStartMonth} endMonth={endMonth} setEndMonth={setEndMonth} />}
@@ -1620,8 +1647,16 @@ export default function App() {
         {tab === "AUDIT_LOGS" && isAdmin && <AuditLogsView />}
       </main>
       <RecordDetails title={viewRecord?.title ?? "Record details"} record={viewRecord?.record ?? null} onClose={() => setViewRecord(null)} />
+      {confirmation && <ConfirmationDialog request={confirmation} onClose={() => setConfirmation(null)} />}
     </div>
   );
+}
+
+export default function App() {
+  return <ConfirmationContext.Provider value={request => {
+    // The provider is kept available to nested action components; AppContent owns the visible dialog.
+    void request;
+  }}><AppContent /></ConfirmationContext.Provider>;
 }
 
 function LoginScreen({ onLogin }: { onLogin: (user: any) => void }) {
