@@ -44,14 +44,15 @@ const normalizeSale = (row: any): Sale => ({
   serviceType: row.serviceType ?? "Custom",
   price: numeric(row.price),
   downpayment: numeric(row.downpayment),
-  balance: numeric(row.balance ?? numeric(row.price) - numeric(row.downpayment)),
+  balance: numeric(row.balance ?? row.client?.balance ?? (numeric(row.price) - numeric(row.downpayment))),
   status: row.status ?? "Ongoing",
 });
 const normalizeJobCost = (row: any): JobCost => {
   const sellingPrice = numeric(row.sellingPrice ?? row.sale?.price);
-  const goldCost = numeric(row.goldCost ?? numeric(row.goldUsed) * GOLD_PRICE);
+  const goldCostPerG = numeric(row.goldCostPerG ?? GOLD_PRICE);
+  const goldCost = numeric(row.goldCost ?? numeric(row.goldUsed) * goldCostPerG);
   const totalCost = numeric(row.totalCost ?? goldCost + numeric(row.laborCost) + numeric(row.stoneCost));
-  return { jobCostId: String(row.jobCostId ?? ""), invoiceId: String(row.invoiceId ?? ""), clientName: String(row.clientName ?? row.sale?.client?.clientName ?? ""), empId: row.empId, goldUsed: numeric(row.goldUsed), goldCostPerG: numeric(row.goldCostPerG ?? GOLD_PRICE), goldCost, stoneCost: numeric(row.stoneCost), laborCost: numeric(row.laborCost), totalCost, sellingPrice, profit: numeric(row.profit ?? sellingPrice - totalCost), marginPct: numeric(row.marginPct ?? (sellingPrice ? ((sellingPrice - totalCost) / sellingPrice) * 100 : 0)) };
+  return { jobCostId: String(row.jobCostId ?? ""), invoiceId: String(row.invoiceId ?? ""), clientName: String(row.clientName ?? row.sale?.client?.clientName ?? ""), empId: row.empId, goldUsed: numeric(row.goldUsed), goldCostPerG, goldCost, stoneCost: numeric(row.stoneCost), laborCost: numeric(row.laborCost), totalCost, sellingPrice, profit: numeric(row.profit ?? sellingPrice - totalCost), marginPct: numeric(row.marginPct ?? (sellingPrice ? ((sellingPrice - totalCost) / sellingPrice) * 100 : 0)) };
 };
 const normalizeInventory = (row: any): InvEntry => ({ id: row.referenceId, date: apiDate(row.updatedAt ?? row.date), referenceId: row.referenceId, itemName: row.itemName ?? row.referenceId, goldIn: numeric(row.goldIn), goldOut: numeric(row.goldOut), scrap: numeric(row.scraps ?? row.scrap), balance: numeric(row.balance ?? row.totalGold), unit: row.unit ?? "grams" });
 const normalizeInquiry = (row: any): Inquiry => ({ inquiryId: String(row.inquiryId ?? ""), date: apiDate(row.inqDate ?? row.date), customerName: String(row.customerName ?? ""), contactInfo: String(row.contactInfo ?? ""), details: String(row.details ?? ""), category: String(row.category ?? ""), quotedPrice: numeric(row.quotedPrice), status: row.status ?? "Pending" });
@@ -475,11 +476,14 @@ function DailySalesView({ sales, onAdd, onUpdate, onDelete }: { sales: Sale[]; o
       clientName:form.clientName, contactNum:form.contactNum, serviceType:form.serviceType,
       price, downpayment:dp, balance:price-dp, status:form.status };
     try {
-      await fetch(`${BASE_URL}/sales`, { method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({ invoiceId:entry.invoiceId, serviceType:entry.serviceType, price:entry.price,
+      const response = await fetch(`${BASE_URL}/sales${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ invoiceId:entry.invoiceId, date:entry.date, serviceType:entry.serviceType, price:entry.price,
           status:entry.status, downpayment:entry.downpayment, clientName:entry.clientName,
           contactNum:entry.contactNum, balance:entry.balance }) });
-    } catch (_) {}
+      if (!response.ok) throw new Error((await response.json()).error ?? "Sale could not be saved");
+      const saved = await response.json();
+      Object.assign(entry, normalizeSale(saved));
+    } catch (error) { alert(error instanceof Error ? error.message : "Sale could not be saved"); setIsSubmitting(false); submittingRef.current = false; return; }
     if (editingId) {
       onUpdate(entry);
     } else {
@@ -589,10 +593,12 @@ function JobCostingView({ jobCosts, onAdd, onUpdate, onDelete }: { jobCosts: Job
       goldCost, stoneCost, laborCost, totalCost, sellingPrice, profit, marginPct,
     };
     try {
-      await fetch(`${BASE_URL}/job-cost`, { method:"POST", headers:{"Content-Type":"application/json"},
+      const response = await fetch(`${BASE_URL}/job-cost${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"},
         body:JSON.stringify({ jobCostId:entry.jobCostId, goldUsed:entry.goldUsed,
-          laborCost:entry.laborCost, invoiceId:entry.invoiceId, empId:entry.empId }) });
-    } catch (_) {}
+          goldCostPerG:entry.goldCostPerG, stoneCost:entry.stoneCost, laborCost:entry.laborCost, sellingPrice:entry.sellingPrice, invoiceId:entry.invoiceId, empId:entry.empId }) });
+      if (!response.ok) throw new Error((await response.json()).error ?? "Job cost could not be saved");
+      entry.jobCostId = (await response.json()).jobCostId;
+    } catch (error) { alert(error instanceof Error ? error.message : "Job cost could not be saved"); setIsSubmitting(false); submittingRef.current = false; return; }
     if (editingId) {
       onUpdate(entry);
     } else {
@@ -694,10 +700,12 @@ function GoldInventoryView({ inventory, onAdd, onUpdate, onDelete }: { inventory
     const entry: InvEntry = { id: editingId ?? String(Date.now()), date:form.date, referenceId:form.referenceId,
       itemName:form.itemName, goldIn, goldOut, scrap, balance, unit:form.unit };
     try {
-      await fetch(`${BASE_URL}/inventory`, { method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({ referenceId:entry.referenceId, goldIn:entry.goldIn,
+      const response = await fetch(`${BASE_URL}/inventory${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ referenceId:entry.referenceId, date:entry.date, itemName:entry.itemName, goldIn:entry.goldIn,
           goldOut:entry.goldOut, scraps:entry.scrap, totalGold:entry.balance, unit:entry.unit }) });
-    } catch (_) {}
+      if (!response.ok) throw new Error((await response.json()).error ?? "Inventory entry could not be saved");
+      const saved = await response.json(); entry.id = saved.referenceId; entry.referenceId = saved.referenceId; entry.date = apiDate(saved.updatedAt ?? saved.date);
+    } catch (error) { alert(error instanceof Error ? error.message : "Inventory entry could not be saved"); setIsSubmitting(false); submittingRef.current = false; return; }
     if (editingId) {
       onUpdate(entry);
     } else {
@@ -793,11 +801,13 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete }: { inquiries: In
       contactInfo:form.contactInfo, details:form.details, category:form.category,
       quotedPrice:parseFloat(form.quotedPrice)||0, status:form.status };
     try {
-      await fetch(`${BASE_URL}/inquiries`, { method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({ inquiryId:entry.inquiryId, customerName:entry.customerName,
+      const response = await fetch(`${BASE_URL}/inquiries${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ inquiryId:entry.inquiryId, date:entry.date, customerName:entry.customerName,
           contactInfo:entry.contactInfo, details:entry.details, category:entry.category,
           quotedPrice:entry.quotedPrice, status:entry.status }) });
-    } catch (_) {}
+      if (!response.ok) throw new Error((await response.json()).error ?? "Inquiry could not be saved");
+      entry.inquiryId = (await response.json()).inquiryId;
+    } catch (error) { alert(error instanceof Error ? error.message : "Inquiry could not be saved"); setIsSubmitting(false); submittingRef.current = false; return; }
     if (editingId) {
       onUpdate(entry);
     } else {
@@ -888,10 +898,12 @@ function ExpensesView({ expenses, onAdd, onUpdate, onDelete }: { expenses: Expen
     const entry: Expense = { expenseId: editingId ?? "EXP-"+String(Date.now()).slice(-4), expDate:form.expDate,
       category:form.category, description:form.description, amount:parseFloat(form.amount)||0 };
     try {
-      await fetch(`${BASE_URL}/expenses`, { method:"POST", headers:{"Content-Type":"application/json"},
+      const response = await fetch(`${BASE_URL}/expenses${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"},
         body:JSON.stringify({ expenseId:entry.expenseId, category:entry.category,
           amount:entry.amount, description:entry.description, expDate:entry.expDate }) });
-    } catch (_) {}
+      if (!response.ok) throw new Error((await response.json()).error ?? "Expense could not be saved");
+      const saved = await response.json(); entry.expenseId = saved.expenseId; entry.expDate = apiDate(saved.expDate ?? saved.date);
+    } catch (error) { alert(error instanceof Error ? error.message : "Expense could not be saved"); setIsSubmitting(false); submittingRef.current = false; return; }
     if (editingId) {
       onUpdate(entry);
     } else {
@@ -1142,6 +1154,15 @@ export default function App() {
   useEffect(() => { fetch(`${BASE_URL}/inquiries`).then(r=>r.ok ? r.json() : Promise.reject(r)).then(rows=>setInquiries(asRows(rows).map(normalizeInquiry))).catch(()=>{}); }, []);
   useEffect(() => { fetch(`${BASE_URL}/expenses`).then(r=>r.ok ? r.json() : Promise.reject(r)).then(rows=>setExpenses(asRows(rows).map(normalizeExpense))).catch(()=>{}); }, []);
 
+  const deleteFromApi = async (resource: string, id: string, remove: () => void) => {
+    if (!window.confirm("Delete this record permanently?")) return;
+    try {
+      const response = await fetch(`${BASE_URL}/${resource}/${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (!response.ok) throw new Error((await response.json()).error ?? "Delete failed");
+      remove();
+    } catch (error) { alert(error instanceof Error ? error.message : "Delete failed"); }
+  };
+
   if (!user) return <LoginScreen onLogin={setUser} />;
 
   const goldStock  = inventory.length > 0 ? inventory[inventory.length - 1].balance : 0;
@@ -1224,11 +1245,11 @@ export default function App() {
       {/* Page content */}
       <main className="max-w-[1680px] mx-auto">
         {tab === "DASHBOARD"       && <DashboardView sales={sales} jobCosts={jobCosts} expenses={expenses} inquiries={inquiries} />}
-        {tab === "DAILY_SALES"     && <DailySalesView sales={sales} onAdd={s => setSales(p => [s, ...p])} onUpdate={s => setSales(p => p.map(item => item.id === s.id ? s : item))} onDelete={id => setSales(p => p.filter(item => item.id !== id))} />}
-        {tab === "JOB_COSTING"     && <JobCostingView jobCosts={jobCosts} onAdd={j => setJobCosts(p => [j, ...p])} onUpdate={j => setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? j : item))} onDelete={id => setJobCosts(p => p.filter(item => item.jobCostId !== id))} />}
-        {tab === "GOLD_INVENTORY"  && <GoldInventoryView inventory={inventory} onAdd={e => setInventory(p => [...p, e])} onUpdate={e => setInventory(p => p.map(item => item.id === e.id ? e : item))} onDelete={id => setInventory(p => p.filter(item => item.id !== id))} />}
-        {tab === "INQUIRIES"       && <InquiriesView inquiries={inquiries} onAdd={i => setInquiries(p => [i, ...p])} onUpdate={i => setInquiries(p => p.map(item => item.inquiryId === i.inquiryId ? i : item))} onDelete={id => setInquiries(p => p.filter(item => item.inquiryId !== id))} />}
-        {tab === "EXPENSES"        && <ExpensesView expenses={expenses} onAdd={e => setExpenses(p => [e, ...p])} onUpdate={e => setExpenses(p => p.map(item => item.expenseId === e.expenseId ? e : item))} onDelete={id => setExpenses(p => p.filter(item => item.expenseId !== id))} />}
+        {tab === "DAILY_SALES"     && <DailySalesView sales={sales} onAdd={s => setSales(p => [s, ...p])} onUpdate={s => setSales(p => p.map(item => item.id === s.id ? s : item))} onDelete={id => deleteFromApi("sales", id, () => setSales(p => p.filter(item => item.id !== id)))} />}
+        {tab === "JOB_COSTING"     && <JobCostingView jobCosts={jobCosts} onAdd={j => setJobCosts(p => [j, ...p])} onUpdate={j => setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? j : item))} onDelete={id => deleteFromApi("job-cost", id, () => setJobCosts(p => p.filter(item => item.jobCostId !== id)))} />}
+        {tab === "GOLD_INVENTORY"  && <GoldInventoryView inventory={inventory} onAdd={e => setInventory(p => [...p, e])} onUpdate={e => setInventory(p => p.map(item => item.id === e.id ? e : item))} onDelete={id => deleteFromApi("inventory", id, () => setInventory(p => p.filter(item => item.id !== id)))} />}
+        {tab === "INQUIRIES"       && <InquiriesView inquiries={inquiries} onAdd={i => setInquiries(p => [i, ...p])} onUpdate={i => setInquiries(p => p.map(item => item.inquiryId === i.inquiryId ? i : item))} onDelete={id => deleteFromApi("inquiries", id, () => setInquiries(p => p.filter(item => item.inquiryId !== id)))} />}
+        {tab === "EXPENSES"        && <ExpensesView expenses={expenses} onAdd={e => setExpenses(p => [e, ...p])} onUpdate={e => setExpenses(p => p.map(item => item.expenseId === e.expenseId ? e : item))} onDelete={id => deleteFromApi("expenses", id, () => setExpenses(p => p.filter(item => item.expenseId !== id)))} />}
         {tab === "PROFIT_ANALYSIS" && <ProfitAnalysisView sales={sales} jobCosts={jobCosts} expenses={expenses} />}
       </main>
     </div>
