@@ -2,7 +2,7 @@
 
 /* ── Light mode (default) ─────────────────────────────────────────────────── */
 :root {
-  --font-size: 16px;
+  --font-size: 15px;
   --background: #ffffff;
   --foreground: #111318;
   --card: #ffffff;
@@ -147,6 +147,6 @@
 }
 
 /* Keep the dense ledger readable while preserving the compact dashboard layout. */
-.text-\[10px\] { font-size: 0.75rem; }
-.text-\[11px\] { font-size: 0.8125rem; }
-.dashboard-recent-title { font-size: 0.6875rem; line-height: 1.25; }
+.text-\[10px\] { font-size: 0.6875rem; }
+.text-\[11px\] { font-size: 0.75rem; }
+.dashboard-recent-title { font-size: 0.65rem; line-height: 1.25; }

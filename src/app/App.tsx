@@ -39,9 +39,19 @@ const todayISO = () => {
 
 const numeric = (value: unknown) => Number(value ?? 0);
 const apiDate = (value: unknown) => value ? String(value).slice(0, 10) : new Date().toISOString().slice(0, 10);
+const statusLabel = (value: unknown): string => {
+  const labels: Record<string, string> = {
+    PENDING: "Pending", APPROVED: "Approved", REJECTED: "Rejected", FINISHED: "Finished",
+    IN_PROGRESS: "In Progress", CANCELLED: "Cancelled", PARTIAL: "Partial", PAID: "Paid",
+  };
+  const status = String(value ?? "Pending");
+  return labels[status] ?? status;
+};
+const isCompletedSale = (sale: Sale) => ["Finished", "Paid", "Released"].includes(sale.status);
 const normalizeSale = (row: any): Sale => ({
   id: row.invoiceId,
   invoiceId: row.invoiceId,
+  jobCostId: row.jobCostId ?? row.job?.jobCostId,
   date: apiDate(row.salesDate ?? row.date),
   clientId: row.clientId ?? row.client?.clientId,
   clientName: row.clientName ?? row.client?.clientName ?? "",
@@ -49,33 +59,35 @@ const normalizeSale = (row: any): Sale => ({
   serviceType: row.serviceType ?? "Custom",
   price: numeric(row.price),
   downpayment: numeric(row.downpayment),
-  balance: numeric(row.balance ?? row.client?.balance ?? (numeric(row.price) - numeric(row.downpayment))),
-  status: row.status ?? "Ongoing",
+  balance: numeric(row.balance ?? (numeric(row.price) - numeric(row.downpayment))),
+  status: statusLabel(row.status) as SaleStatus,
 });
 const normalizeJobCost = (row: any): JobCost => {
-  const sellingPrice = numeric(row.sellingPrice ?? row.sale?.price);
+  const sellingPrice = numeric(row.sellingPrice ?? row.sales?.price ?? row.sale?.price);
   const goldCostPerG = numeric(row.goldCostPerG ?? GOLD_PRICE);
   const goldCost = numeric(row.goldCost ?? numeric(row.goldUsed) * goldCostPerG);
   const totalCost = numeric(row.totalCost ?? goldCost + numeric(row.laborCost) + numeric(row.stoneCost));
-  return { jobCostId: String(row.jobCostId ?? ""), invoiceId: String(row.invoiceId ?? ""), clientName: String(row.clientName ?? row.sale?.client?.clientName ?? ""), empId: row.empId, goldUsed: numeric(row.goldUsed), goldCostPerG, goldCost, stoneCost: numeric(row.stoneCost), laborCost: numeric(row.laborCost), totalCost, sellingPrice, profit: numeric(row.profit ?? sellingPrice - totalCost), marginPct: numeric(row.marginPct ?? (sellingPrice ? ((sellingPrice - totalCost) / sellingPrice) * 100 : 0)) };
+  const sale = row.sales ?? row.sale;
+  return { jobCostId: String(row.jobCostId ?? ""), invoiceId: String(row.invoiceId ?? sale?.invoiceId ?? ""), clientName: String(row.clientName ?? sale?.client?.clientName ?? row.inquiry?.customerName ?? ""), empId: row.empId, inquiryId: row.inquiryId ?? row.inquiry?.inquiryId, status: statusLabel(row.status), sale: sale ? normalizeSale(sale) : undefined, goldUsed: numeric(row.goldUsed), goldCostPerG, goldCost, stoneCost: numeric(row.stoneCost), laborCost: numeric(row.laborCost), totalCost, sellingPrice, profit: numeric(row.profit ?? sellingPrice - totalCost), marginPct: numeric(row.marginPct ?? (sellingPrice ? ((sellingPrice - totalCost) / sellingPrice) * 100 : 0)) };
 };
 const normalizeInventory = (row: any): InvEntry => ({ id: row.referenceId, date: apiDate(row.updatedAt ?? row.date), referenceId: row.referenceId, itemName: row.itemName ?? row.referenceId, goldIn: numeric(row.goldIn), goldOut: numeric(row.goldOut), scrap: numeric(row.scraps ?? row.scrap), balance: numeric(row.balance ?? row.totalGold), unit: row.unit ?? "grams" });
-const normalizeInquiry = (row: any): Inquiry => ({ inquiryId: String(row.inquiryId ?? ""), date: apiDate(row.inqDate ?? row.date), customerName: String(row.customerName ?? ""), contactInfo: String(row.contactInfo ?? ""), details: String(row.details ?? ""), category: String(row.category ?? ""), quotedPrice: numeric(row.quotedPrice), status: row.status ?? "Pending" });
+const normalizeInquiry = (row: any): Inquiry => ({ inquiryId: String(row.inquiryId ?? ""), date: apiDate(row.inqDate ?? row.date), customerName: String(row.customerName ?? ""), contactInfo: String(row.contactInfo ?? ""), details: String(row.details ?? ""), category: String(row.category ?? ""), quotedPrice: numeric(row.quotedPrice), status: statusLabel(row.status) as InqStatus });
 const normalizeExpense = (row: any): Expense => ({ expenseId: String(row.expenseId ?? ""), expDate: apiDate(row.expDate ?? row.date), category: String(row.category ?? ""), description: String(row.description ?? ""), amount: numeric(row.amount) });
 const asRows = (value: unknown): any[] => Array.isArray(value) ? value : [];
 
 // ── types ──────────────────────────────────────────────────────────────────
 type ServiceType = "Custom" | "Repair" | "Resize" | "Cleaning";
-type SaleStatus = "Ongoing" | "Paid" | "Released";
-type InqStatus = "Yes" | "No" | "Pending";
+type SaleStatus = "Ongoing" | "Paid" | "Released" | "Pending" | "Finished" | "Partial" | "Cancelled";
+type InqStatus = "Yes" | "No" | "Pending" | "Approved" | "Rejected" | "Finished";
 
 interface Sale {
-  id: string; invoiceId: string; date: string; clientId?: string;
+  id: string; invoiceId: string; date: string; clientId?: string; jobCostId?: string;
   clientName: string; contactNum: string; serviceType: ServiceType;
   price: number; downpayment: number; balance: number; status: SaleStatus;
 }
 interface JobCost {
   jobCostId: string; invoiceId: string; clientName: string; empId?: string;
+  inquiryId?: string; status: string; sale?: Sale;
   goldUsed: number; goldCostPerG: number; goldCost: number;
   stoneCost: number; laborCost: number; totalCost: number;
   sellingPrice: number; profit: number; marginPct: number;
@@ -106,9 +118,15 @@ function StatusBadge({ status }: { status: string }) {
     Ongoing: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30",
     Paid:    "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30",
     Released:"bg-sky-500/15 text-sky-700 dark:text-sky-400 border-sky-500/30",
+    Finished:"bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30",
+    Approved:"bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30",
     Yes:     "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30",
     No:      "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30",
+    Rejected: "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30",
     Pending: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30",
+    "In Progress": "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30",
+    Partial: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30",
+    Cancelled: "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30",
   };
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-medium uppercase tracking-widest border ${map[status] ?? "bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/30"}`}>
@@ -289,7 +307,7 @@ function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onVie
   const cashCollected = useMemo(() => sales.reduce((a, s) => a + s.downpayment, 0), [sales]);
   const receivables   = totalSales - cashCollected;
 
-  const totalRevenue  = useMemo(() => jobCosts.reduce((a, j) => a + j.sellingPrice, 0), [jobCosts]);
+  const totalRevenue  = useMemo(() => sales.reduce((a, s) => a + s.price, 0), [sales]);
   const totalJobCost  = useMemo(() => jobCosts.reduce((a, j) => a + j.totalCost, 0), [jobCosts]);
   const grossProfit   = totalRevenue - totalJobCost;
   const avgMargin     = useMemo(() =>
@@ -303,7 +321,7 @@ function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onVie
   const netProfit   = grossProfit - totalExpenses;
   const netMargin   = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
   const totalInq    = inquiries.length;
-  const closedInq   = inquiries.filter(i => i.status === "Yes").length;
+  const closedInq   = inquiries.filter(i => ["Approved", "Finished", "Yes"].includes(i.status)).length;
   const convRate    = totalInq > 0 ? (closedInq / totalInq) * 100 : 0;
 
   const recentSales = sortRecords(useMemo(() => [...sales], [sales]), salesSort).slice(0, 7);
@@ -434,7 +452,30 @@ function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onVie
         </div>
       </div>
 
-      {/* Recent tables */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+        <section>
+          <h2 className="mb-3 text-xs font-mono uppercase tracking-widest text-muted-foreground">Daily Sales Log · Recent Entries</h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {recentSales.map(s => <button key={s.id} type="button" onClick={() => onView("Sale details", s as unknown as Record<string, unknown>)} className="rounded-xl border border-border bg-card p-4 text-left hover:bg-muted/40">
+              <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold">{s.clientName}</p><p className="truncate text-xs text-primary">{s.invoiceId}</p></div><StatusBadge status={s.status}/></div>
+              <div className="mt-3 flex justify-between gap-3"><div><p className="text-[10px] uppercase tracking-wide text-muted-foreground">{s.serviceType} · {fmtDate(s.date)}</p><p className="mt-1 text-sm font-semibold tabular-nums">{php(s.price)}</p></div><span className="self-end text-[10px] text-muted-foreground">View</span></div>
+            </button>)}
+            {!recentSales.length && <div className="rounded-xl border border-border bg-card p-6 text-center text-xs text-muted-foreground">No sales in this timeline</div>}
+          </div>
+        </section>
+        <section>
+          <h2 className="mb-3 text-xs font-mono uppercase tracking-widest text-muted-foreground">Job Costing · Recent Entries</h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {recentJC.map(j => <button key={j.jobCostId} type="button" onClick={() => onView("Job cost details", j as unknown as Record<string, unknown>)} className="rounded-xl border border-border bg-card p-4 text-left hover:bg-muted/40">
+              <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold">{j.clientName}</p><p className="truncate text-xs text-primary">{j.invoiceId}</p></div><StatusBadge status={j.status}/></div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><span className="text-muted-foreground">Total cost</span><span className="text-right tabular-nums">{php(j.totalCost)}</span><span className="text-muted-foreground">Profit</span><span className="text-right font-semibold tabular-nums text-emerald-700">{php(j.profit)}</span></div>
+            </button>)}
+            {!recentJC.length && <div className="rounded-xl border border-border bg-card p-6 text-center text-xs text-muted-foreground">No job costing in this timeline</div>}
+          </div>
+        </section>
+      </div>
+      <div className="hidden">
+      {/* Legacy table layout retained for existing sort wiring */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
         <div>
           <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-3">
@@ -485,11 +526,12 @@ function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onVie
         </div>
       </div>
     </div>
+    </div>
   );
 }
 
 // ── daily sales ─────────────────────────────────────────────────────────────
-function DailySalesView({ sales, onAdd, onUpdate, onDelete }: { sales: Sale[]; onAdd: (s: Sale) => void; onUpdate: (s: Sale) => void; onDelete: (id: string) => void }) {
+function DailySalesView({ sales, onUpdate, onDelete }: { sales: Sale[]; onUpdate: (s: Sale) => void; onDelete: (id: string) => void }) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortSpec>({ key: "date", direction: -1 });
   const toggleSort = (key: string) => setSort(s => ({ key, direction: s.key === key ? (s.direction === 1 ? -1 : 1) : 1 }));
@@ -497,14 +539,13 @@ function DailySalesView({ sales, onAdd, onUpdate, onDelete }: { sales: Sale[]; o
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
-  const [form, setForm] = useState({ invoiceId:"", date:"", clientName:"", contactNum:"",
-    serviceType:"Custom" as ServiceType, price:"", downpayment:"", status:"Ongoing" as SaleStatus });
+  const [form, setForm] = useState({ invoiceId:"", date:"", clientName:"", contactNum:"", serviceType:"Custom" as ServiceType, price:"", downpayment:"" });
 
   const filtered = sortRecords(useMemo(() => sales.filter(s =>
     [s.clientName, s.invoiceId, s.serviceType, s.status].some(v => v.toLowerCase().includes(q.toLowerCase()))
   ), [sales, q]), sort);
 
-  const resetForm = () => setForm({ invoiceId:"", date:todayISO(), clientName:"", contactNum:"", serviceType:"Custom", price:"", downpayment:"", status:"Ongoing" });
+  const resetForm = () => setForm({ invoiceId:"", date:todayISO(), clientName:"", contactNum:"", serviceType:"Custom", price:"", downpayment:"" });
   const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
 
   const submit = async (e: React.FormEvent) => {
@@ -512,25 +553,15 @@ function DailySalesView({ sales, onAdd, onUpdate, onDelete }: { sales: Sale[]; o
     if (submittingRef.current) return;
     submittingRef.current = true;
     setIsSubmitting(true);
-    const price = parseFloat(form.price) || 0;
-    const dp = parseFloat(form.downpayment) || 0;
-    const entry: Sale = { id: editingId ?? String(Date.now()), invoiceId:form.invoiceId, date:form.date,
-      clientName:form.clientName, contactNum:form.contactNum, serviceType:form.serviceType,
-      price, downpayment:dp, balance:price-dp, status:form.status };
     try {
-      const response = await fetch(`${BASE_URL}/sales${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({ invoiceId:entry.invoiceId, date:entry.date, serviceType:entry.serviceType, price:entry.price,
-          status:entry.status, downpayment:entry.downpayment, clientName:entry.clientName,
-          contactNum:entry.contactNum, balance:entry.balance }) });
+      if (!editingId) throw new Error("Finish an approved job costing to create a Daily Sales entry.");
+      const response = await fetch(`${BASE_URL}/sales/${encodeURIComponent(editingId)}`, { method:"PUT", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ invoiceId:form.invoiceId, date:form.date, serviceType:form.serviceType, price:Number(form.price),
+          downpayment:Number(form.downpayment), clientName:form.clientName, contactNum:form.contactNum }) });
       if (!response.ok) throw new Error((await response.json()).error ?? "Sale could not be saved");
       const saved = await response.json();
-      Object.assign(entry, normalizeSale(saved));
+      onUpdate(normalizeSale(saved));
     } catch (error) { alert(error instanceof Error ? error.message : "Sale could not be saved"); setIsSubmitting(false); submittingRef.current = false; return; }
-    if (editingId) {
-      onUpdate(entry);
-    } else {
-      onAdd(entry);
-    }
     closeModal();
     setIsSubmitting(false);
     submittingRef.current = false;
@@ -540,7 +571,7 @@ function DailySalesView({ sales, onAdd, onUpdate, onDelete }: { sales: Sale[]; o
     <div className="p-5 space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <SearchBar value={q} onChange={setQ} placeholder="Search client, invoice, type…" />
-        <AddBtn onClick={() => { resetForm(); setEditingId(null); setOpen(true); }} label="Add New Sale" />
+        <p className="text-xs text-muted-foreground">Sales appear here after an approved job costing is finished.</p>
       </div>
       <TableWrap>
         <thead><tr>
@@ -548,7 +579,7 @@ function DailySalesView({ sales, onAdd, onUpdate, onDelete }: { sales: Sale[]; o
         </tr></thead>
         <tbody>
           {filtered.map(s => (
-            <TRow key={s.id} onClick={() => { setEditingId(s.id); setForm({ invoiceId:s.invoiceId, date:s.date, clientName:s.clientName, contactNum:s.contactNum, serviceType:s.serviceType, price:String(s.price), downpayment:String(s.downpayment), status:s.status }); setOpen(true); }}>
+            <TRow key={s.id} onClick={() => { setEditingId(s.invoiceId); setForm({ invoiceId:s.invoiceId, date:s.date, clientName:s.clientName, contactNum:s.contactNum, serviceType:s.serviceType, price:String(s.price), downpayment:String(s.downpayment) }); setOpen(true); }}>
               <td className={tdc}>{fmtDate(s.date)}</td>
               <td className={tdc + " text-primary/80 dark:text-amber-400/80"}>{s.invoiceId}</td>
               <td className={tdc + " font-sans font-medium"}>{s.clientName}</td>
@@ -560,7 +591,7 @@ function DailySalesView({ sales, onAdd, onUpdate, onDelete }: { sales: Sale[]; o
               <td className={tdc}><StatusBadge status={s.status} /></td>
               <td className={tdc}>
                 <div className="flex items-center gap-2">
-                  <button type="button" onClick={() => { setEditingId(s.id); setForm({ invoiceId:s.invoiceId, date:s.date, clientName:s.clientName, contactNum:s.contactNum, serviceType:s.serviceType, price:String(s.price), downpayment:String(s.downpayment), status:s.status }); setOpen(true); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit">
+                  <button type="button" onClick={() => { setEditingId(s.invoiceId); setForm({ invoiceId:s.invoiceId, date:s.date, clientName:s.clientName, contactNum:s.contactNum, serviceType:s.serviceType, price:String(s.price), downpayment:String(s.downpayment) }); setOpen(true); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit">
                     <PenSquare size={13} />
                   </button>
                   <button type="button" onClick={() => onDelete(s.id)} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Delete">
@@ -574,20 +605,15 @@ function DailySalesView({ sales, onAdd, onUpdate, onDelete }: { sales: Sale[]; o
         </tbody>
       </TableWrap>
       {open && (
-        <Modal title={editingId ? "Edit Sale Entry" : "Add New Sale Entry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update Entry" : "Save Entry"} isSubmitting={isSubmitting}>
+        <Modal title="Edit Finished Sale" onClose={closeModal} onSubmit={submit} submitLabel="Update Sale" isSubmitting={isSubmitting}>
           <div className="grid grid-cols-2 gap-4">
-            <FF label="Invoice #"><input className={ic} value={form.invoiceId} onChange={e=>setForm(f=>({...f,invoiceId:e.target.value}))} placeholder="INV-2026-xxx" required disabled={Boolean(editingId)} /></FF>
+            <FF label="Invoice #"><input className={ic} value={form.invoiceId} readOnly /></FF>
             <FF label="Date"><input type="date" max={todayISO()} className={ic} value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} required /></FF>
-            <FF label="Client Name"><input className={ic} value={form.clientName} onChange={e=>setForm(f=>({...f,clientName:e.target.value}))} placeholder="Full name" maxLength={120} required /></FF>
+            <FF label="Client Name"><input className={ic} value={form.clientName} readOnly /></FF>
             <FF label="Contact #"><input className={ic} value={form.contactNum} onChange={e=>setForm(f=>({...f,contactNum:e.target.value}))} placeholder="09XX-XXX-XXXX" maxLength={30} required /></FF>
             <FF label="Service Type">
               <select className={ic} value={form.serviceType} onChange={e=>setForm(f=>({...f,serviceType:e.target.value as ServiceType}))}>
                 {(["Custom","Repair","Resize","Cleaning"] as ServiceType[]).map(t=><option key={t}>{t}</option>)}
-              </select>
-            </FF>
-            <FF label="Status">
-              <select className={ic} value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value as SaleStatus}))}>
-                {(["Ongoing","Paid","Released"] as SaleStatus[]).map(t=><option key={t}>{t}</option>)}
               </select>
             </FF>
             <FF label="Total Price (₱)"><input type="number" min="0.01" step="0.01" className={ic} value={form.price} onChange={e=>setForm(f=>({...f,price:e.target.value}))} placeholder="0.00" required /></FF>
@@ -600,7 +626,10 @@ function DailySalesView({ sales, onAdd, onUpdate, onDelete }: { sales: Sale[]; o
 }
 
 // ── job costing ─────────────────────────────────────────────────────────────
-function JobCostingView({ jobCosts, onAdd, onUpdate, onDelete }: { jobCosts: JobCost[]; onAdd: (j: JobCost) => void; onUpdate: (j: JobCost) => void; onDelete: (id: string) => void }) {
+function JobCostingView({ jobCosts, inquiries, selectedInquiryId, clearSelectedInquiry, onAdd, onUpdate, onDelete, onFinish }: {
+  jobCosts: JobCost[]; inquiries: Inquiry[]; selectedInquiryId: string | null; clearSelectedInquiry: () => void;
+  onAdd: (j: JobCost) => void; onUpdate: (j: JobCost) => void; onDelete: (j: JobCost) => void; onFinish: (j: JobCost) => void;
+}) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortSpec>({ key: "invoiceId", direction: -1 });
   const toggleSort = (key: string) => setSort(s => ({ key, direction: s.key === key ? (s.direction === 1 ? -1 : 1) : 1 }));
@@ -608,13 +637,31 @@ function JobCostingView({ jobCosts, onAdd, onUpdate, onDelete }: { jobCosts: Job
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
-  const [form, setForm] = useState({ invoiceId:"", clientName:"", empId:"", goldUsed:"", goldCostPerG:String(GOLD_PRICE), stoneCost:"", laborCost:"", sellingPrice:"" });
+  const pendingInquiries = inquiries.filter(i => i.status === "Pending");
+  const blankForm = () => ({ inquiryId:"", invoiceId:"", clientName:"", contactNum:"", empId:"", serviceType:"Custom" as ServiceType, goldUsed:"", goldCostPerG:String(GOLD_PRICE), stoneCost:"", laborCost:"", sellingPrice:"" });
+  const [form, setForm] = useState(blankForm);
+  const selectInquiry = (inquiryId: string) => {
+    const inquiry = pendingInquiries.find(item => item.inquiryId === inquiryId);
+    setForm(f => ({ ...f, inquiryId, clientName:inquiry?.customerName ?? "", contactNum:inquiry?.contactInfo ?? "", sellingPrice:inquiry ? String(inquiry.quotedPrice) : "" }));
+  };
+  useEffect(() => {
+    if (!selectedInquiryId) return;
+    const inquiry = pendingInquiries.find(item => item.inquiryId === selectedInquiryId);
+    setEditingId(null);
+    setForm({ ...blankForm(), inquiryId:selectedInquiryId, clientName:inquiry?.customerName ?? "", contactNum:inquiry?.contactInfo ?? "", sellingPrice:inquiry ? String(inquiry.quotedPrice) : "" });
+    setOpen(true);
+    clearSelectedInquiry();
+  }, [selectedInquiryId]);
 
   const filtered = sortRecords(useMemo(() => jobCosts.filter(j =>
     [j.invoiceId, j.clientName, j.jobCostId].some(v => v.toLowerCase().includes(q.toLowerCase()))
   ), [jobCosts, q]), sort);
-
-  const resetForm = () => setForm({ invoiceId:"", clientName:"", empId:"", goldUsed:"", goldCostPerG:String(GOLD_PRICE), stoneCost:"", laborCost:"", sellingPrice:"" });
+  const resetForm = () => setForm(blankForm());
+  const editJob = (j: JobCost) => {
+    setEditingId(j.jobCostId);
+    setForm({ inquiryId:j.inquiryId ?? "", invoiceId:j.invoiceId, clientName:j.clientName, contactNum:j.sale?.contactNum ?? "", empId:j.empId ?? "", serviceType:j.sale?.serviceType ?? "Custom", goldUsed:String(j.goldUsed), goldCostPerG:String(j.goldCostPerG), stoneCost:String(j.stoneCost), laborCost:String(j.laborCost), sellingPrice:String(j.sellingPrice) });
+    setOpen(true);
+  };
   const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
 
   const submit = async (e: React.FormEvent) => {
@@ -622,96 +669,110 @@ function JobCostingView({ jobCosts, onAdd, onUpdate, onDelete }: { jobCosts: Job
     if (submittingRef.current) return;
     submittingRef.current = true;
     setIsSubmitting(true);
-    const goldUsed = parseFloat(form.goldUsed) || 0;
-    const goldCostPerG = parseFloat(form.goldCostPerG) || 0;
-    const goldCost = goldUsed * goldCostPerG;
-    const stoneCost = parseFloat(form.stoneCost) || 0;
-    const laborCost = parseFloat(form.laborCost) || 0;
-    const totalCost = goldCost + stoneCost + laborCost;
-    const sellingPrice = parseFloat(form.sellingPrice) || 0;
-    const profit = sellingPrice - totalCost;
-    const marginPct = sellingPrice > 0 ? (profit / sellingPrice) * 100 : 0;
-    const entry: JobCost = {
-      jobCostId: editingId ?? "JC-"+String(Date.now()).slice(-4), invoiceId:form.invoiceId,
-      clientName:form.clientName, empId:form.empId, goldUsed, goldCostPerG,
-      goldCost, stoneCost, laborCost, totalCost, sellingPrice, profit, marginPct,
-    };
-    try {
-      const response = await fetch(`${BASE_URL}/job-cost${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({ jobCostId:entry.jobCostId, goldUsed:entry.goldUsed,
-          goldCostPerG:entry.goldCostPerG, stoneCost:entry.stoneCost, laborCost:entry.laborCost, sellingPrice:entry.sellingPrice, invoiceId:entry.invoiceId, empId:entry.empId }) });
-      if (!response.ok) throw new Error((await response.json()).error ?? "Job cost could not be saved");
-      entry.jobCostId = (await response.json()).jobCostId;
-    } catch (error) { alert(error instanceof Error ? error.message : "Job cost could not be saved"); setIsSubmitting(false); submittingRef.current = false; return; }
-    if (editingId) {
-      onUpdate(entry);
-    } else {
-      onAdd(entry);
+    const goldUsed = Number(form.goldUsed);
+    const goldCostPerG = Number(form.goldCostPerG);
+    const stoneCost = Number(form.stoneCost || 0);
+    const laborCost = Number(form.laborCost);
+    const sellingPrice = Number(form.sellingPrice);
+    if (![goldUsed, stoneCost, laborCost].every(Number.isFinite) || goldUsed < 0 || stoneCost < 0 || laborCost < 0 || !Number.isFinite(goldCostPerG) || goldCostPerG <= 0 || !Number.isFinite(sellingPrice) || sellingPrice <= 0) {
+      alert("Enter valid costs and a selling price greater than zero.");
+      setIsSubmitting(false); submittingRef.current = false; return;
     }
-    closeModal();
-    setIsSubmitting(false);
-    submittingRef.current = false;
+    try {
+      const payload = editingId
+        ? { invoiceId:form.invoiceId, clientName:form.clientName, empId:form.empId || undefined, goldUsed, goldCostPerG, stoneCost, laborCost, sellingPrice }
+        : { inquiryId:form.inquiryId, clientName:form.clientName, contactNum:form.contactNum, empId:form.empId || undefined, serviceType:form.serviceType, goldUsed, goldCostPerG, stoneCost, laborCost, sellingPrice };
+      if (!editingId && !form.inquiryId) throw new Error("Choose a pending inquiry before creating job costing.");
+      const response = await fetch(`${BASE_URL}/job-cost${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
+      if (!response.ok) throw new Error((await response.json()).error ?? "Job costing could not be saved.");
+      const saved = normalizeJobCost(await response.json());
+      if (editingId) onUpdate(saved); else onAdd(saved);
+      closeModal();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Job costing could not be saved.");
+    } finally {
+      setIsSubmitting(false); submittingRef.current = false;
+    }
   };
+
+  const finishJob = (job: JobCost) => {
+    if (!job.invoiceId || !window.confirm(`Finish ${job.clientName} · invoice ${job.invoiceId}?`)) return;
+    onFinish(job);
+  };
+  const fields = (job: JobCost) => [
+    ["Job Cost ID", job.jobCostId], ["Invoice #", job.invoiceId], ["Client", job.clientName],
+    ["Gold Used", `${job.goldUsed.toFixed(2)} g`], ["Gold Cost / g", php(job.goldCostPerG)],
+    ["Gold Cost", php(job.goldCost)], ["Stone Cost", php(job.stoneCost)], ["Labor Cost", php(job.laborCost)],
+    ["Total Cost", php(job.totalCost)], ["Selling Price", php(job.sellingPrice)], ["Profit", php(job.profit)],
+    ["Margin", pct(job.marginPct)], ["Status", job.status],
+  ];
 
   return (
     <div className="p-5 space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <SearchBar value={q} onChange={setQ} placeholder="Search invoice, client…" />
-        <AddBtn onClick={() => { resetForm(); setEditingId(null); setOpen(true); }} label="Add Job Cost" />
+        <SearchBar value={q} onChange={setQ} placeholder="Search invoice, client, or job ID…" />
+        <AddBtn onClick={() => { resetForm(); setEditingId(null); setOpen(true); }} label="Cost a Pending Inquiry" />
       </div>
-      <TableWrap>
-        <thead><tr>
-          {[["Job Cost ID","jobCostId"],["Invoice #","invoiceId"],["Client","clientName"],["Gold (g)","goldUsed"],["Gold Cost/g","goldCostPerG"],["Gold Cost","goldCost"],["Stone Cost","stoneCost"],["Labor Cost","laborCost"],["Total Cost","totalCost"],["Selling Price","sellingPrice"],["Profit","profit"],["Margin %","marginPct"]].map(([h,k])=><SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}<th className={thc}>Actions</th>
-        </tr></thead>
-        <tbody>
-          {filtered.map(j => (
-            <TRow key={j.jobCostId} onClick={() => { setEditingId(j.jobCostId); setForm({ invoiceId:j.invoiceId, clientName:j.clientName, empId:j.empId ?? "", goldUsed:String(j.goldUsed), goldCostPerG:String(j.goldCostPerG), stoneCost:String(j.stoneCost), laborCost:String(j.laborCost), sellingPrice:String(j.sellingPrice) }); setOpen(true); }}>
-              <td className={tdc + " text-muted-foreground"}>{j.jobCostId}</td>
-              <td className={tdc + " text-primary/80 dark:text-amber-400/80"}>{j.invoiceId}</td>
-              <td className={tdc + " font-sans font-medium"}>{j.clientName}</td>
-              <td className={tdr}>{j.goldUsed.toFixed(2)}</td>
-              <td className={tdr}>{php(j.goldCostPerG)}</td>
-              <td className={tdr}>{php(j.goldCost)}</td>
-              <td className={tdr}>{php(j.stoneCost)}</td>
-              <td className={tdr}>{php(j.laborCost)}</td>
-              <td className={tdr + " text-red-700 dark:text-red-400"}>{php(j.totalCost)}</td>
-              <td className={tdr + " text-amber-700 dark:text-amber-300"}>{php(j.sellingPrice)}</td>
-              <td className={tdr + " text-emerald-700 dark:text-emerald-400 font-semibold"}>{php(j.profit)}</td>
-              <td className={tdc}>
-                <span className={marginCls(j.marginPct)}>{pct(j.marginPct)}</span>
-              </td>
-              <td className={tdc}>
-                <div className="flex items-center gap-2">
-                  <button type="button" onClick={() => { setEditingId(j.jobCostId); setForm({ invoiceId:j.invoiceId, clientName:j.clientName, empId:j.empId ?? "", goldUsed:String(j.goldUsed), goldCostPerG:String(j.goldCostPerG), stoneCost:String(j.stoneCost), laborCost:String(j.laborCost), sellingPrice:String(j.sellingPrice) }); setOpen(true); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit">
-                    <PenSquare size={13} />
-                  </button>
-                  <button type="button" onClick={() => onDelete(j.jobCostId)} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Delete">
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              </td>
-            </TRow>
-          ))}
-          {!filtered.length && <EmptyRow cols={13} />}
-        </tbody>
-      </TableWrap>
-      {open && (
-        <Modal title={editingId ? "Edit Job Cost Entry" : "Add Job Cost Entry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update Entry" : "Save Entry"} isSubmitting={isSubmitting}>
-          <div className="grid grid-cols-2 gap-4">
-            <FF label="Invoice #"><input className={ic} value={form.invoiceId} onChange={e=>setForm(f=>({...f,invoiceId:e.target.value}))} placeholder="INV-2026-xxx" required disabled={Boolean(editingId)} /></FF>
-            <FF label="Client Name"><input className={ic} value={form.clientName} onChange={e=>setForm(f=>({...f,clientName:e.target.value}))} placeholder="Full name" required /></FF>
-            <FF label="Employee ID (opt.)"><input className={ic} value={form.empId} onChange={e=>setForm(f=>({...f,empId:e.target.value}))} placeholder="EMP-xxx" /></FF>
-            <FF label="Gold Used (g)"><input type="number" min="0" step="0.01" className={ic} value={form.goldUsed} onChange={e=>setForm(f=>({...f,goldUsed:e.target.value}))} placeholder="0.00" required /></FF>
-            <FF label="Gold Cost / Price per g (₱)">
-              <input type="number" min="0.01" step="0.01" className={ic} value={form.goldCostPerG} onChange={e=>setForm(f=>({...f,goldCostPerG:e.target.value}))} placeholder="0.00" required />
-            </FF>
-            <FF label="Stone Cost (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.stoneCost} onChange={e=>setForm(f=>({...f,stoneCost:e.target.value}))} placeholder="0.00" required /></FF>
-            <FF label="Labor Cost (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.laborCost} onChange={e=>setForm(f=>({...f,laborCost:e.target.value}))} placeholder="0.00" required /></FF>
-            <FF label="Selling Price (₱)"><input type="number" min="0.01" step="0.01" className={ic} value={form.sellingPrice} onChange={e=>setForm(f=>({...f,sellingPrice:e.target.value}))} placeholder="0.00" required /></FF>
+
+      <div className="hidden 2xl:block overflow-hidden rounded-xl border border-border">
+        <table className="w-full table-fixed text-[10px] font-mono">
+          <thead><tr>{[["Job Cost ID","jobCostId"],["Invoice #","invoiceId"],["Client","clientName"],["Gold g","goldUsed"],["Gold / g","goldCostPerG"],["Gold Cost","goldCost"],["Stone","stoneCost"],["Labor","laborCost"],["Total Cost","totalCost"],["Selling","sellingPrice"],["Profit","profit"],["Margin","marginPct"],["Status","status"]].map(([label,key]) => <th key={key} className="border-b border-border bg-muted/60 px-1 py-2 text-left text-[9px] font-medium uppercase leading-tight tracking-wide text-muted-foreground"><button type="button" className="inline-flex items-center gap-0.5" onClick={() => toggleSort(key)}>{label}{sort.key === key ? (sort.direction === 1 ? <ChevronUp size={10}/> : <ChevronDown size={10}/>) : <ArrowUpDown size={9} className="opacity-40"/>}</button></th>)}<th className="border-b border-border bg-muted/60 px-1 py-2 text-left text-[9px] uppercase text-muted-foreground">Actions</th></tr></thead>
+          <tbody>{filtered.map(j => <TRow key={j.jobCostId} onClick={() => editJob(j)}>
+            <td className="break-all border-t border-border px-1 py-2 text-muted-foreground">{j.jobCostId}</td>
+            <td className="break-all border-t border-border px-1 py-2 text-primary/80">{j.invoiceId || "—"}</td>
+            <td className="truncate border-t border-border px-1 py-2 font-sans font-medium" title={j.clientName}>{j.clientName}</td>
+            <td className="border-t border-border px-1 py-2 text-right tabular-nums">{j.goldUsed.toFixed(2)}</td>
+            <td className="border-t border-border px-1 py-2 text-right tabular-nums">{php(j.goldCostPerG)}</td>
+            <td className="border-t border-border px-1 py-2 text-right tabular-nums">{php(j.goldCost)}</td>
+            <td className="border-t border-border px-1 py-2 text-right tabular-nums">{php(j.stoneCost)}</td>
+            <td className="border-t border-border px-1 py-2 text-right tabular-nums">{php(j.laborCost)}</td>
+            <td className="border-t border-border px-1 py-2 text-right tabular-nums text-red-700">{php(j.totalCost)}</td>
+            <td className="border-t border-border px-1 py-2 text-right tabular-nums text-amber-700">{php(j.sellingPrice)}</td>
+            <td className="border-t border-border px-1 py-2 text-right tabular-nums text-emerald-700">{php(j.profit)}</td>
+            <td className="border-t border-border px-1 py-2 text-center"><span className={marginCls(j.marginPct)}>{pct(j.marginPct)}</span></td>
+            <td className="border-t border-border px-1 py-2"><StatusBadge status={j.status} /></td>
+            <td className="border-t border-border px-1 py-2"><div className="flex flex-wrap items-center gap-1">
+              <button type="button" onClick={() => editJob(j)} className="rounded p-1 text-muted-foreground hover:bg-muted" title="Edit"><PenSquare size={12}/></button>
+              {j.status === "Approved" && <button type="button" onClick={() => finishJob(j)} className="rounded px-1.5 py-1 text-[9px] font-semibold text-emerald-700 hover:bg-emerald-500/10">Finish</button>}
+              <button type="button" onClick={() => onDelete(j)} className="rounded p-1 text-muted-foreground hover:bg-muted" title="Delete"><Trash2 size={12}/></button>
+            </div></td>
+          </TRow>)}{!filtered.length && <EmptyRow cols={14}/>}</tbody>
+        </table>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 2xl:hidden">
+        {filtered.map(j => <article key={j.jobCostId} className="rounded-xl border border-border bg-card p-4">
+          <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+            <div><div className="text-sm font-semibold">{j.clientName}</div><div className="text-xs text-primary">{j.invoiceId || "Invoice pending"}</div></div>
+            <StatusBadge status={j.status}/>
           </div>
-          <p className="text-[10px] text-muted-foreground font-mono">Profit and margin % are auto-calculated on save.</p>
-        </Modal>
-      )}
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
+            {fields(j).map(([label,value]) => <div key={label} className="min-w-0"><dt className="text-[9px] uppercase tracking-wide text-muted-foreground">{label}</dt><dd className="break-words text-xs font-medium tabular-nums">{value}</dd></div>)}
+          </dl>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" onClick={() => editJob(j)} className="rounded-lg border border-border px-3 py-1.5 text-xs">Edit</button>
+            {j.status === "Approved" && <button type="button" onClick={() => finishJob(j)} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs text-white">Finish Sale</button>}
+            <button type="button" onClick={() => onDelete(j)} className="rounded-lg border border-border px-3 py-1.5 text-xs">Delete</button>
+          </div>
+        </article>)}
+        {!filtered.length && <div className="rounded-xl border border-border p-8 text-center text-sm text-muted-foreground">No matching records</div>}
+      </div>
+
+      {open && <Modal title={editingId ? "Edit Job Costing" : "Approve Inquiry for Job Costing"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update Costing" : "Approve & Create Invoice"} isSubmitting={isSubmitting}>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {!editingId && <FF label="Pending Inquiry"><select className={ic} value={form.inquiryId} onChange={e=>selectInquiry(e.target.value)} required><option value="">Select an inquiry</option>{pendingInquiries.map(i=><option key={i.inquiryId} value={i.inquiryId}>{i.customerName} · {i.category} · {i.inquiryId}</option>)}</select></FF>}
+          {editingId && <FF label="Invoice #"><input className={ic} value={form.invoiceId} readOnly /></FF>}
+          <FF label="Client Name"><input className={ic} value={form.clientName} readOnly placeholder="Select a pending inquiry" required /></FF>
+          {!editingId && <FF label="Service Type"><select className={ic} value={form.serviceType} onChange={e=>setForm(f=>({...f,serviceType:e.target.value as ServiceType}))}>{(["Custom","Repair","Resize","Cleaning"] as ServiceType[]).map(t=><option key={t}>{t}</option>)}</select></FF>}
+          <FF label="Employee ID (optional)"><input className={ic} value={form.empId} onChange={e=>setForm(f=>({...f,empId:e.target.value}))} placeholder="Leave blank to assign available staff" /></FF>
+          <FF label="Gold Used (g)"><input type="number" min="0" step="0.001" className={ic} value={form.goldUsed} onChange={e=>setForm(f=>({...f,goldUsed:e.target.value}))} required /></FF>
+          <FF label="Gold Cost / Price per g (₱)"><input type="number" min="0.01" step="0.01" className={ic} value={form.goldCostPerG} onChange={e=>setForm(f=>({...f,goldCostPerG:e.target.value}))} required /></FF>
+          <FF label="Stone Cost (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.stoneCost} onChange={e=>setForm(f=>({...f,stoneCost:e.target.value}))} required /></FF>
+          <FF label="Labor Cost (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.laborCost} onChange={e=>setForm(f=>({...f,laborCost:e.target.value}))} required /></FF>
+          <FF label="Selling Price (₱)"><input type="number" min="0.01" step="0.01" className={ic} value={form.sellingPrice} onChange={e=>setForm(f=>({...f,sellingPrice:e.target.value}))} required /></FF>
+        </div>
+        <p className="text-xs text-muted-foreground">Invoice number and job costing ID are assigned automatically. Profit and margin are calculated from these costs.</p>
+      </Modal>}
     </div>
   );
 }
@@ -747,7 +808,7 @@ function GoldInventoryView({ inventory, onAdd, onUpdate, onDelete }: { inventory
       setIsSubmitting(false); submittingRef.current = false; return;
     }
     const balance = currentBalance + goldIn - goldOut - scrap;
-    const entry: InvEntry = { id: editingId ?? String(Date.now()), date:form.date, referenceId:form.referenceId,
+    const entry: InvEntry = { id: editingId ?? "", date:form.date, referenceId:form.referenceId,
       itemName:form.itemName, goldIn, goldOut, scrap, balance, unit:form.unit };
     try {
       const response = await fetch(`${BASE_URL}/inventory${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"},
@@ -812,7 +873,7 @@ function GoldInventoryView({ inventory, onAdd, onUpdate, onDelete }: { inventory
         <Modal title={editingId ? "Edit Inventory Entry" : "Add Inventory Entry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update Entry" : "Save Entry"} isSubmitting={isSubmitting}>
           <div className="grid grid-cols-2 gap-4">
             <FF label="Date"><input type="date" max={todayISO()} className={ic} value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} required /></FF>
-            <FF label="Reference / Invoice"><input className={ic} value={form.referenceId} onChange={e=>setForm(f=>({...f,referenceId:e.target.value}))} placeholder="PO-xxx or INV-xxx" required disabled={Boolean(editingId)} /></FF>
+            <FF label="Reference / Invoice"><input className={ic} value={form.referenceId} readOnly={!editingId} placeholder={editingId ? "Reference" : "Assigned when saved"} required={Boolean(editingId)} /></FF>
             <div className="col-span-2"><FF label="Item Description"><input className={ic} value={form.itemName} onChange={e=>setForm(f=>({...f,itemName:e.target.value}))} placeholder="Describe the transaction" required /></FF></div>
             <FF label="Gold In (g)"><input type="number" min="0" step="0.01" className={ic} value={form.goldIn} onChange={e=>setForm(f=>({...f,goldIn:e.target.value}))} placeholder="0.00" /></FF>
             <FF label="Gold Out (g)"><input type="number" min="0" max={!editingId ? Math.max(0, currentBalance + (Number(form.goldIn) || 0) - (Number(form.scrap) || 0)).toFixed(2) : undefined} step="0.01" className={ic} value={form.goldOut} onChange={e=>setForm(f=>({...f,goldOut:e.target.value}))} placeholder="0.00" /></FF>
@@ -827,7 +888,7 @@ function GoldInventoryView({ inventory, onAdd, onUpdate, onDelete }: { inventory
 }
 
 // ── inquiries ───────────────────────────────────────────────────────────────
-function InquiriesView({ inquiries, onAdd, onUpdate, onDelete }: { inquiries: Inquiry[]; onAdd: (i: Inquiry) => void; onUpdate: (i: Inquiry) => void; onDelete: (id: string) => void }) {
+function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }: { inquiries: Inquiry[]; onAdd: (i: Inquiry) => void; onUpdate: (i: Inquiry) => void; onDelete: (id: string) => void; onStartCosting: (id: string) => void }) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortSpec>({ key: "date", direction: -1 });
   const toggleSort = (key: string) => setSort(s => ({ key, direction: s.key === key ? (s.direction === 1 ? -1 : 1) : 1 }));
@@ -848,17 +909,17 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete }: { inquiries: In
     if (submittingRef.current) return;
     submittingRef.current = true;
     setIsSubmitting(true);
-    const entry: Inquiry = { inquiryId: editingId ?? "INQ-"+String(Date.now()).slice(-4),
+    const entry: Inquiry = { inquiryId: editingId ?? "",
       date: editingId ? (inquiries.find(i => i.inquiryId === editingId)?.date ?? todayISO()) : todayISO(), customerName:form.customerName,
       contactInfo:form.contactInfo, details:form.details, category:form.category,
       quotedPrice:parseFloat(form.quotedPrice)||0, status:form.status };
     try {
       const response = await fetch(`${BASE_URL}/inquiries${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({ inquiryId:entry.inquiryId, date:entry.date, customerName:entry.customerName,
+        body:JSON.stringify({ date:entry.date, customerName:entry.customerName,
           contactInfo:entry.contactInfo, details:entry.details, category:entry.category,
-          quotedPrice:entry.quotedPrice, status:entry.status }) });
+          quotedPrice:entry.quotedPrice }) });
       if (!response.ok) throw new Error((await response.json()).error ?? "Inquiry could not be saved");
-      entry.inquiryId = (await response.json()).inquiryId;
+      Object.assign(entry, normalizeInquiry(await response.json()));
     } catch (error) { alert(error instanceof Error ? error.message : "Inquiry could not be saved"); setIsSubmitting(false); submittingRef.current = false; return; }
     if (editingId) {
       onUpdate(entry);
@@ -882,7 +943,7 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete }: { inquiries: In
         </tr></thead>
         <tbody>
           {filtered.map(i => (
-            <TRow key={i.inquiryId} onClick={() => { setEditingId(i.inquiryId); setForm({ customerName:i.customerName, contactInfo:i.contactInfo, details:i.details, category:i.category, quotedPrice:String(i.quotedPrice), status:i.status }); setOpen(true); }}>
+            <TRow key={i.inquiryId} onClick={() => { if (i.status === "Pending") { setEditingId(i.inquiryId); setForm({ customerName:i.customerName, contactInfo:i.contactInfo, details:i.details, category:i.category, quotedPrice:String(i.quotedPrice), status:i.status }); setOpen(true); } }}>
               <td className={tdc}>{fmtDate(i.date)}</td>
               <td className={tdc + " text-muted-foreground"}>{i.inquiryId}</td>
               <td className={tdc + " font-sans font-medium"}>{i.customerName}</td>
@@ -893,12 +954,13 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete }: { inquiries: In
               <td className={tdc}><StatusBadge status={i.status} /></td>
               <td className={tdc}>
                 <div className="flex items-center gap-2">
-                  <button type="button" onClick={() => { setEditingId(i.inquiryId); setForm({ customerName:i.customerName, contactInfo:i.contactInfo, details:i.details, category:i.category, quotedPrice:String(i.quotedPrice), status:i.status }); setOpen(true); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit">
+                  {i.status === "Pending" && <button type="button" onClick={() => onStartCosting(i.inquiryId)} className="rounded-lg bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary hover:bg-primary/20">Start Costing</button>}
+                  {i.status === "Pending" && <button type="button" onClick={() => { setEditingId(i.inquiryId); setForm({ customerName:i.customerName, contactInfo:i.contactInfo, details:i.details, category:i.category, quotedPrice:String(i.quotedPrice), status:i.status }); setOpen(true); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit">
                     <PenSquare size={13} />
-                  </button>
-                  <button type="button" onClick={() => onDelete(i.inquiryId)} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Delete">
+                  </button>}
+                  {i.status === "Pending" && <button type="button" onClick={() => onDelete(i.inquiryId)} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Delete">
                     <Trash2 size={13} />
-                  </button>
+                  </button>}
                 </div>
               </td>
             </TRow>
@@ -914,11 +976,7 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete }: { inquiries: In
             <FF label="Product Category"><input className={ic} value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))} placeholder="e.g. Custom Ring" required /></FF>
             <FF label="Quoted Price (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.quotedPrice} onChange={e=>setForm(f=>({...f,quotedPrice:e.target.value}))} placeholder="0.00" required /></FF>
             <div className="col-span-2"><FF label="Details / Notes"><textarea className={ic + " h-20 resize-none"} value={form.details} onChange={e=>setForm(f=>({...f,details:e.target.value}))} placeholder="Describe the customer's request…" /></FF></div>
-            <FF label="Status">
-              <select className={ic} value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value as InqStatus}))}>
-                {(["Pending","Yes","No"] as InqStatus[]).map(t=><option key={t}>{t}</option>)}
-              </select>
-            </FF>
+            <p className="self-end text-xs text-muted-foreground">Status changes automatically as the inquiry moves through costing and sales.</p>
           </div>
         </Modal>
       )}
@@ -949,7 +1007,7 @@ function ExpensesView({ expenses, onAdd, onUpdate, onDelete }: { expenses: Expen
     if (submittingRef.current) return;
     submittingRef.current = true;
     setIsSubmitting(true);
-    const entry: Expense = { expenseId: editingId ?? "EXP-"+String(Date.now()).slice(-4), expDate:form.expDate,
+    const entry: Expense = { expenseId: editingId ?? "", expDate:form.expDate,
       category:form.category, description:form.description, amount:parseFloat(form.amount)||0 };
     try {
       const response = await fetch(`${BASE_URL}/expenses${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"},
@@ -1264,6 +1322,7 @@ export default function App() {
   const [startMonth, setStartMonth] = useState(0);
   const [endMonth, setEndMonth] = useState(new Date().getMonth());
   const [viewRecord, setViewRecord] = useState<{ title: string; record: Record<string, unknown> } | null>(null);
+  const [selectedInquiryForCosting, setSelectedInquiryForCosting] = useState<string | null>(null);
   const [sales, setSales] = useState<Sale[]>([]);
   const [jobCosts, setJobCosts] = useState<JobCost[]>([]);
   const [inventory, setInventory] = useState<InvEntry[]>([]);
@@ -1298,8 +1357,8 @@ export default function App() {
     const [year, month] = date.slice(0, 10).split("-").map(Number);
     return year === selectedYear && month - 1 >= startMonth && month - 1 <= endMonth;
   };
-  const visibleSales = sales.filter(s => inTimeline(s.date));
-  const salesByInvoice = new Map(sales.map(s => [s.invoiceId, s]));
+  const visibleSales = sales.filter(s => isCompletedSale(s) && inTimeline(s.date));
+  const salesByInvoice = new Map(visibleSales.map(s => [s.invoiceId, s]));
   const visibleJobCosts = jobCosts.filter(j => {
     const sale = salesByInvoice.get(j.invoiceId);
     return Boolean(sale && inTimeline(sale.date));
@@ -1389,12 +1448,12 @@ export default function App() {
       {/* Page content */}
       <main className="max-w-[1680px] mx-auto">
         {tab === "DASHBOARD"       && <DashboardView sales={visibleSales} jobCosts={visibleJobCosts} expenses={visibleExpenses} inquiries={visibleInquiries} rangeLabel={timelineLabel} onView={(title, record) => setViewRecord({ title, record })} />}
-        {tab === "DAILY_SALES"     && <DailySalesView sales={sales} onAdd={s => setSales(p => [s, ...p])} onUpdate={s => setSales(p => p.map(item => item.id === s.id ? s : item))} onDelete={id => deleteFromApi("sales", id, () => setSales(p => p.filter(item => item.id !== id)))} />}
-        {tab === "JOB_COSTING"     && <JobCostingView jobCosts={jobCosts} onAdd={j => { setJobCosts(p => [j, ...p]); setSales(p => p.map(s => s.invoiceId === j.invoiceId ? { ...s, price: j.sellingPrice, balance: j.sellingPrice - s.downpayment } : s)); }} onUpdate={j => { setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? j : item)); setSales(p => p.map(s => s.invoiceId === j.invoiceId ? { ...s, price: j.sellingPrice, balance: j.sellingPrice - s.downpayment } : s)); }} onDelete={id => deleteFromApi("job-cost", id, () => setJobCosts(p => p.filter(item => item.jobCostId !== id)))} />}
+        {tab === "DAILY_SALES"     && <DailySalesView sales={sales.filter(isCompletedSale)} onUpdate={s => setSales(p => p.map(item => item.invoiceId === s.invoiceId ? s : item))} onDelete={id => deleteFromApi("sales", id, () => { const removed = sales.find(item => item.invoiceId === id); const linkedJob = jobCosts.find(item => item.jobCostId === removed?.jobCostId); setSales(p => p.filter(item => item.invoiceId !== id)); if (removed?.jobCostId) setJobCosts(p => p.filter(item => item.jobCostId !== removed.jobCostId)); if (linkedJob?.inquiryId) setInquiries(p => p.map(i => i.inquiryId === linkedJob.inquiryId ? { ...i, status:"Pending" } : i)); })} />}
+        {tab === "JOB_COSTING"     && <JobCostingView jobCosts={jobCosts} inquiries={inquiries} selectedInquiryId={selectedInquiryForCosting} clearSelectedInquiry={() => setSelectedInquiryForCosting(null)} onAdd={j => { setJobCosts(p => [j, ...p]); if (j.sale) setSales(p => [j.sale!, ...p.filter(s => s.invoiceId !== j.sale!.invoiceId)]); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status:"Approved" } : i)); }} onUpdate={j => { setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? j : item)); if (j.sale) setSales(p => p.map(s => s.invoiceId === j.sale!.invoiceId ? j.sale! : s)); }} onDelete={j => deleteFromApi("job-cost", j.jobCostId, () => { setJobCosts(p => p.filter(item => item.jobCostId !== j.jobCostId)); setSales(p => p.filter(s => s.invoiceId !== j.invoiceId)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status:"Pending" } : i)); })} onFinish={async j => { try { const response = await fetch(`${BASE_URL}/sales/${encodeURIComponent(j.invoiceId)}/finish`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ invoiceId:j.invoiceId, clientName:j.clientName }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Sale could not be finished."); const sale = normalizeSale(data); setSales(p => [sale, ...p.filter(item => item.invoiceId !== sale.invoiceId)]); setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? { ...item, status:"Finished", sale } : item)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status:"Finished" } : i)); } catch (error) { alert(error instanceof Error ? error.message : "Sale could not be finished."); } }} />}
         {tab === "GOLD_INVENTORY"  && <GoldInventoryView inventory={inventory} onAdd={e => setInventory(p => [...p, e])} onUpdate={e => setInventory(p => p.map(item => item.id === e.id ? e : item))} onDelete={id => deleteFromApi("inventory", id, () => setInventory(p => p.filter(item => item.id !== id)))} />}
-        {tab === "INQUIRIES"       && <InquiriesView inquiries={inquiries} onAdd={i => setInquiries(p => [i, ...p])} onUpdate={i => setInquiries(p => p.map(item => item.inquiryId === i.inquiryId ? i : item))} onDelete={id => deleteFromApi("inquiries", id, () => setInquiries(p => p.filter(item => item.inquiryId !== id)))} />}
+        {tab === "INQUIRIES"       && <InquiriesView inquiries={inquiries} onAdd={i => setInquiries(p => [i, ...p])} onUpdate={i => setInquiries(p => p.map(item => item.inquiryId === i.inquiryId ? i : item))} onDelete={id => deleteFromApi("inquiries", id, () => setInquiries(p => p.filter(item => item.inquiryId !== id)))} onStartCosting={id => { setSelectedInquiryForCosting(id); setTab("JOB_COSTING"); }} />}
         {tab === "EXPENSES"        && <ExpensesView expenses={expenses} onAdd={e => setExpenses(p => [e, ...p])} onUpdate={e => setExpenses(p => p.map(item => item.expenseId === e.expenseId ? e : item))} onDelete={id => deleteFromApi("expenses", id, () => setExpenses(p => p.filter(item => item.expenseId !== id)))} />}
-        {tab === "PROFIT_ANALYSIS" && <ProfitAnalysisView sales={sales} jobCosts={jobCosts} expenses={expenses} selectedYear={selectedYear} setSelectedYear={setSelectedYear} startMonth={startMonth} setStartMonth={setStartMonth} endMonth={endMonth} setEndMonth={setEndMonth} />}
+        {tab === "PROFIT_ANALYSIS" && <ProfitAnalysisView sales={sales.filter(isCompletedSale)} jobCosts={jobCosts} expenses={expenses} selectedYear={selectedYear} setSelectedYear={setSelectedYear} startMonth={startMonth} setStartMonth={setStartMonth} endMonth={endMonth} setEndMonth={setEndMonth} />}
       </main>
       <RecordDetails title={viewRecord?.title ?? "Record details"} record={viewRecord?.record ?? null} onClose={() => setViewRecord(null)} />
     </div>
