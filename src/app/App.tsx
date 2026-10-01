@@ -85,9 +85,9 @@ const normalizeJobCost = (row: any): JobCost => {
   const goldCost = numeric(row.goldCost ?? numeric(row.goldUsed) * goldCostPerG);
   const totalCost = numeric(row.totalCost ?? goldCost + numeric(row.laborCost) + numeric(row.stoneCost));
   const sale = row.sales ?? row.sale;
-  return { jobCostId: String(row.jobCostId ?? ""), invoiceId: String(row.invoiceId ?? sale?.invoiceId ?? ""), clientName: String(row.clientName ?? sale?.client?.clientName ?? row.inquiry?.customerName ?? ""), itemName: row.itemName ?? "", deadline: row.deadline || row.deliveryDate ? String(row.deadline ?? row.deliveryDate).slice(0, 10) : "", empId: row.empId, inquiryId: row.inquiryId ?? row.inquiry?.inquiryId, status: statusLabel(row.status), sale: sale ? normalizeSale(sale) : undefined, goldUsed: numeric(row.goldUsed), goldCostPerG, goldCost, stoneCost: numeric(row.stoneCost), laborCost: numeric(row.laborCost), totalCost, sellingPrice, profit: numeric(row.profit ?? sellingPrice - totalCost), marginPct: numeric(row.marginPct ?? (sellingPrice ? ((sellingPrice - totalCost) / sellingPrice) * 100 : 0)) };
+  return { jobCostId: String(row.jobCostId ?? ""), invoiceId: String(row.invoiceId ?? sale?.invoiceId ?? ""), clientName: String(row.clientName ?? sale?.client?.clientName ?? row.inquiry?.customerName ?? ""), itemName: row.itemName ?? "", deadline: row.deadline || row.deliveryDate ? String(row.deadline ?? row.deliveryDate).slice(0, 10) : "", empId: row.empId, inquiryId: row.inquiryId ?? row.inquiry?.inquiryId, status: statusLabel(row.status), sale: sale ? normalizeSale(sale) : undefined, goldUsed: numeric(row.goldUsed), goldScrap: numeric(row.goldScrap), goldCostPerG, goldCost, stoneCost: numeric(row.stoneCost), laborCost: numeric(row.laborCost), totalCost, sellingPrice, profit: numeric(row.profit ?? sellingPrice - totalCost), marginPct: numeric(row.marginPct ?? (sellingPrice ? ((sellingPrice - totalCost) / sellingPrice) * 100 : 0)) };
 };
-const normalizeInventory = (row: any): InvEntry => ({ id: row.referenceId, date: apiDate(row.updatedAt ?? row.date), referenceId: row.referenceId, itemName: row.itemName ?? row.referenceId, category: row.category ?? "GOLD", quantityIn: numeric(row.quantityIn ?? row.goldIn), quantityOut: numeric(row.quantityOut ?? row.goldOut), quantityLoss: numeric(row.quantityLoss ?? row.scraps ?? row.scrap), balance: numeric(row.balance ?? row.totalGold), unit: row.unit ?? "grams" });
+const normalizeInventory = (row: any): InvEntry => ({ id: row.referenceId, date: apiDate(row.updatedAt ?? row.date), referenceId: row.referenceId, itemName: row.itemName ?? row.referenceId, category: row.category ?? "GOLD", quantityIn: numeric(row.quantityIn ?? row.goldIn), quantityOut: numeric(row.quantityOut ?? row.goldOut), quantityLoss: numeric(row.quantityLoss ?? row.scraps ?? row.scrap), balance: numeric(row.balance ?? row.totalGold), unit: row.unit ?? "grams", unitPrice: numeric(row.unitPrice) });
 const normalizeInquiry = (row: any): Inquiry => ({ inquiryId: String(row.inquiryId ?? ""), date: apiDate(row.inqDate ?? row.date), customerName: String(row.customerName ?? ""), contactInfo: String(row.contactInfo ?? ""), email: String(row.email ?? ""), details: String(row.details ?? ""), category: String(row.category ?? ""), quotedPrice: numeric(row.quotedPrice), status: statusLabel(row.status) as InqStatus });
 const normalizeExpense = (row: any): Expense => ({ expenseId: String(row.expenseId ?? ""), expDate: apiDate(row.expDate ?? row.date), category: String(row.category ?? ""), description: String(row.description ?? ""), amount: numeric(row.amount) });
 const asRows = (value: unknown): any[] => Array.isArray(value) ? value : [];
@@ -105,13 +105,13 @@ interface Sale {
 interface JobCost {
   jobCostId: string; invoiceId: string; clientName: string; itemName: string; deadline: string; empId?: string;
   inquiryId?: string; status: string; sale?: Sale;
-  goldUsed: number; goldCostPerG: number; goldCost: number;
+  goldUsed: number; goldScrap: number; goldCostPerG: number; goldCost: number;
   stoneCost: number; laborCost: number; totalCost: number;
   sellingPrice: number; profit: number; marginPct: number;
 }
 interface InvEntry {
   id: string; date: string; referenceId: string; itemName: string;
-  category: string; quantityIn: number; quantityOut: number; quantityLoss: number; balance: number; unit: string;
+  category: string; quantityIn: number; quantityOut: number; quantityLoss: number; balance: number; unit: string; unitPrice: number;
 }
 interface Inquiry {
   inquiryId: string; date: string; customerName: string; contactInfo: string; email: string;
@@ -675,7 +675,7 @@ function JobCostingView({ jobCosts, inquiries, selectedInquiryId, clearSelectedI
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const pendingInquiries = inquiries.filter(i => i.status === "Pending");
-  const blankForm = () => ({ inquiryId:"", invoiceId:"", clientName:"", itemName:"", deadline:"", contactNum:"", empId:"", serviceType:"Custom" as ServiceType, goldUsed:"", goldCostPerG:currentGoldRate ? String(currentGoldRate) : "", stoneCost:"", laborCost:"", sellingPrice:"" });
+  const blankForm = () => ({ inquiryId:"", invoiceId:"", clientName:"", itemName:"", deadline:"", contactNum:"", empId:"", serviceType:"Custom" as ServiceType, goldUsed:"", goldScrap:"", goldCostPerG:currentGoldRate ? String(currentGoldRate) : "", stoneCost:"", laborCost:"", sellingPrice:"" });
   const [form, setForm] = useState(blankForm);
   const selectInquiry = (inquiryId: string) => {
     const inquiry = pendingInquiries.find(item => item.inquiryId === inquiryId);
@@ -696,7 +696,7 @@ function JobCostingView({ jobCosts, inquiries, selectedInquiryId, clearSelectedI
   const resetForm = () => setForm(blankForm());
   const editJob = (j: JobCost) => {
     setEditingId(j.jobCostId);
-    setForm({ inquiryId:j.inquiryId ?? "", invoiceId:j.invoiceId, clientName:j.clientName, itemName:j.itemName, deadline:j.deadline, contactNum:j.sale?.contactNum ?? "", empId:j.empId ?? "", serviceType:j.sale?.serviceType ?? "Custom", goldUsed:String(j.goldUsed), goldCostPerG:String(j.goldCostPerG), stoneCost:String(j.stoneCost), laborCost:String(j.laborCost), sellingPrice:String(j.sellingPrice) });
+    setForm({ inquiryId:j.inquiryId ?? "", invoiceId:j.invoiceId, clientName:j.clientName, itemName:j.itemName, deadline:j.deadline, contactNum:j.sale?.contactNum ?? "", empId:j.empId ?? "", serviceType:j.sale?.serviceType ?? "Custom", goldUsed:String(j.goldUsed), goldScrap:String(j.goldScrap), goldCostPerG:String(j.goldCostPerG), stoneCost:String(j.stoneCost), laborCost:String(j.laborCost), sellingPrice:String(j.sellingPrice) });
     setOpen(true);
   };
   const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
@@ -707,18 +707,19 @@ function JobCostingView({ jobCosts, inquiries, selectedInquiryId, clearSelectedI
     submittingRef.current = true;
     setIsSubmitting(true);
     const goldUsed = Number(form.goldUsed);
+    const goldScrap = Number(form.goldScrap || 0);
     const goldCostPerG = Number(form.goldCostPerG);
     const stoneCost = Number(form.stoneCost || 0);
     const laborCost = Number(form.laborCost);
     const sellingPrice = Number(form.sellingPrice);
-    if (![goldUsed, stoneCost, laborCost].every(Number.isFinite) || goldUsed < 0 || stoneCost < 0 || laborCost < 0 || !Number.isFinite(goldCostPerG) || goldCostPerG <= 0 || !Number.isFinite(sellingPrice) || sellingPrice <= 0) {
+    if (![goldUsed, goldScrap, stoneCost, laborCost].every(Number.isFinite) || goldUsed < 0 || goldScrap < 0 || stoneCost < 0 || laborCost < 0 || !Number.isFinite(goldCostPerG) || goldCostPerG <= 0 || !Number.isFinite(sellingPrice) || sellingPrice <= 0) {
       alert("Enter valid costs and a selling price greater than zero.");
       setIsSubmitting(false); submittingRef.current = false; return;
     }
     try {
       const payload = editingId
-        ? { invoiceId:form.invoiceId, clientName:form.clientName, itemName:form.itemName, deadline:form.deadline || undefined, empId:form.empId || undefined, goldUsed, goldCostPerG, stoneCost, laborCost, sellingPrice }
-        : { inquiryId:form.inquiryId, clientName:form.clientName, itemName:form.itemName, deadline:form.deadline || undefined, contactNum:form.contactNum, empId:form.empId || undefined, serviceType:form.serviceType, goldUsed, goldCostPerG, stoneCost, laborCost, sellingPrice };
+        ? { invoiceId:form.invoiceId, clientName:form.clientName, itemName:form.itemName, deadline:form.deadline || undefined, empId:form.empId || undefined, goldUsed, goldScrap, goldCostPerG, stoneCost, laborCost, sellingPrice }
+        : { inquiryId:form.inquiryId, clientName:form.clientName, itemName:form.itemName, deadline:form.deadline || undefined, contactNum:form.contactNum, empId:form.empId || undefined, serviceType:form.serviceType, goldUsed, goldScrap, goldCostPerG, stoneCost, laborCost, sellingPrice };
       if (!editingId && !form.inquiryId) throw new Error("Choose a pending inquiry before creating job costing.");
       const response = await apiFetch(`${BASE_URL}/job-cost${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
       const data = await response.json();
@@ -808,7 +809,7 @@ function JobCostingView({ jobCosts, inquiries, selectedInquiryId, clearSelectedI
           <FF label="Client Name"><input className={ic} value={form.clientName} readOnly placeholder="Select a pending inquiry" required /></FF>
           {!editingId && <FF label="Service Type"><select className={ic} value={form.serviceType} onChange={e=>setForm(f=>({...f,serviceType:e.target.value as ServiceType}))}>{(["Custom","Repair","Resize","Cleaning"] as ServiceType[]).map(t=><option key={t}>{t}</option>)}</select></FF>}
           <FF label="Employee ID (optional)"><input className={ic} value={form.empId} onChange={e=>setForm(f=>({...f,empId:e.target.value}))} placeholder="Leave blank to assign available staff" /></FF>
-          <FF label="Gold Used (g)"><input type="number" min="0" step="0.001" className={ic} value={form.goldUsed} onChange={e=>setForm(f=>({...f,goldUsed:e.target.value}))} required /></FF>
+          <FF label="Gold Used (g)"><input type="number" min="0" step="0.001" className={ic} value={form.goldUsed} onChange={e=>setForm(f=>({...f,goldUsed:e.target.value}))} required /></FF><FF label="Gold Scrap (g)"><input type="number" min="0" step="0.001" className={ic} value={form.goldScrap} onChange={e=>setForm(f=>({...f,goldScrap:e.target.value}))} /></FF>
           <FF label="Gold Cost / Price per g (₱)"><input type="number" min="0.01" step="0.01" className={ic} value={form.goldCostPerG} onChange={e=>setForm(f=>({...f,goldCostPerG:e.target.value}))} required /></FF>
           <FF label="Stone Cost (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.stoneCost} onChange={e=>setForm(f=>({...f,stoneCost:e.target.value}))} required /></FF>
           <FF label="Labor Cost (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.laborCost} onChange={e=>setForm(f=>({...f,laborCost:e.target.value}))} required /></FF>
@@ -834,7 +835,7 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const [categoryFilter, setCategoryFilter] = useState("ALL");
-  const blank = () => ({ date:todayISO(), referenceId:"", itemName:"", category:"GOLD", quantityIn:"", quantityOut:"", quantityLoss:"", unit:"grams" });
+  const blank = () => ({ date:todayISO(), referenceId:"", itemName:"", category:"GOLD", quantityIn:"", quantityOut:"", quantityLoss:"", unit:"grams", unitPrice:"" });
   const [form, setForm] = useState(blank);
   const filtered = sortRecords(useMemo(() => inventory.filter(e => (categoryFilter === "ALL" || e.category === categoryFilter) && [e.referenceId, e.itemName, e.category].some(v => v.toLowerCase().includes(q.toLowerCase()))), [inventory, q, categoryFilter]), sort);
   const goldRows = inventory.filter(e => e.category === "GOLD");
@@ -843,14 +844,14 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
   const goldBalance = (goldByUnit.get("grams") ?? 0) + (goldByUnit.get("troy oz") ?? 0) * 31.1034768;
   const units = INVENTORY_UNITS[form.category] ?? ["pieces"];
   const closeModal = () => { setOpen(false); setEditingId(null); setForm(blank()); };
-  const edit = (e: InvEntry) => { setEditingId(e.id); setForm({ date:e.date, referenceId:e.referenceId, itemName:e.itemName, category:e.category, quantityIn:String(e.quantityIn), quantityOut:String(e.quantityOut), quantityLoss:String(e.quantityLoss), unit:e.unit }); setOpen(true); };
+  const edit = (e: InvEntry) => { setEditingId(e.id); setForm({ date:e.date, referenceId:e.referenceId, itemName:e.itemName, category:e.category, quantityIn:String(e.quantityIn), quantityOut:String(e.quantityOut), quantityLoss:String(e.quantityLoss), unit:e.unit, unitPrice:String(e.unitPrice) }); setOpen(true); };
   const submit = async (event: React.FormEvent) => {
     event.preventDefault(); if (submittingRef.current) return;
     submittingRef.current = true; setIsSubmitting(true);
-    const entry: InvEntry = { id:editingId ?? "", date:form.date, referenceId:form.referenceId, itemName:form.itemName, category:form.category, quantityIn:Number(form.quantityIn)||0, quantityOut:Number(form.quantityOut)||0, quantityLoss:Number(form.quantityLoss)||0, balance:0, unit:form.unit };
+    const entry: InvEntry = { id:editingId ?? "", date:form.date, referenceId:form.referenceId, itemName:form.itemName, category:form.category, quantityIn:Number(form.quantityIn)||0, quantityOut:Number(form.quantityOut)||0, quantityLoss:Number(form.quantityLoss)||0, balance:0, unit:form.unit, unitPrice:Number(form.unitPrice)||0 };
     if (entry.quantityIn + entry.quantityOut + entry.quantityLoss <= 0) { alert("Enter a positive quantity for at least one movement."); setIsSubmitting(false); submittingRef.current=false; return; }
     try {
-      const response = await apiFetch(`${BASE_URL}/inventory${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ date:entry.date, itemName:entry.itemName, category:entry.category, quantityIn:entry.quantityIn, quantityOut:entry.quantityOut, quantityLoss:entry.quantityLoss, unit:entry.unit }) });
+      const response = await apiFetch(`${BASE_URL}/inventory${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ date:entry.date, itemName:entry.itemName, category:entry.category, quantityIn:entry.quantityIn, quantityOut:entry.quantityOut, quantityLoss:entry.quantityLoss, unit:entry.unit, unitPrice:entry.unitPrice }) });
       const saved = await response.json();
       if (response.status === 202) { alert(saved.message); closeModal(); setIsSubmitting(false); submittingRef.current=false; return; }
       if (!response.ok) throw new Error(saved.error ?? "Inventory entry could not be saved.");
@@ -865,14 +866,14 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
         {goldRate !== null && <div className="rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 text-xs"><span className="text-muted-foreground">Gold stock: </span><b className="text-primary">{goldBalance.toFixed(2)} g · {php(goldBalance*goldRate)}</b></div>}
       </div><AddBtn onClick={() => { setForm(blank()); setEditingId(null); setOpen(true); }} label="Add Item" />
     </div>
-    <TableWrap><thead><tr>{[["Date","date"],["Category","category"],["Reference","referenceId"],["Item Description","itemName"],["Qty In","quantityIn"],["Qty Out","quantityOut"],["Loss / Scrap","quantityLoss"],["Balance","balance"]].map(([h,k])=><SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort}/>)}<th className={thc}>Actions</th></tr></thead>
-      <tbody>{filtered.map(e=><TRow key={e.id} onClick={()=>edit(e)}><td className={tdc}>{fmtDate(e.date)}</td><td className={tdc}><span className="rounded bg-primary/10 px-2 py-1 text-[10px] uppercase">{e.category}</span></td><td className={tdc+" text-primary/80"}>{e.referenceId}</td><td className={tdc+" font-sans"}>{e.itemName}</td><td className={tdr}>{e.quantityIn ? `+${e.quantityIn}` : "—"}</td><td className={tdr}>{e.quantityOut ? `-${e.quantityOut}` : "—"}</td><td className={tdr}>{e.quantityLoss || "—"}</td><td className={tdr+" text-primary font-semibold"}>{e.balance} {e.unit}</td><td className={tdc}><div className="flex items-center gap-2"><button type="button" onClick={event=>{event.stopPropagation();edit(e);}} className="rounded p-1.5 text-muted-foreground hover:bg-muted" title="Edit"><PenSquare size={13}/></button><button type="button" onClick={event=>{event.stopPropagation();onDelete(e.id);}} className="rounded p-1.5 text-muted-foreground hover:bg-muted" title="Delete"><Trash2 size={13}/></button></div></td></TRow>)}{!filtered.length&&<EmptyRow cols={9}/>}</tbody>
+    <TableWrap><thead><tr>{[["Date","date"],["Category","category"],["Reference","referenceId"],["Item Description","itemName"],["Qty In","quantityIn"],["Unit Price","unitPrice"],["Qty Out","quantityOut"],["Loss / Scrap","quantityLoss"],["Balance","balance"]].map(([h,k])=><SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort}/>)}<th className={thc}>Actions</th></tr></thead>
+      <tbody>{filtered.map(e=><TRow key={e.id} onClick={()=>edit(e)}><td className={tdc}>{fmtDate(e.date)}</td><td className={tdc}><span className="rounded bg-primary/10 px-2 py-1 text-[10px] uppercase">{e.category}</span></td><td className={tdc+" text-primary/80"}>{e.referenceId}</td><td className={tdc+" font-sans"}>{e.itemName}</td><td className={tdr}>{e.quantityIn ? `+${e.quantityIn}` : "—"}</td><td className={tdr}>{e.unitPrice ? php(e.unitPrice) : "—"}</td><td className={tdr}>{e.quantityOut ? `-${e.quantityOut}` : "—"}</td><td className={tdr}>{e.quantityLoss || "—"}</td><td className={tdr+" text-primary font-semibold"}>{e.balance} {e.unit}</td><td className={tdc}><div className="flex items-center gap-2"><button type="button" onClick={event=>{event.stopPropagation();edit(e);}} className="rounded p-1.5 text-muted-foreground hover:bg-muted" title="Edit"><PenSquare size={13}/></button><button type="button" onClick={event=>{event.stopPropagation();onDelete(e.id);}} className="rounded p-1.5 text-muted-foreground hover:bg-muted" title="Delete"><Trash2 size={13}/></button></div></td></TRow>)}{!filtered.length&&<EmptyRow cols={10}/>}</tbody>
     </TableWrap>
     {open&&<Modal title={editingId?"Edit Inventory Entry":"Add Inventory Item"} onClose={closeModal} onSubmit={submit} submitLabel={editingId?"Update Entry":"Save Entry"} isSubmitting={isSubmitting}>
       <div className="grid grid-cols-2 gap-4"><FF label="Date"><input type="date" max={todayISO()} className={ic} value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} required/></FF><FF label="Reference"><input className={ic} value={form.referenceId} readOnly placeholder="Assigned when saved"/></FF>
         <FF label="Category"><select className={ic} value={form.category} onChange={e=>{const category=e.target.value;setForm(f=>({...f,category,unit:INVENTORY_UNITS[category][0]}));}}>{INVENTORY_CATEGORIES.map(c=><option key={c} value={c}>{c[0]+c.slice(1).toLowerCase()}</option>)}</select></FF><FF label="Unit"><select className={ic} value={form.unit} onChange={e=>setForm(f=>({...f,unit:e.target.value}))}>{units.map(u=><option key={u}>{u}</option>)}</select></FF>
         <div className="col-span-2"><FF label="Item Description"><input className={ic} value={form.itemName} onChange={e=>setForm(f=>({...f,itemName:e.target.value}))} placeholder="e.g. 18k chain, gemstone, ring box" required/></FF></div>
-        <FF label={`Quantity In (${form.unit})`}><input type="number" min="0" step="0.01" className={ic} value={form.quantityIn} onChange={e=>setForm(f=>({...f,quantityIn:e.target.value}))}/></FF><FF label={`Quantity Out (${form.unit})`}><input type="number" min="0" step="0.01" className={ic} value={form.quantityOut} onChange={e=>setForm(f=>({...f,quantityOut:e.target.value}))}/></FF><FF label={`Loss / Scrap (${form.unit})`}><input type="number" min="0" step="0.01" className={ic} value={form.quantityLoss} onChange={e=>setForm(f=>({...f,quantityLoss:e.target.value}))}/></FF>
+        <FF label={`Quantity In (${form.unit})`}><input type="number" min="0" step="0.01" className={ic} value={form.quantityIn} onChange={e=>setForm(f=>({...f,quantityIn:e.target.value}))}/></FF><FF label={`Unit Price (₱ / ${form.unit})`}><input type="number" min="0" step="0.01" className={ic} value={form.unitPrice} onChange={e=>setForm(f=>({...f,unitPrice:e.target.value}))}/></FF><FF label={`Quantity Out (${form.unit})`}><input type="number" min="0" step="0.01" className={ic} value={form.quantityOut} onChange={e=>setForm(f=>({...f,quantityOut:e.target.value}))}/></FF><FF label={`Loss / Scrap (${form.unit})`}><input type="number" min="0" step="0.01" className={ic} value={form.quantityLoss} onChange={e=>setForm(f=>({...f,quantityLoss:e.target.value}))}/></FF>
       </div><p className="text-[10px] text-muted-foreground">Stock balance is calculated for each category, item, and unit.</p>
     </Modal>}
   </div>;
