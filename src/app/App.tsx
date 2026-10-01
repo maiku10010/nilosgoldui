@@ -87,7 +87,7 @@ const normalizeJobCost = (row: any): JobCost => {
   const sale = row.sales ?? row.sale;
   return { jobCostId: String(row.jobCostId ?? ""), invoiceId: String(row.invoiceId ?? sale?.invoiceId ?? ""), clientName: String(row.clientName ?? sale?.client?.clientName ?? row.inquiry?.customerName ?? ""), itemName: row.itemName ?? "", deadline: row.deadline || row.deliveryDate ? String(row.deadline ?? row.deliveryDate).slice(0, 10) : "", empId: row.empId, inquiryId: row.inquiryId ?? row.inquiry?.inquiryId, status: statusLabel(row.status), sale: sale ? normalizeSale(sale) : undefined, goldUsed: numeric(row.goldUsed), goldCostPerG, goldCost, stoneCost: numeric(row.stoneCost), laborCost: numeric(row.laborCost), totalCost, sellingPrice, profit: numeric(row.profit ?? sellingPrice - totalCost), marginPct: numeric(row.marginPct ?? (sellingPrice ? ((sellingPrice - totalCost) / sellingPrice) * 100 : 0)) };
 };
-const normalizeInventory = (row: any): InvEntry => ({ id: row.referenceId, date: apiDate(row.updatedAt ?? row.date), referenceId: row.referenceId, itemName: row.itemName ?? row.referenceId, goldIn: numeric(row.goldIn), goldOut: numeric(row.goldOut), scrap: numeric(row.scraps ?? row.scrap), balance: numeric(row.balance ?? row.totalGold), unit: row.unit ?? "grams" });
+const normalizeInventory = (row: any): InvEntry => ({ id: row.referenceId, date: apiDate(row.updatedAt ?? row.date), referenceId: row.referenceId, itemName: row.itemName ?? row.referenceId, category: row.category ?? "GOLD", quantityIn: numeric(row.quantityIn ?? row.goldIn), quantityOut: numeric(row.quantityOut ?? row.goldOut), quantityLoss: numeric(row.quantityLoss ?? row.scraps ?? row.scrap), balance: numeric(row.balance ?? row.totalGold), unit: row.unit ?? "grams" });
 const normalizeInquiry = (row: any): Inquiry => ({ inquiryId: String(row.inquiryId ?? ""), date: apiDate(row.inqDate ?? row.date), customerName: String(row.customerName ?? ""), contactInfo: String(row.contactInfo ?? ""), email: String(row.email ?? ""), details: String(row.details ?? ""), category: String(row.category ?? ""), quotedPrice: numeric(row.quotedPrice), status: statusLabel(row.status) as InqStatus });
 const normalizeExpense = (row: any): Expense => ({ expenseId: String(row.expenseId ?? ""), expDate: apiDate(row.expDate ?? row.date), category: String(row.category ?? ""), description: String(row.description ?? ""), amount: numeric(row.amount) });
 const asRows = (value: unknown): any[] => Array.isArray(value) ? value : [];
@@ -111,7 +111,7 @@ interface JobCost {
 }
 interface InvEntry {
   id: string; date: string; referenceId: string; itemName: string;
-  goldIn: number; goldOut: number; scrap: number; balance: number; unit: string;
+  category: string; quantityIn: number; quantityOut: number; quantityLoss: number; balance: number; unit: string;
 }
 interface Inquiry {
   inquiryId: string; date: string; customerName: string; contactInfo: string; email: string;
@@ -122,7 +122,7 @@ interface Expense {
 }
 
 const TABS = [
-  "DASHBOARD", "DAILY_SALES", "JOB_COSTING", "GOLD_INVENTORY",
+  "DASHBOARD", "DAILY_SALES", "JOB_COSTING", "INVENTORY",
   "INQUIRIES", "EXPENSES", "PROFIT_ANALYSIS", "APPROVALS", "AUDIT_LOGS",
 ] as const;
 type Tab = (typeof TABS)[number];
@@ -822,7 +822,9 @@ function JobCostingView({ jobCosts, inquiries, selectedInquiryId, clearSelectedI
   );
 }
 
-// ── gold inventory ──────────────────────────────────────────────────────────
+// ── multi-category inventory ────────────────────────────────────────────────
+const INVENTORY_CATEGORIES = ["GOLD", "SILVER", "GEMSTONES", "BOXES", "PACKAGING", "FINDINGS", "TOOLS"];
+const INVENTORY_UNITS: Record<string, string[]> = { GOLD:["grams","troy oz"], SILVER:["grams"], GEMSTONES:["carats","pieces"], BOXES:["boxes","pieces"], PACKAGING:["pieces","boxes"], FINDINGS:["pieces","grams"], TOOLS:["pieces"] };
 function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: { inventory: InvEntry[]; goldRate: number | null; onAdd: (e: InvEntry) => void; onUpdate: (e: InvEntry) => void; onDelete: (id: string) => void }) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortSpec>({ key: "date", direction: -1 });
@@ -831,107 +833,49 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
-  const [form, setForm] = useState({ date:"", referenceId:"", itemName:"", goldIn:"", goldOut:"", scrap:"", unit:"grams" });
-  const filtered = sortRecords(useMemo(() => inventory.filter(e =>
-    [e.referenceId, e.itemName].some(v => v.toLowerCase().includes(q.toLowerCase()))
-  ), [inventory, q]), sort);
-  const currentBalance = inventory.length > 0 ? inventory[inventory.length - 1].balance : 0;
-
-  const resetForm = () => setForm({ date:todayISO(), referenceId:"", itemName:"", goldIn:"", goldOut:"", scrap:"", unit:"grams" });
-  const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (submittingRef.current) return;
-    submittingRef.current = true;
-    setIsSubmitting(true);
-    const goldIn = parseFloat(form.goldIn) || 0;
-    const goldOut = parseFloat(form.goldOut) || 0;
-    const scrap = parseFloat(form.scrap) || 0;
-    if (goldIn + goldOut + scrap <= 0 || (!editingId && goldOut + scrap > currentBalance + goldIn)) {
-      alert(goldIn + goldOut + scrap <= 0 ? "Enter at least one gold movement." : "Gold out and scrap exceed the available balance.");
-      setIsSubmitting(false); submittingRef.current = false; return;
-    }
-    const balance = currentBalance + goldIn - goldOut - scrap;
-    const entry: InvEntry = { id: editingId ?? "", date:form.date, referenceId:form.referenceId,
-      itemName:form.itemName, goldIn, goldOut, scrap, balance, unit:form.unit };
+  const [categoryFilter, setCategoryFilter] = useState("ALL");
+  const blank = () => ({ date:todayISO(), referenceId:"", itemName:"", category:"GOLD", quantityIn:"", quantityOut:"", quantityLoss:"", unit:"grams" });
+  const [form, setForm] = useState(blank);
+  const filtered = sortRecords(useMemo(() => inventory.filter(e => (categoryFilter === "ALL" || e.category === categoryFilter) && [e.referenceId, e.itemName, e.category].some(v => v.toLowerCase().includes(q.toLowerCase()))), [inventory, q, categoryFilter]), sort);
+  const goldRows = inventory.filter(e => e.category === "GOLD");
+  const goldByUnit = new Map<string, number>();
+  goldRows.forEach(row => goldByUnit.set(row.unit, row.balance));
+  const goldBalance = (goldByUnit.get("grams") ?? 0) + (goldByUnit.get("troy oz") ?? 0) * 31.1034768;
+  const units = INVENTORY_UNITS[form.category] ?? ["pieces"];
+  const closeModal = () => { setOpen(false); setEditingId(null); setForm(blank()); };
+  const edit = (e: InvEntry) => { setEditingId(e.id); setForm({ date:e.date, referenceId:e.referenceId, itemName:e.itemName, category:e.category, quantityIn:String(e.quantityIn), quantityOut:String(e.quantityOut), quantityLoss:String(e.quantityLoss), unit:e.unit }); setOpen(true); };
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault(); if (submittingRef.current) return;
+    submittingRef.current = true; setIsSubmitting(true);
+    const entry: InvEntry = { id:editingId ?? "", date:form.date, referenceId:form.referenceId, itemName:form.itemName, category:form.category, quantityIn:Number(form.quantityIn)||0, quantityOut:Number(form.quantityOut)||0, quantityLoss:Number(form.quantityLoss)||0, balance:0, unit:form.unit };
+    if (entry.quantityIn + entry.quantityOut + entry.quantityLoss <= 0) { alert("Enter a positive quantity for at least one movement."); setIsSubmitting(false); submittingRef.current=false; return; }
     try {
-      const response = await apiFetch(`${BASE_URL}/inventory${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({ referenceId:entry.referenceId, date:entry.date, itemName:entry.itemName, goldIn:entry.goldIn,
-          goldOut:entry.goldOut, scraps:entry.scrap, totalGold:entry.balance, unit:entry.unit }) });
+      const response = await apiFetch(`${BASE_URL}/inventory${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ date:entry.date, itemName:entry.itemName, category:entry.category, quantityIn:entry.quantityIn, quantityOut:entry.quantityOut, quantityLoss:entry.quantityLoss, unit:entry.unit }) });
       const saved = await response.json();
-      if (response.status === 202) { alert(saved.message); closeModal(); setIsSubmitting(false); submittingRef.current = false; return; }
-      if (!response.ok) throw new Error(saved.error ?? "Inventory entry could not be saved");
-      entry.id = saved.referenceId; entry.referenceId = saved.referenceId; entry.date = apiDate(saved.updatedAt ?? saved.date);
-    } catch (error) { alert(error instanceof Error ? error.message : "Inventory entry could not be saved"); setIsSubmitting(false); submittingRef.current = false; return; }
-    if (editingId) {
-      onUpdate(entry);
-    } else {
-      onAdd(entry);
-    }
-    closeModal();
-    setIsSubmitting(false);
-    submittingRef.current = false;
+      if (response.status === 202) { alert(saved.message); closeModal(); setIsSubmitting(false); submittingRef.current=false; return; }
+      if (!response.ok) throw new Error(saved.error ?? "Inventory entry could not be saved.");
+      const result = normalizeInventory(saved); if (editingId) onUpdate(result); else onAdd(result);
+    } catch (error) { alert(error instanceof Error ? error.message : "Inventory entry could not be saved."); setIsSubmitting(false); submittingRef.current=false; return; }
+    closeModal(); setIsSubmitting(false); submittingRef.current=false;
   };
-
-  return (
-    <div className="p-5 space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-4">
-          <SearchBar value={q} onChange={setQ} placeholder="Search reference, item…" />
-          <div className="flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-lg px-3 py-2">
-            <Package size={13} className="text-primary" />
-            <span className="text-[11px] font-mono text-muted-foreground uppercase tracking-widest">Balance:</span>
-            <span className="text-right text-sm font-bold text-primary tabular-nums"><span className="block">{currentBalance.toFixed(2)} g</span><span className="block text-[10px] font-normal text-muted-foreground">{goldRate ? php(currentBalance * goldRate) : "Gold price unavailable"}</span></span>
-          </div>
-        </div>
-        <AddBtn onClick={() => { resetForm(); setEditingId(null); setOpen(true); }} label="Add Entry" />
-      </div>
-      <TableWrap>
-        <thead><tr>
-          {[["Date","date"],["Reference / Invoice","referenceId"],["Item Description","itemName"],["Gold In (g)","goldIn"],["Gold Out (g)","goldOut"],["Scrap (g)","scrap"],["Balance (g)","balance"]].map(([h,k])=><SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}<th className={thc}>Actions</th>
-        </tr></thead>
-        <tbody>
-          {filtered.map(e => (
-            <TRow key={e.id} onClick={() => { setEditingId(e.id); setForm({ date:e.date, referenceId:e.referenceId, itemName:e.itemName, goldIn:String(e.goldIn), goldOut:String(e.goldOut), scrap:String(e.scrap), unit:e.unit }); setOpen(true); }}>
-              <td className={tdc}>{fmtDate(e.date)}</td>
-              <td className={tdc + " text-primary/80 dark:text-amber-400/80"}>{e.referenceId}</td>
-              <td className={tdc + " font-sans"}>{e.itemName}</td>
-              <td className={tdr + (e.goldIn > 0 ? " text-emerald-700 dark:text-emerald-400" : " text-muted-foreground")}>{e.goldIn > 0 ? "+"+e.goldIn.toFixed(2) : "—"}</td>
-              <td className={tdr + (e.goldOut > 0 ? " text-red-700 dark:text-red-400" : " text-muted-foreground")}>{e.goldOut > 0 ? "-"+e.goldOut.toFixed(2) : "—"}</td>
-              <td className={tdr + (e.scrap > 0 ? " text-amber-700 dark:text-amber-400" : " text-muted-foreground")}>{e.scrap > 0 ? e.scrap.toFixed(2) : "—"}</td>
-              <td className={tdr + " text-primary font-semibold"}>{e.balance.toFixed(2)}</td>
-              <td className={tdc}>
-                <div className="flex items-center gap-2">
-                  <button type="button" onClick={() => { setEditingId(e.id); setForm({ date:e.date, referenceId:e.referenceId, itemName:e.itemName, goldIn:String(e.goldIn), goldOut:String(e.goldOut), scrap:String(e.scrap), unit:e.unit }); setOpen(true); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit">
-                    <PenSquare size={13} />
-                  </button>
-                  <button type="button" onClick={() => onDelete(e.id)} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Delete">
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              </td>
-            </TRow>
-          ))}
-          {!filtered.length && <EmptyRow cols={8} />}
-        </tbody>
-      </TableWrap>
-      {open && (
-        <Modal title={editingId ? "Edit Inventory Entry" : "Add Inventory Entry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update Entry" : "Save Entry"} isSubmitting={isSubmitting}>
-          <div className="grid grid-cols-2 gap-4">
-            <FF label="Date"><input type="date" max={todayISO()} className={ic} value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} required /></FF>
-            <FF label="Reference / Invoice"><input className={ic} value={form.referenceId} readOnly={!editingId} placeholder={editingId ? "Reference" : "Assigned when saved"} required={Boolean(editingId)} /></FF>
-            <div className="col-span-2"><FF label="Item Description"><input className={ic} value={form.itemName} onChange={e=>setForm(f=>({...f,itemName:e.target.value}))} placeholder="Describe the transaction" required /></FF></div>
-            <FF label="Gold In (g)"><input type="number" min="0" step="0.01" className={ic} value={form.goldIn} onChange={e=>setForm(f=>({...f,goldIn:e.target.value}))} placeholder="0.00" /></FF>
-            <FF label="Gold Out (g)"><input type="number" min="0" max={!editingId ? Math.max(0, currentBalance + (Number(form.goldIn) || 0) - (Number(form.scrap) || 0)).toFixed(2) : undefined} step="0.01" className={ic} value={form.goldOut} onChange={e=>setForm(f=>({...f,goldOut:e.target.value}))} placeholder="0.00" /></FF>
-            <FF label="Scrap (g)"><input type="number" min="0" max={!editingId ? Math.max(0, currentBalance + (Number(form.goldIn) || 0) - (Number(form.goldOut) || 0)).toFixed(2) : undefined} step="0.01" className={ic} value={form.scrap} onChange={e=>setForm(f=>({...f,scrap:e.target.value}))} placeholder="0.00" /></FF>
-            <FF label="Unit"><select className={ic} value={form.unit} onChange={e=>setForm(f=>({...f,unit:e.target.value}))}><option>grams</option><option>troy oz</option></select></FF>
-          </div>
-          <p className="text-[10px] text-muted-foreground font-mono">Current balance: {currentBalance.toFixed(2)} g — new balance auto-calculated.</p>
-        </Modal>
-      )}
+  return <div className="p-5 space-y-4">
+    <div className="flex items-center justify-between gap-3 flex-wrap">
+      <div className="flex items-center gap-3 flex-wrap"><SearchBar value={q} onChange={setQ} placeholder="Search reference, item…" />
+        <select className={ic+" w-auto"} value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)} aria-label="Filter inventory category"><option value="ALL">All categories</option>{INVENTORY_CATEGORIES.map(c=><option key={c} value={c}>{c[0]+c.slice(1).toLowerCase()}</option>)}</select>
+        {goldRate !== null && <div className="rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 text-xs"><span className="text-muted-foreground">Gold stock: </span><b className="text-primary">{goldBalance.toFixed(2)} g · {php(goldBalance*goldRate)}</b></div>}
+      </div><AddBtn onClick={() => { setForm(blank()); setEditingId(null); setOpen(true); }} label="Add Item" />
     </div>
-  );
+    <TableWrap><thead><tr>{[["Date","date"],["Category","category"],["Reference","referenceId"],["Item Description","itemName"],["Qty In","quantityIn"],["Qty Out","quantityOut"],["Loss / Scrap","quantityLoss"],["Balance","balance"]].map(([h,k])=><SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort}/>)}<th className={thc}>Actions</th></tr></thead>
+      <tbody>{filtered.map(e=><TRow key={e.id} onClick={()=>edit(e)}><td className={tdc}>{fmtDate(e.date)}</td><td className={tdc}><span className="rounded bg-primary/10 px-2 py-1 text-[10px] uppercase">{e.category}</span></td><td className={tdc+" text-primary/80"}>{e.referenceId}</td><td className={tdc+" font-sans"}>{e.itemName}</td><td className={tdr}>{e.quantityIn ? `+${e.quantityIn}` : "—"}</td><td className={tdr}>{e.quantityOut ? `-${e.quantityOut}` : "—"}</td><td className={tdr}>{e.quantityLoss || "—"}</td><td className={tdr+" text-primary font-semibold"}>{e.balance} {e.unit}</td><td className={tdc}><div className="flex items-center gap-2"><button type="button" onClick={event=>{event.stopPropagation();edit(e);}} className="rounded p-1.5 text-muted-foreground hover:bg-muted" title="Edit"><PenSquare size={13}/></button><button type="button" onClick={event=>{event.stopPropagation();onDelete(e.id);}} className="rounded p-1.5 text-muted-foreground hover:bg-muted" title="Delete"><Trash2 size={13}/></button></div></td></TRow>)}{!filtered.length&&<EmptyRow cols={9}/>}</tbody>
+    </TableWrap>
+    {open&&<Modal title={editingId?"Edit Inventory Entry":"Add Inventory Item"} onClose={closeModal} onSubmit={submit} submitLabel={editingId?"Update Entry":"Save Entry"} isSubmitting={isSubmitting}>
+      <div className="grid grid-cols-2 gap-4"><FF label="Date"><input type="date" max={todayISO()} className={ic} value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} required/></FF><FF label="Reference"><input className={ic} value={form.referenceId} readOnly placeholder="Assigned when saved"/></FF>
+        <FF label="Category"><select className={ic} value={form.category} onChange={e=>{const category=e.target.value;setForm(f=>({...f,category,unit:INVENTORY_UNITS[category][0]}));}}>{INVENTORY_CATEGORIES.map(c=><option key={c} value={c}>{c[0]+c.slice(1).toLowerCase()}</option>)}</select></FF><FF label="Unit"><select className={ic} value={form.unit} onChange={e=>setForm(f=>({...f,unit:e.target.value}))}>{units.map(u=><option key={u}>{u}</option>)}</select></FF>
+        <div className="col-span-2"><FF label="Item Description"><input className={ic} value={form.itemName} onChange={e=>setForm(f=>({...f,itemName:e.target.value}))} placeholder="e.g. 18k chain, gemstone, ring box" required/></FF></div>
+        <FF label={`Quantity In (${form.unit})`}><input type="number" min="0" step="0.01" className={ic} value={form.quantityIn} onChange={e=>setForm(f=>({...f,quantityIn:e.target.value}))}/></FF><FF label={`Quantity Out (${form.unit})`}><input type="number" min="0" step="0.01" className={ic} value={form.quantityOut} onChange={e=>setForm(f=>({...f,quantityOut:e.target.value}))}/></FF><FF label={`Loss / Scrap (${form.unit})`}><input type="number" min="0" step="0.01" className={ic} value={form.quantityLoss} onChange={e=>setForm(f=>({...f,quantityLoss:e.target.value}))}/></FF>
+      </div><p className="text-[10px] text-muted-foreground">Stock balance is calculated for each category, item, and unit.</p>
+    </Modal>}
+  </div>;
 }
 
 // ── inquiries ───────────────────────────────────────────────────────────────
@@ -1556,7 +1500,10 @@ function AppContent() {
   const timelineLabel = startMonth === endMonth
     ? `${MONTH_NAMES[startMonth]} ${selectedYear}`
     : `${MONTH_NAMES[startMonth].slice(0, 3)}–${MONTH_NAMES[endMonth].slice(0, 3)} ${selectedYear}`;
-  const goldStock  = inventory.length > 0 ? inventory[inventory.length - 1].balance : 0;
+  const goldRows = inventory.filter(e => e.category === "GOLD");
+  const goldByUnit = new Map<string, number>();
+  goldRows.forEach(row => goldByUnit.set(row.unit, row.balance));
+  const goldStock = (goldByUnit.get("grams") ?? 0) + (goldByUnit.get("troy oz") ?? 0) * 31.1034768;
   const totalRev   = visibleSales.reduce((a, s) => a + s.price, 0);
   const totalCost  = visibleJobCosts.reduce((a, j) => a + j.totalCost, 0);
   const totalExp   = visibleExpenses.reduce((a, e) => a + e.amount, 0);
@@ -1566,7 +1513,7 @@ function AppContent() {
 
   const TAB_LABELS: Record<Tab, string> = {
     DASHBOARD:"Dashboard", DAILY_SALES:"Daily Sales", JOB_COSTING:"Job Costing",
-    GOLD_INVENTORY:"Gold Inventory", INQUIRIES:"Inquiries", EXPENSES:"Expenses",
+    INVENTORY:"Inventory", INQUIRIES:"Inquiries", EXPENSES:"Expenses",
     PROFIT_ANALYSIS:"Profit Analysis", APPROVALS:"Approvals", AUDIT_LOGS:"Audit Logs",
   };
 
@@ -1639,7 +1586,7 @@ function AppContent() {
         {tab === "DASHBOARD"       && <DashboardView sales={visibleSales} jobCosts={visibleJobCosts} expenses={visibleExpenses} inquiries={visibleInquiries} rangeLabel={timelineLabel} isAdmin={isAdmin} onView={(title, record) => setViewRecord({ title, record })} />}
         {tab === "DAILY_SALES"     && <DailySalesView sales={sales.filter(isCompletedSale)} onUpdate={s => setSales(p => p.map(item => item.invoiceId === s.invoiceId ? s : item))} onDelete={id => deleteFromApi("sales", id, () => { const removed = sales.find(item => item.invoiceId === id); const linkedJob = jobCosts.find(item => item.jobCostId === removed?.jobCostId); setSales(p => p.filter(item => item.invoiceId !== id)); if (removed?.jobCostId) setJobCosts(p => p.filter(item => item.jobCostId !== removed.jobCostId)); if (linkedJob?.inquiryId) setInquiries(p => p.map(i => i.inquiryId === linkedJob.inquiryId ? { ...i, status:"Pending" } : i)); })} />}
         {tab === "JOB_COSTING"     && <JobCostingView jobCosts={jobCosts} inquiries={inquiries} selectedInquiryId={selectedInquiryForCosting} clearSelectedInquiry={() => setSelectedInquiryForCosting(null)} currentGoldRate={goldRate} onAdd={j => { setJobCosts(p => [j, ...p]); if (j.sale) setSales(p => [j.sale!, ...p.filter(s => s.invoiceId !== j.sale!.invoiceId)]); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status:"Approved" } : i)); }} onUpdate={j => { setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? j : item)); if (j.sale) setSales(p => p.map(s => s.invoiceId === j.sale!.invoiceId ? j.sale! : s)); }} onDelete={j => deleteFromApi("job-cost", j.jobCostId, () => { setJobCosts(p => p.filter(item => item.jobCostId !== j.jobCostId)); setSales(p => p.filter(s => s.invoiceId !== j.invoiceId)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status:"Pending" } : i)); })} onApprove={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/approve`, { method:"POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Costing could not be approved."); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Costing could not be approved."); } }} onReady={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/ready`, { method:"POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Item could not be marked ready."); const reason = data.notification?.sent ? (data.notification.reason ?? "Customer notification sent.") : (data.notification?.reason ?? "Customer notification could not be sent."); alert(`Marked ready for pickup. ${reason}`); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Item could not be marked ready."); } }} onFinish={async j => { try { const response = await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(j.invoiceId)}/finish`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ invoiceId:j.invoiceId, clientName:j.clientName }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Sale could not be finished."); const sale = normalizeSale(data); setSales(p => [sale, ...p.filter(item => item.invoiceId !== sale.invoiceId)]); setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? { ...item, status:"Finished", sale } : item)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status:"Finished" } : i)); const reason = data.notification?.sent ? (data.notification.reason ?? "Receipt email sent.") : (data.notification?.reason ?? "Receipt email could not be sent."); alert(`Sale completed. ${reason}`); } catch (error) { alert(error instanceof Error ? error.message : "Sale could not be finished."); } }} />}
-        {tab === "GOLD_INVENTORY"  && <GoldInventoryView inventory={inventory} goldRate={goldRate} onAdd={e => setInventory(p => [...p, e])} onUpdate={e => setInventory(p => p.map(item => item.id === e.id ? e : item))} onDelete={id => deleteFromApi("inventory", id, () => setInventory(p => p.filter(item => item.id !== id)))} />}
+        {tab === "INVENTORY"  && <GoldInventoryView inventory={inventory} goldRate={goldRate} onAdd={e => { setInventory(p => [...p, e]); setReloadKey(k => k + 1); }} onUpdate={e => { setInventory(p => p.map(item => item.id === e.id ? e : item)); setReloadKey(k => k + 1); }} onDelete={id => deleteFromApi("inventory", id, () => { setInventory(p => p.filter(item => item.id !== id)); setReloadKey(k => k + 1); })} />}
         {tab === "INQUIRIES"       && <InquiriesView inquiries={inquiries} onAdd={i => setInquiries(p => [i, ...p])} onUpdate={i => setInquiries(p => p.map(item => item.inquiryId === i.inquiryId ? i : item))} onDelete={id => deleteFromApi("inquiries", id, () => setInquiries(p => p.filter(item => item.inquiryId !== id)))} onStartCosting={id => { setSelectedInquiryForCosting(id); setTab("JOB_COSTING"); }} />}
         {tab === "EXPENSES"        && <ExpensesView expenses={expenses} onAdd={e => setExpenses(p => [e, ...p])} onUpdate={e => setExpenses(p => p.map(item => item.expenseId === e.expenseId ? e : item))} onDelete={id => deleteFromApi("expenses", id, () => setExpenses(p => p.filter(item => item.expenseId !== id)))} />}
         {tab === "PROFIT_ANALYSIS" && <ProfitAnalysisView sales={sales.filter(isCompletedSale)} jobCosts={jobCosts} expenses={expenses} selectedYear={selectedYear} setSelectedYear={setSelectedYear} startMonth={startMonth} setStartMonth={setStartMonth} endMonth={endMonth} setEndMonth={setEndMonth} />}
