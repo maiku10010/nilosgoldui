@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { twMerge } from "tailwind-merge";
+import goldsmithLogo from "../assets/nilosgold_logo.jpg";
 import {
   Search, Plus, X, Crown, TrendingUp, TrendingDown,
   Package, BarChart3, DollarSign, Gem, Sun, Moon, PenSquare, Trash2,
+  ArrowUpDown, ChevronUp, ChevronDown,
 } from "lucide-react";
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -203,12 +204,42 @@ const tdc = [
 
 const tdr = tdc + " text-right tabular-nums";
 
-function TRow({ children }: { children: React.ReactNode }) {
+function TRow({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) {
   return (
-    <tr className="hover:bg-muted/40 dark:hover:bg-slate-800/25 transition-colors">
+    <tr onClick={e => { if (onClick && !(e.target as HTMLElement).closest("button")) onClick(); }} onKeyDown={e => { if (onClick && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onClick(); } }} tabIndex={onClick ? 0 : undefined} className={`hover:bg-muted/40 dark:hover:bg-slate-800/25 transition-colors ${onClick ? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" : ""}`}>
       {children}
     </tr>
   );
+}
+
+type SortSpec = { key: string; direction: 1 | -1 };
+function sortRecords<T extends object>(rows: T[], sort: SortSpec): T[] {
+  return [...rows].sort((a, b) => {
+    const left = (a as any)[sort.key];
+    const right = (b as any)[sort.key];
+    const comparison = typeof left === "number" && typeof right === "number"
+      ? left - right
+      : String(left ?? "").localeCompare(String(right ?? ""), undefined, { numeric: true, sensitivity: "base" });
+    return comparison * sort.direction;
+  });
+}
+
+function SortableHeader({ label, sortKey, sort, onSort }: {
+  label: string; sortKey: string; sort: SortSpec; onSort: (key: string) => void;
+}) {
+  const active = sort.key === sortKey;
+  return <th className={thc} aria-sort={active ? (sort.direction === 1 ? "ascending" : "descending") : "none"}>
+    <button type="button" onClick={() => onSort(sortKey)} className="inline-flex items-center gap-1.5 hover:text-primary transition-colors">
+      {label}{active ? (sort.direction === 1 ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ArrowUpDown size={12} className="opacity-40" />}
+    </button>
+  </th>;
+}
+
+function BrandLogo({ className = "" }: { className?: string }) {
+  const [failed, setFailed] = useState(false);
+  return failed
+    ? <div className={`rounded-xl bg-primary text-primary-foreground flex items-center justify-center ${className}`}><Crown size={20} /></div>
+    : <img src={goldsmithLogo} alt="Nilo's Goldsmith" onError={() => setFailed(true)} className={`rounded-xl object-contain bg-white ${className}`} />;
 }
 
 function TableWrap({ children }: { children: React.ReactNode }) {
@@ -232,9 +263,10 @@ function EmptyRow({ cols }: { cols: number }) {
 // ── recharts helpers ────────────────────────────────────────────────────────
 const ChartTip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
+  const tipLabel = payload[0]?.payload?.period ?? label;
   return (
     <div className="bg-card border border-border rounded-lg p-3 shadow-xl text-xs font-mono">
-      <p className="text-muted-foreground mb-2 uppercase tracking-widest text-[10px]">{label}</p>
+      <p className="text-muted-foreground mb-2 uppercase tracking-widest text-[10px]">{tipLabel}</p>
       {payload.map((p: any) => (
         <p key={p.name} style={{ color: p.color }} className="tabular-nums">
           {p.name}: {php(p.value)}
@@ -245,9 +277,14 @@ const ChartTip = ({ active, payload, label }: any) => {
 };
 
 // ── dashboard view ─────────────────────────────────────────────────────────
-function DashboardView({ sales, jobCosts, expenses, inquiries }: {
+function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onView }: {
   sales: Sale[]; jobCosts: JobCost[]; expenses: Expense[]; inquiries: Inquiry[];
+  rangeLabel: string; onView: (title: string, record: Record<string, unknown>) => void;
 }) {
+  const [salesSort, setSalesSort] = useState<SortSpec>({ key: "date", direction: -1 });
+  const [jobSort, setJobSort] = useState<SortSpec>({ key: "invoiceId", direction: -1 });
+  const toggleSalesSort = (key: string) => setSalesSort(s => ({ key, direction: s.key === key ? (s.direction === 1 ? -1 : 1) : 1 }));
+  const toggleJobSort = (key: string) => setJobSort(s => ({ key, direction: s.key === key ? (s.direction === 1 ? -1 : 1) : 1 }));
   const totalSales    = useMemo(() => sales.reduce((a, s) => a + s.price, 0), [sales]);
   const cashCollected = useMemo(() => sales.reduce((a, s) => a + s.downpayment, 0), [sales]);
   const receivables   = totalSales - cashCollected;
@@ -269,12 +306,11 @@ function DashboardView({ sales, jobCosts, expenses, inquiries }: {
   const closedInq   = inquiries.filter(i => i.status === "Yes").length;
   const convRate    = totalInq > 0 ? (closedInq / totalInq) * 100 : 0;
 
-  const recentSales = useMemo(() =>
-    [...sales].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 7), [sales]);
-  const recentJC    = useMemo(() => [...jobCosts].slice(0, 6), [jobCosts]);
+  const recentSales = sortRecords(useMemo(() => [...sales], [sales]), salesSort).slice(0, 7);
+  const recentJC    = sortRecords(useMemo(() => [...jobCosts], [jobCosts]), jobSort).slice(0, 6);
 
   const catColors: Record<string, string> = {
-    "Rent":"#d4a017","Staff Salary":"#f59e0b","Utilities":"#38bdf8","Supplies":"#a78bfa","Tax & Permits":"#ef4444",
+    "Rent":"#1746a2","Staff Salary":"#d4a017","Utilities":"#496bb2","Supplies":"#111318","Tax & Permits":"#b18a16",
   };
 
   const cardCls = "bg-card border border-border rounded-xl p-5";
@@ -288,7 +324,7 @@ function DashboardView({ sales, jobCosts, expenses, inquiries }: {
         <div className={cardCls}>
           <div className="flex items-center gap-2 mb-4">
             <DollarSign size={13} className="text-primary shrink-0" />
-            <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">Daily Sales Summary</span>
+            <span className="text-sm font-mono text-muted-foreground uppercase tracking-widest">Sales Summary · {rangeLabel}</span>
           </div>
           <div className="space-y-3">
             {[
@@ -313,7 +349,7 @@ function DashboardView({ sales, jobCosts, expenses, inquiries }: {
         <div className={cardCls}>
           <div className="flex items-center gap-2 mb-4">
             <TrendingUp size={13} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">Gross Profit</span>
+            <span className="text-sm font-mono text-muted-foreground uppercase tracking-widest">Gross Profit · {rangeLabel}</span>
           </div>
           <div className="space-y-3">
             {[
@@ -341,7 +377,7 @@ function DashboardView({ sales, jobCosts, expenses, inquiries }: {
         <div className={cardCls}>
           <div className="flex items-center gap-2 mb-4">
             <BarChart3 size={13} className="text-muted-foreground shrink-0" />
-            <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">Total Expenses</span>
+            <span className="text-sm font-mono text-muted-foreground uppercase tracking-widest">Expenses · {rangeLabel}</span>
           </div>
           <div className="space-y-2.5">
             {Object.entries(expByCat).map(([cat, amt]) => (
@@ -365,7 +401,7 @@ function DashboardView({ sales, jobCosts, expenses, inquiries }: {
         <div className={cardCls}>
           <div className="flex items-center gap-2 mb-3">
             <Gem size={13} className="text-primary shrink-0" />
-            <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">Net Profit</span>
+            <span className="text-sm font-mono text-muted-foreground uppercase tracking-widest">Net Profit · {rangeLabel}</span>
           </div>
           <div className="mb-4">
             <div className={`text-2xl font-bold tabular-nums ${netProfit >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
@@ -406,11 +442,11 @@ function DashboardView({ sales, jobCosts, expenses, inquiries }: {
           </p>
           <TableWrap>
             <thead><tr>
-              {["Date","Invoice #","Client","Type","Total","Status"].map(h=><th key={h} className={thc}>{h}</th>)}
+              {[["Date","date"],["Invoice #","invoiceId"],["Client","clientName"],["Type","serviceType"],["Total","price"],["Status","status"]].map(([h,k])=><SortableHeader key={h} label={h} sortKey={k} sort={salesSort} onSort={toggleSalesSort} />)}
             </tr></thead>
             <tbody>
               {recentSales.map(s => (
-                <TRow key={s.id}>
+                <TRow key={s.id} onClick={() => onView("Sale details", s as unknown as Record<string, unknown>)}>
                   <td className={tdc}>{fmtDate(s.date)}</td>
                   <td className={tdc + " text-primary/80 dark:text-amber-400/80"}>{s.invoiceId}</td>
                   <td className={tdc + " font-sans font-medium"}>{s.clientName}</td>
@@ -428,11 +464,11 @@ function DashboardView({ sales, jobCosts, expenses, inquiries }: {
           </p>
           <TableWrap>
             <thead><tr>
-              {["Invoice #","Client","Gold (g)","Total Cost","Selling","Profit","Margin"].map(h=><th key={h} className={thc}>{h}</th>)}
+              {[["Invoice #","invoiceId"],["Client","clientName"],["Gold (g)","goldUsed"],["Total Cost","totalCost"],["Selling","sellingPrice"],["Profit","profit"],["Margin","marginPct"]].map(([h,k])=><SortableHeader key={h} label={h} sortKey={k} sort={jobSort} onSort={toggleJobSort} />)}
             </tr></thead>
             <tbody>
               {recentJC.map(j => (
-                <TRow key={j.jobCostId}>
+                <TRow key={j.jobCostId} onClick={() => onView("Job cost details", j as unknown as Record<string, unknown>)}>
                   <td className={tdc + " text-primary/80 dark:text-amber-400/80"}>{j.invoiceId}</td>
                   <td className={tdc + " font-sans font-medium"}>{j.clientName}</td>
                   <td className={tdr}>{j.goldUsed.toFixed(2)}</td>
@@ -455,6 +491,8 @@ function DashboardView({ sales, jobCosts, expenses, inquiries }: {
 // ── daily sales ─────────────────────────────────────────────────────────────
 function DailySalesView({ sales, onAdd, onUpdate, onDelete }: { sales: Sale[]; onAdd: (s: Sale) => void; onUpdate: (s: Sale) => void; onDelete: (id: string) => void }) {
   const [q, setQ] = useState("");
+  const [sort, setSort] = useState<SortSpec>({ key: "date", direction: -1 });
+  const toggleSort = (key: string) => setSort(s => ({ key, direction: s.key === key ? (s.direction === 1 ? -1 : 1) : 1 }));
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -462,9 +500,9 @@ function DailySalesView({ sales, onAdd, onUpdate, onDelete }: { sales: Sale[]; o
   const [form, setForm] = useState({ invoiceId:"", date:"", clientName:"", contactNum:"",
     serviceType:"Custom" as ServiceType, price:"", downpayment:"", status:"Ongoing" as SaleStatus });
 
-  const filtered = useMemo(() => sales.filter(s =>
+  const filtered = sortRecords(useMemo(() => sales.filter(s =>
     [s.clientName, s.invoiceId, s.serviceType, s.status].some(v => v.toLowerCase().includes(q.toLowerCase()))
-  ), [sales, q]);
+  ), [sales, q]), sort);
 
   const resetForm = () => setForm({ invoiceId:"", date:todayISO(), clientName:"", contactNum:"", serviceType:"Custom", price:"", downpayment:"", status:"Ongoing" });
   const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
@@ -506,11 +544,11 @@ function DailySalesView({ sales, onAdd, onUpdate, onDelete }: { sales: Sale[]; o
       </div>
       <TableWrap>
         <thead><tr>
-          {['Date','Invoice #','Client Name','Contact','Type','Total Price','Downpayment','Balance','Status','Actions'].map(h=><th key={h} className={thc}>{h}</th>)}
+          {[["Date","date"],["Invoice #","invoiceId"],["Client Name","clientName"],["Contact","contactNum"],["Type","serviceType"],["Total Price","price"],["Downpayment","downpayment"],["Balance","balance"],["Status","status"]].map(([h,k])=><SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}<th className={thc}>Actions</th>
         </tr></thead>
         <tbody>
           {filtered.map(s => (
-            <TRow key={s.id}>
+            <TRow key={s.id} onClick={() => { setEditingId(s.id); setForm({ invoiceId:s.invoiceId, date:s.date, clientName:s.clientName, contactNum:s.contactNum, serviceType:s.serviceType, price:String(s.price), downpayment:String(s.downpayment), status:s.status }); setOpen(true); }}>
               <td className={tdc}>{fmtDate(s.date)}</td>
               <td className={tdc + " text-primary/80 dark:text-amber-400/80"}>{s.invoiceId}</td>
               <td className={tdc + " font-sans font-medium"}>{s.clientName}</td>
@@ -564,15 +602,17 @@ function DailySalesView({ sales, onAdd, onUpdate, onDelete }: { sales: Sale[]; o
 // ── job costing ─────────────────────────────────────────────────────────────
 function JobCostingView({ jobCosts, onAdd, onUpdate, onDelete }: { jobCosts: JobCost[]; onAdd: (j: JobCost) => void; onUpdate: (j: JobCost) => void; onDelete: (id: string) => void }) {
   const [q, setQ] = useState("");
+  const [sort, setSort] = useState<SortSpec>({ key: "invoiceId", direction: -1 });
+  const toggleSort = (key: string) => setSort(s => ({ key, direction: s.key === key ? (s.direction === 1 ? -1 : 1) : 1 }));
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const [form, setForm] = useState({ invoiceId:"", clientName:"", empId:"", goldUsed:"", stoneCost:"", laborCost:"", sellingPrice:"" });
 
-  const filtered = useMemo(() => jobCosts.filter(j =>
+  const filtered = sortRecords(useMemo(() => jobCosts.filter(j =>
     [j.invoiceId, j.clientName, j.jobCostId].some(v => v.toLowerCase().includes(q.toLowerCase()))
-  ), [jobCosts, q]);
+  ), [jobCosts, q]), sort);
 
   const resetForm = () => setForm({ invoiceId:"", clientName:"", empId:"", goldUsed:"", stoneCost:"", laborCost:"", sellingPrice:"" });
   const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
@@ -621,11 +661,11 @@ function JobCostingView({ jobCosts, onAdd, onUpdate, onDelete }: { jobCosts: Job
       </div>
       <TableWrap>
         <thead><tr>
-          {["Job Cost ID","Invoice #","Client","Gold (g)","Gold Cost/g","Gold Cost","Stone Cost","Labor Cost","Total Cost","Selling Price","Profit","Margin %"].map(h=><th key={h} className={thc}>{h}</th>)}
+          {[["Job Cost ID","jobCostId"],["Invoice #","invoiceId"],["Client","clientName"],["Gold (g)","goldUsed"],["Gold Cost/g","goldCostPerG"],["Gold Cost","goldCost"],["Stone Cost","stoneCost"],["Labor Cost","laborCost"],["Total Cost","totalCost"],["Selling Price","sellingPrice"],["Profit","profit"],["Margin %","marginPct"]].map(([h,k])=><SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}<th className={thc}>Actions</th>
         </tr></thead>
         <tbody>
           {filtered.map(j => (
-            <TRow key={j.jobCostId}>
+            <TRow key={j.jobCostId} onClick={() => { setEditingId(j.jobCostId); setForm({ invoiceId:j.invoiceId, clientName:j.clientName, empId:j.empId ?? "", goldUsed:String(j.goldUsed), stoneCost:String(j.stoneCost), laborCost:String(j.laborCost), sellingPrice:String(j.sellingPrice) }); setOpen(true); }}>
               <td className={tdc + " text-muted-foreground"}>{j.jobCostId}</td>
               <td className={tdc + " text-primary/80 dark:text-amber-400/80"}>{j.invoiceId}</td>
               <td className={tdc + " font-sans font-medium"}>{j.clientName}</td>
@@ -679,14 +719,16 @@ function JobCostingView({ jobCosts, onAdd, onUpdate, onDelete }: { jobCosts: Job
 // ── gold inventory ──────────────────────────────────────────────────────────
 function GoldInventoryView({ inventory, onAdd, onUpdate, onDelete }: { inventory: InvEntry[]; onAdd: (e: InvEntry) => void; onUpdate: (e: InvEntry) => void; onDelete: (id: string) => void }) {
   const [q, setQ] = useState("");
+  const [sort, setSort] = useState<SortSpec>({ key: "date", direction: -1 });
+  const toggleSort = (key: string) => setSort(s => ({ key, direction: s.key === key ? (s.direction === 1 ? -1 : 1) : 1 }));
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const [form, setForm] = useState({ date:"", referenceId:"", itemName:"", goldIn:"", goldOut:"", scrap:"", unit:"grams" });
-  const filtered = useMemo(() => inventory.filter(e =>
+  const filtered = sortRecords(useMemo(() => inventory.filter(e =>
     [e.referenceId, e.itemName].some(v => v.toLowerCase().includes(q.toLowerCase()))
-  ), [inventory, q]);
+  ), [inventory, q]), sort);
   const currentBalance = inventory.length > 0 ? inventory[inventory.length - 1].balance : 0;
 
   const resetForm = () => setForm({ date:todayISO(), referenceId:"", itemName:"", goldIn:"", goldOut:"", scrap:"", unit:"grams" });
@@ -739,11 +781,11 @@ function GoldInventoryView({ inventory, onAdd, onUpdate, onDelete }: { inventory
       </div>
       <TableWrap>
         <thead><tr>
-          {["Date","Reference / Invoice","Item Description","Gold In (g)","Gold Out (g)","Scrap (g)","Balance (g)"].map(h=><th key={h} className={thc}>{h}</th>)}
+          {[["Date","date"],["Reference / Invoice","referenceId"],["Item Description","itemName"],["Gold In (g)","goldIn"],["Gold Out (g)","goldOut"],["Scrap (g)","scrap"],["Balance (g)","balance"]].map(([h,k])=><SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}<th className={thc}>Actions</th>
         </tr></thead>
         <tbody>
           {filtered.map(e => (
-            <TRow key={e.id}>
+            <TRow key={e.id} onClick={() => { setEditingId(e.id); setForm({ date:e.date, referenceId:e.referenceId, itemName:e.itemName, goldIn:String(e.goldIn), goldOut:String(e.goldOut), scrap:String(e.scrap), unit:e.unit }); setOpen(true); }}>
               <td className={tdc}>{fmtDate(e.date)}</td>
               <td className={tdc + " text-primary/80 dark:text-amber-400/80"}>{e.referenceId}</td>
               <td className={tdc + " font-sans"}>{e.itemName}</td>
@@ -787,14 +829,16 @@ function GoldInventoryView({ inventory, onAdd, onUpdate, onDelete }: { inventory
 // ── inquiries ───────────────────────────────────────────────────────────────
 function InquiriesView({ inquiries, onAdd, onUpdate, onDelete }: { inquiries: Inquiry[]; onAdd: (i: Inquiry) => void; onUpdate: (i: Inquiry) => void; onDelete: (id: string) => void }) {
   const [q, setQ] = useState("");
+  const [sort, setSort] = useState<SortSpec>({ key: "date", direction: -1 });
+  const toggleSort = (key: string) => setSort(s => ({ key, direction: s.key === key ? (s.direction === 1 ? -1 : 1) : 1 }));
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const [form, setForm] = useState({ customerName:"", contactInfo:"", details:"", category:"", quotedPrice:"", status:"Pending" as InqStatus });
-  const filtered = useMemo(() => inquiries.filter(i =>
+  const filtered = sortRecords(useMemo(() => inquiries.filter(i =>
     [i.customerName, i.category, i.details, i.inquiryId].some(v => v.toLowerCase().includes(q.toLowerCase()))
-  ), [inquiries, q]);
+  ), [inquiries, q]), sort);
 
   const resetForm = () => setForm({ customerName:"", contactInfo:"", details:"", category:"", quotedPrice:"", status:"Pending" });
   const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
@@ -834,11 +878,11 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete }: { inquiries: In
       </div>
       <TableWrap>
         <thead><tr>
-          {["Date","Inquiry ID","Client Name","Contact","Category","Details","Quoted Price","Status"].map(h=><th key={h} className={thc}>{h}</th>)}
+          {[["Date","date"],["Inquiry ID","inquiryId"],["Client Name","customerName"],["Contact","contactInfo"],["Category","category"],["Details","details"],["Quoted Price","quotedPrice"],["Status","status"]].map(([h,k])=><SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}<th className={thc}>Actions</th>
         </tr></thead>
         <tbody>
           {filtered.map(i => (
-            <TRow key={i.inquiryId}>
+            <TRow key={i.inquiryId} onClick={() => { setEditingId(i.inquiryId); setForm({ customerName:i.customerName, contactInfo:i.contactInfo, details:i.details, category:i.category, quotedPrice:String(i.quotedPrice), status:i.status }); setOpen(true); }}>
               <td className={tdc}>{fmtDate(i.date)}</td>
               <td className={tdc + " text-muted-foreground"}>{i.inquiryId}</td>
               <td className={tdc + " font-sans font-medium"}>{i.customerName}</td>
@@ -885,14 +929,16 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete }: { inquiries: In
 // ── expenses ────────────────────────────────────────────────────────────────
 function ExpensesView({ expenses, onAdd, onUpdate, onDelete }: { expenses: Expense[]; onAdd: (e: Expense) => void; onUpdate: (e: Expense) => void; onDelete: (id: string) => void }) {
   const [q, setQ] = useState("");
+  const [sort, setSort] = useState<SortSpec>({ key: "expDate", direction: -1 });
+  const toggleSort = (key: string) => setSort(s => ({ key, direction: s.key === key ? (s.direction === 1 ? -1 : 1) : 1 }));
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const [form, setForm] = useState({ expDate:"", category:"Rent", description:"", amount:"" });
-  const filtered = useMemo(() => expenses.filter(e =>
+  const filtered = sortRecords(useMemo(() => expenses.filter(e =>
     [e.category, e.description, e.expenseId].some(v => v.toLowerCase().includes(q.toLowerCase()))
-  ), [expenses, q]);
+  ), [expenses, q]), sort);
   const total = useMemo(() => filtered.reduce((a, e) => a + e.amount, 0), [filtered]);
 
   const resetForm = () => setForm({ expDate:todayISO(), category:"Rent", description:"", amount:"" });
@@ -937,11 +983,11 @@ function ExpensesView({ expenses, onAdd, onUpdate, onDelete }: { expenses: Expen
       </div>
       <TableWrap>
         <thead><tr>
-          {["Date","Expense ID","Category","Description","Amount"].map(h=><th key={h} className={thc}>{h}</th>)}
+          {[["Date","expDate"],["Expense ID","expenseId"],["Category","category"],["Description","description"],["Amount","amount"]].map(([h,k])=><SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}<th className={thc}>Actions</th>
         </tr></thead>
         <tbody>
           {filtered.map(e => (
-            <TRow key={e.expenseId}>
+            <TRow key={e.expenseId} onClick={() => { setEditingId(e.expenseId); setForm({ expDate:e.expDate, category:e.category, description:e.description, amount:String(e.amount) }); setOpen(true); }}>
               <td className={tdc}>{fmtDate(e.expDate)}</td>
               <td className={tdc + " text-muted-foreground"}>{e.expenseId}</td>
               <td className={tdc}>
@@ -992,15 +1038,34 @@ function ExpensesView({ expenses, onAdd, onUpdate, onDelete }: { expenses: Expen
 
 // ── profit analysis ─────────────────────────────────────────────────────────
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const PIE_COLORS = ["#d4a017","#f59e0b","#38bdf8","#a78bfa","#ef4444"];
+const PIE_COLORS = ["#1746a2","#d4a017","#496bb2","#e2bb4e","#111318"];
 
-function ProfitAnalysisView({ sales, jobCosts, expenses }: {
+function RecordDetails({ title, record, onClose }: { title: string; record: Record<string, unknown> | null; onClose: () => void }) {
+  if (!record) return null;
+  const entries = Object.entries(record).filter(([key]) => key !== "id");
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4" onMouseDown={onClose}>
+    <section role="dialog" aria-modal="true" aria-label={title} onMouseDown={e => e.stopPropagation()} className="w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl">
+      <div className="mb-5 flex items-center justify-between gap-4">
+        <h2 className="text-lg font-semibold">{title}</h2>
+        <button type="button" onClick={onClose} aria-label="Close details" className="rounded-lg p-2 hover:bg-muted"><X size={18} /></button>
+      </div>
+      <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {entries.map(([key, value]) => <div key={key} className="rounded-lg bg-muted/50 p-3">
+          <dt className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{key.replace(/([A-Z])/g, " $1")}</dt>
+          <dd className="break-words text-sm font-medium">{typeof value === "number" && /price|cost|profit|amount|balance|payment/i.test(key) ? php(value) : String(value ?? "—")}</dd>
+        </div>)}
+      </dl>
+    </section>
+  </div>;
+}
+
+function ProfitAnalysisView({ sales, jobCosts, expenses, selectedYear, setSelectedYear, startMonth, setStartMonth, endMonth, setEndMonth }: {
   sales: Sale[]; jobCosts: JobCost[]; expenses: Expense[];
+  selectedYear: number; setSelectedYear: (year: number) => void;
+  startMonth: number; setStartMonth: (month: number) => void;
+  endMonth: number; setEndMonth: (month: number) => void;
 }) {
   const currentYear = new Date().getFullYear();
-  const [selectedYear, setSelectedYear] = useState(currentYear);
-  const [startMonth, setStartMonth] = useState(0);
-  const [endMonth, setEndMonth] = useState(new Date().getMonth());
   const availableYears = useMemo(() => {
     const years = new Set(Array.from({ length: 11 }, (_, i) => currentYear - i));
     [...sales.map(s => s.date), ...expenses.map(e => e.expDate)].forEach(date => {
@@ -1026,15 +1091,26 @@ function ProfitAnalysisView({ sales, jobCosts, expenses }: {
   const totalExp     = selectedExpenses.reduce((a, e) => a + e.amount, 0);
   const netProfit    = grossProfit - totalExp;
   const netMargin    = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
-  const chartData = Array.from({ length: endMonth - startMonth + 1 }, (_, offset) => {
-    const monthIndex = startMonth + offset;
-    const revenue = selectedSales.filter(s => Number(s.date.slice(5, 7)) - 1 === monthIndex).reduce((sum, s) => sum + s.price, 0);
-    const cost = selectedJobCosts.filter(j => Number(salesByInvoice.get(j.invoiceId)?.date.slice(5, 7)) - 1 === monthIndex).reduce((sum, j) => sum + j.totalCost, 0);
-    const monthExpenses = selectedExpenses.filter(e => Number(e.expDate.slice(5, 7)) - 1 === monthIndex).reduce((sum, e) => sum + e.amount, 0);
-    return { month: MONTH_NAMES[monthIndex].slice(0, 3), revenue, cost, netProfit: revenue - cost - monthExpenses };
-  });
+  const daysInSelectedMonth = new Date(selectedYear, startMonth + 1, 0).getDate();
+  const chartData = startMonth === endMonth
+    ? Array.from({ length: Math.ceil(daysInSelectedMonth / 7) }, (_, index) => {
+      const fromDay = index * 7 + 1;
+      const toDay = Math.min(fromDay + 6, daysInSelectedMonth);
+      const belongsToWeek = (date: string) => Number(date.slice(8, 10)) >= fromDay && Number(date.slice(8, 10)) <= toDay;
+      const revenue = selectedSales.filter(s => belongsToWeek(s.date)).reduce((sum, s) => sum + s.price, 0);
+      const cost = selectedJobCosts.filter(j => belongsToWeek(salesByInvoice.get(j.invoiceId)?.date ?? "")).reduce((sum, j) => sum + j.totalCost, 0);
+      const weekExpenses = selectedExpenses.filter(e => belongsToWeek(e.expDate)).reduce((sum, e) => sum + e.amount, 0);
+      return { month: `W${index + 1}`, period: `Week ${index + 1} · ${MONTH_NAMES[startMonth]} ${fromDay}–${toDay}`, revenue, cost, netProfit: revenue - cost - weekExpenses };
+    })
+    : Array.from({ length: endMonth - startMonth + 1 }, (_, offset) => {
+      const monthIndex = startMonth + offset;
+      const revenue = selectedSales.filter(s => Number(s.date.slice(5, 7)) - 1 === monthIndex).reduce((sum, s) => sum + s.price, 0);
+      const cost = selectedJobCosts.filter(j => Number(salesByInvoice.get(j.invoiceId)?.date.slice(5, 7)) - 1 === monthIndex).reduce((sum, j) => sum + j.totalCost, 0);
+      const monthExpenses = selectedExpenses.filter(e => Number(e.expDate.slice(5, 7)) - 1 === monthIndex).reduce((sum, e) => sum + e.amount, 0);
+      return { month: MONTH_NAMES[monthIndex].slice(0, 3), revenue, cost, netProfit: revenue - cost - monthExpenses };
+    });
   const rangeLabel = startMonth === endMonth
-    ? `${MONTH_NAMES[startMonth]} ${selectedYear}`
+            ? `${MONTH_NAMES[startMonth]} ${selectedYear}`
     : `${MONTH_NAMES[startMonth].slice(0, 3)}–${MONTH_NAMES[endMonth].slice(0, 3)} ${selectedYear}`;
 
   const expByCat = selectedExpenses.reduce((acc, e) => {
@@ -1069,7 +1145,7 @@ function ProfitAnalysisView({ sales, jobCosts, expenses }: {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
         <div className={cardCls + " xl:col-span-2"}>
           <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-            <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">Monthly Revenue vs. Cost vs. Net Profit ({rangeLabel})</p>
+            <p className="text-sm font-mono text-muted-foreground uppercase tracking-widest">{startMonth === endMonth ? "Weekly" : "Monthly"} Revenue vs. Cost vs. Net Profit ({rangeLabel})</p>
             <div className="flex flex-wrap gap-2">
               <label className="text-[10px] text-muted-foreground">From
                 <select aria-label="Start month" className={`${ic} ml-2 w-auto py-1.5`} value={startMonth} onChange={e=>setStartMonth(Number(e.target.value))}>
@@ -1082,7 +1158,7 @@ function ProfitAnalysisView({ sales, jobCosts, expenses }: {
                 </select>
               </label>
               <label className="text-[10px] text-muted-foreground">Year
-                <select aria-label="Year" className={`${ic} ml-2 w-auto py-1.5`} value={selectedYear} onChange={e=>{ const year=Number(e.target.value); setSelectedYear(year); if (year === currentYear && endMonth > new Date().getMonth()) setEndMonth(new Date().getMonth()); }}>
+                <select aria-label="Year" className={`${ic} ml-2 w-auto py-1.5`} value={selectedYear} onChange={e=>{ const year=Number(e.target.value); setSelectedYear(year); if (year === currentYear) { const maxMonth=new Date().getMonth(); setStartMonth(m=>Math.min(m,maxMonth)); setEndMonth(m=>Math.min(m,maxMonth)); } }}>
                   {availableYears.map(year=><option key={year} value={year}>{year}</option>)}
                 </select>
               </label>
@@ -1092,21 +1168,21 @@ function ProfitAnalysisView({ sales, jobCosts, expenses }: {
             <AreaChart data={chartData} margin={{ top:4, right:4, bottom:0, left:10 }}>
               <defs>
                 <linearGradient id="gRev" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#1746a2" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="#1746a2" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="gNet" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#d4a017" stopOpacity={0.25} />
                   <stop offset="95%" stopColor="#d4a017" stopOpacity={0} />
                 </linearGradient>
-                <linearGradient id="gNet" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#059669" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="#059669" stopOpacity={0} />
-                </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="month" tick={{ fill:"var(--muted-foreground)", fontSize:10, fontFamily:"JetBrains Mono" }} axisLine={false} tickLine={false} />
+              <XAxis dataKey="month" tick={{ fill:"var(--muted-foreground)", fontSize:12, fontFamily:"JetBrains Mono" }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fill:"var(--muted-foreground)", fontSize:10, fontFamily:"JetBrains Mono" }} axisLine={false} tickLine={false} tickFormatter={v=>"₱"+(v/1000)+"K"} />
               <Tooltip content={<ChartTip />} />
-              <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#d4a017" strokeWidth={2} fill="url(#gRev)" />
-              <Area type="monotone" dataKey="cost" name="Job Cost" stroke="#ef4444" strokeWidth={1.5} fill="none" strokeDasharray="4 2" />
-              <Area type="monotone" dataKey="netProfit" name="Net Profit" stroke="#059669" strokeWidth={2} fill="url(#gNet)" />
+              <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#1746a2" strokeWidth={2} fill="url(#gRev)" />
+              <Area type="monotone" dataKey="cost" name="Job Cost" stroke="#111318" strokeWidth={1.5} fill="none" strokeDasharray="4 2" />
+              <Area type="monotone" dataKey="netProfit" name="Net Profit" stroke="#d4a017" strokeWidth={2} fill="url(#gNet)" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -1148,7 +1224,7 @@ function ProfitAnalysisView({ sales, jobCosts, expenses }: {
               labelStyle={{ color:"var(--muted-foreground)" }}
             />
             <Bar dataKey="margin" name="Margin %" radius={[4,4,0,0]}>
-              {byService.map((_, i) => <Cell key={i} fill={["#d4a017","#059669","#38bdf8","#a78bfa"][i]} />)}
+              {byService.map((_, i) => <Cell key={i} fill={["#1746a2","#d4a017","#496bb2","#111318"][i]} />)}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
@@ -1180,10 +1256,14 @@ function KPICard({ label, value, sub, badge, vc = "" }: {
 export default function App() {
   const [user, setUser] = useState<any>(() => { try { return JSON.parse(localStorage.getItem("nilo-user") || "null"); } catch { return null; } });
   const [dark, setDark] = useState(() => {
-    try { return localStorage.getItem("nilo-theme") !== "light"; }
-    catch { return true; }
+    try { return localStorage.getItem("nilo-theme") === "dark"; }
+    catch { return false; }
   });
   const [tab, setTab] = useState<Tab>("DASHBOARD");
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [startMonth, setStartMonth] = useState(0);
+  const [endMonth, setEndMonth] = useState(new Date().getMonth());
+  const [viewRecord, setViewRecord] = useState<{ title: string; record: Record<string, unknown> } | null>(null);
   const [sales, setSales] = useState<Sale[]>([]);
   const [jobCosts, setJobCosts] = useState<JobCost[]>([]);
   const [inventory, setInventory] = useState<InvEntry[]>([]);
@@ -1214,10 +1294,25 @@ export default function App() {
 
   if (!user) return <LoginScreen onLogin={setUser} />;
 
+  const inTimeline = (date: string) => {
+    const [year, month] = date.slice(0, 10).split("-").map(Number);
+    return year === selectedYear && month - 1 >= startMonth && month - 1 <= endMonth;
+  };
+  const visibleSales = sales.filter(s => inTimeline(s.date));
+  const salesByInvoice = new Map(sales.map(s => [s.invoiceId, s]));
+  const visibleJobCosts = jobCosts.filter(j => {
+    const sale = salesByInvoice.get(j.invoiceId);
+    return Boolean(sale && inTimeline(sale.date));
+  });
+  const visibleExpenses = expenses.filter(e => inTimeline(e.expDate));
+  const visibleInquiries = inquiries.filter(i => inTimeline(i.date));
+  const timelineLabel = startMonth === endMonth
+    ? `${MONTH_NAMES[startMonth]} ${selectedYear}`
+    : `${MONTH_NAMES[startMonth].slice(0, 3)}–${MONTH_NAMES[endMonth].slice(0, 3)} ${selectedYear}`;
   const goldStock  = inventory.length > 0 ? inventory[inventory.length - 1].balance : 0;
-  const totalRev   = sales.reduce((a, s) => a + s.price, 0);
-  const totalCost  = jobCosts.reduce((a, j) => a + j.totalCost, 0);
-  const totalExp   = expenses.reduce((a, e) => a + e.amount, 0);
+  const totalRev   = visibleSales.reduce((a, s) => a + s.price, 0);
+  const totalCost  = visibleJobCosts.reduce((a, j) => a + j.totalCost, 0);
+  const totalExp   = visibleExpenses.reduce((a, e) => a + e.amount, 0);
   const netProfit  = totalRev - totalCost - totalExp;
   const netMargin  = totalRev > 0 ? (netProfit / totalRev) * 100 : 0;
   const today      = new Date().toLocaleDateString("en-PH", { month:"short", day:"numeric", year:"numeric" });
@@ -1236,15 +1331,13 @@ export default function App() {
         <div className="flex items-center gap-4 px-5 py-3 border-b border-sidebar-border">
           {/* Branding */}
           <div className="flex items-center gap-3 shrink-0 mr-2">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-amber-700 flex items-center justify-center shadow-md shadow-amber-900/30">
-              <Crown size={17} className="text-white drop-shadow" />
-            </div>
+            <BrandLogo className="w-10 h-10 shadow-sm" />
             <div>
               <div className="text-sm font-bold text-primary leading-tight tracking-wide" style={{ fontFamily:"'Playfair Display', serif" }}>
                 NILO&apos;S GOLDSMITH
               </div>
-              <div className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest leading-tight">
-                Master Control System 2026
+              <div className="text-xs font-mono text-muted-foreground tracking-wide leading-tight">
+                Goldsmith Accounting System
               </div>
             </div>
           </div>
@@ -1255,7 +1348,7 @@ export default function App() {
             <KPICard label="Live Gold Price / g" value={php(GOLD_PRICE)} vc="text-primary" />
             <KPICard label="Gold Stock (Physical)" value={`${goldStock.toFixed(2)} g`} vc="text-primary" />
             <KPICard
-              label="Net Profit (All Time)"
+              label={`Net Profit (${timelineLabel})`}
               value={php(netProfit)}
               sub={`${pct(netMargin)} Margin`}
               vc="text-emerald-700 dark:text-emerald-400"
@@ -1295,14 +1388,15 @@ export default function App() {
 
       {/* Page content */}
       <main className="max-w-[1680px] mx-auto">
-        {tab === "DASHBOARD"       && <DashboardView sales={sales} jobCosts={jobCosts} expenses={expenses} inquiries={inquiries} />}
+        {tab === "DASHBOARD"       && <DashboardView sales={visibleSales} jobCosts={visibleJobCosts} expenses={visibleExpenses} inquiries={visibleInquiries} rangeLabel={timelineLabel} onView={(title, record) => setViewRecord({ title, record })} />}
         {tab === "DAILY_SALES"     && <DailySalesView sales={sales} onAdd={s => setSales(p => [s, ...p])} onUpdate={s => setSales(p => p.map(item => item.id === s.id ? s : item))} onDelete={id => deleteFromApi("sales", id, () => setSales(p => p.filter(item => item.id !== id)))} />}
         {tab === "JOB_COSTING"     && <JobCostingView jobCosts={jobCosts} onAdd={j => { setJobCosts(p => [j, ...p]); setSales(p => p.map(s => s.invoiceId === j.invoiceId ? { ...s, price: j.sellingPrice, balance: j.sellingPrice - s.downpayment } : s)); }} onUpdate={j => { setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? j : item)); setSales(p => p.map(s => s.invoiceId === j.invoiceId ? { ...s, price: j.sellingPrice, balance: j.sellingPrice - s.downpayment } : s)); }} onDelete={id => deleteFromApi("job-cost", id, () => setJobCosts(p => p.filter(item => item.jobCostId !== id)))} />}
         {tab === "GOLD_INVENTORY"  && <GoldInventoryView inventory={inventory} onAdd={e => setInventory(p => [...p, e])} onUpdate={e => setInventory(p => p.map(item => item.id === e.id ? e : item))} onDelete={id => deleteFromApi("inventory", id, () => setInventory(p => p.filter(item => item.id !== id)))} />}
         {tab === "INQUIRIES"       && <InquiriesView inquiries={inquiries} onAdd={i => setInquiries(p => [i, ...p])} onUpdate={i => setInquiries(p => p.map(item => item.inquiryId === i.inquiryId ? i : item))} onDelete={id => deleteFromApi("inquiries", id, () => setInquiries(p => p.filter(item => item.inquiryId !== id)))} />}
         {tab === "EXPENSES"        && <ExpensesView expenses={expenses} onAdd={e => setExpenses(p => [e, ...p])} onUpdate={e => setExpenses(p => p.map(item => item.expenseId === e.expenseId ? e : item))} onDelete={id => deleteFromApi("expenses", id, () => setExpenses(p => p.filter(item => item.expenseId !== id)))} />}
-        {tab === "PROFIT_ANALYSIS" && <ProfitAnalysisView sales={sales} jobCosts={jobCosts} expenses={expenses} />}
+        {tab === "PROFIT_ANALYSIS" && <ProfitAnalysisView sales={sales} jobCosts={jobCosts} expenses={expenses} selectedYear={selectedYear} setSelectedYear={setSelectedYear} startMonth={startMonth} setStartMonth={setStartMonth} endMonth={endMonth} setEndMonth={setEndMonth} />}
       </main>
+      <RecordDetails title={viewRecord?.title ?? "Record details"} record={viewRecord?.record ?? null} onClose={() => setViewRecord(null)} />
     </div>
   );
 }
@@ -1323,17 +1417,17 @@ function LoginScreen({ onLogin }: { onLogin: (user: any) => void }) {
       onLogin(data.user);
     } catch (err: any) { setError(err.message); } finally { setBusy(false); }
   };
-  return <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
-    <form onSubmit={submit} className="w-full max-w-sm rounded-2xl border border-amber-500/20 bg-slate-900 p-8 shadow-2xl">
-      <div className="mx-auto mb-4 w-12 h-12 rounded-xl bg-gradient-to-br from-amber-400 to-amber-700 flex items-center justify-center"><Crown className="text-white" /></div>
-      <h1 className="text-center text-xl font-semibold text-white">Nilo&apos;s Goldsmith</h1>
-      <p className="text-center text-xs text-slate-400 mt-1 mb-7">Master Control System</p>
-      <label className="block text-xs text-slate-300 mb-1">Username</label>
-      <input value={userName} onChange={e=>setUserName(e.target.value)} className="w-full mb-4 rounded-lg bg-slate-800 border border-slate-700 px-3 py-2.5 text-white outline-none focus:border-amber-400" autoComplete="username" />
-      <label className="block text-xs text-slate-300 mb-1">Password</label>
-      <input type="password" value={password} onChange={e=>setPassword(e.target.value)} className="w-full mb-5 rounded-lg bg-slate-800 border border-slate-700 px-3 py-2.5 text-white outline-none focus:border-amber-400" autoComplete="current-password" />
-      {error && <p className="text-sm text-red-400 mb-4">{error}</p>}
-      <button disabled={busy} className="w-full rounded-lg bg-amber-500 py-2.5 font-semibold text-slate-950 hover:bg-amber-400 disabled:opacity-50">{busy ? "Signing in…" : "Sign in"}</button>
+  return <div className="min-h-screen bg-background flex items-center justify-center p-6">
+    <form onSubmit={submit} className="w-full max-w-sm rounded-2xl border border-border bg-card p-8 shadow-2xl">
+      <BrandLogo className="mx-auto mb-4 h-14 w-14 border border-border p-1" />
+      <h1 className="text-center text-2xl font-semibold text-foreground">Nilo&apos;s Goldsmith</h1>
+      <p className="text-center text-sm text-muted-foreground mt-1 mb-7">Goldsmith Accounting System</p>
+      <label className="block text-sm text-foreground mb-1">Username</label>
+      <input value={userName} onChange={e=>setUserName(e.target.value)} className={`${ic} mb-4`} autoComplete="username" />
+      <label className="block text-sm text-foreground mb-1">Password</label>
+      <input type="password" value={password} onChange={e=>setPassword(e.target.value)} className={`${ic} mb-5`} autoComplete="current-password" />
+      {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
+      <button disabled={busy} className="w-full rounded-lg bg-primary py-3 font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">{busy ? "Signing in…" : "Sign in"}</button>
     </form>
   </div>;
 }

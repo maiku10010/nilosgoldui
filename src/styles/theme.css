@@ -2,84 +2,84 @@
 
 /* ── Light mode (default) ─────────────────────────────────────────────────── */
 :root {
-  --font-size: 15px;
-  --background: #faf8f3;
-  --foreground: #1c1814;
+  --font-size: 16px;
+  --background: #ffffff;
+  --foreground: #111318;
   --card: #ffffff;
   --card-foreground: #1c1814;
   --popover: #ffffff;
   --popover-foreground: #1c1814;
-  --primary: #92700a;
+  --primary: #1746a2;
   --primary-foreground: #ffffff;
-  --secondary: #f5efe0;
-  --secondary-foreground: #1c1814;
-  --muted: #f0e9d8;
-  --muted-foreground: #78694a;
+  --secondary: #f3f5f8;
+  --secondary-foreground: #111318;
+  --muted: #f1f3f6;
+  --muted-foreground: #5a6270;
   --accent: #059669;
   --accent-foreground: #ffffff;
   --destructive: #dc2626;
   --destructive-foreground: #ffffff;
-  --border: rgba(156, 120, 20, 0.18);
+  --border: rgba(17, 19, 24, 0.14);
   --input: transparent;
   --input-background: #faf5ea;
   --switch-background: #d4b87a;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring: #92700a;
-  --chart-1: #92700a;
+  --ring: #1746a2;
+  --chart-1: #1746a2;
   --chart-2: #059669;
   --chart-3: #d97706;
   --chart-4: #0284c7;
   --chart-5: #7c3aed;
   --radius: 0.5rem;
-  --sidebar: #fffcf5;
-  --sidebar-foreground: #1c1814;
-  --sidebar-primary: #92700a;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #111318;
+  --sidebar-primary: #1746a2;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f5efe0;
-  --sidebar-accent-foreground: #1c1814;
-  --sidebar-border: rgba(156, 120, 20, 0.18);
-  --sidebar-ring: #92700a;
+  --sidebar-accent: #f1f3f6;
+  --sidebar-accent-foreground: #111318;
+  --sidebar-border: rgba(17, 19, 24, 0.12);
+  --sidebar-ring: #1746a2;
 }
 
 /* ── Dark mode ────────────────────────────────────────────────────────────── */
 .dark {
-  --background: #07111f;
-  --foreground: #e2e8f0;
-  --card: #0d1829;
-  --card-foreground: #e2e8f0;
-  --popover: #0d1829;
-  --popover-foreground: #e2e8f0;
-  --primary: #d4a017;
-  --primary-foreground: #07111f;
-  --secondary: #112040;
+  --background: #0b0c10;
+  --foreground: #f5f6f8;
+  --card: #14161c;
+  --card-foreground: #f5f6f8;
+  --popover: #14161c;
+  --popover-foreground: #f5f6f8;
+  --primary: #4e7de0;
+  --primary-foreground: #ffffff;
+  --secondary: #1a1d25;
   --secondary-foreground: #94a3b8;
-  --muted: #192c45;
-  --muted-foreground: #64748b;
-  --accent: #10b981;
-  --accent-foreground: #07111f;
+  --muted: #20232b;
+  --muted-foreground: #a0a5b0;
+  --accent: #d4a017;
+  --accent-foreground: #111318;
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
-  --border: rgba(100, 116, 139, 0.18);
+  --border: rgba(255, 255, 255, 0.14);
   --input: transparent;
   --input-background: #0f1e30;
   --switch-background: #1e3a5f;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring: #d4a017;
-  --chart-1: #d4a017;
-  --chart-2: #10b981;
+  --ring: #4e7de0;
+  --chart-1: #4e7de0;
+  --chart-2: #d4a017;
   --chart-3: #f59e0b;
   --chart-4: #38bdf8;
   --chart-5: #a78bfa;
-  --sidebar: #060e1a;
-  --sidebar-foreground: #e2e8f0;
-  --sidebar-primary: #d4a017;
-  --sidebar-primary-foreground: #07111f;
-  --sidebar-accent: #112040;
-  --sidebar-accent-foreground: #e2e8f0;
-  --sidebar-border: rgba(212, 160, 23, 0.14);
-  --sidebar-ring: #d4a017;
+  --sidebar: #0b0c10;
+  --sidebar-foreground: #f5f6f8;
+  --sidebar-primary: #4e7de0;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1a1d25;
+  --sidebar-accent-foreground: #f5f6f8;
+  --sidebar-border: rgba(255, 255, 255, 0.14);
+  --sidebar-ring: #4e7de0;
 }
 
 @theme inline {
@@ -145,3 +145,7 @@
   button { font-size: var(--text-base); font-weight: var(--font-weight-medium); line-height: 1.5; }
   input  { font-size: var(--text-base); font-weight: var(--font-weight-normal); line-height: 1.5; }
 }
+
+/* Keep the dense ledger readable while preserving the compact dashboard layout. */
+.text-\[10px\] { font-size: 0.75rem; }
+.text-\[11px\] { font-size: 0.8125rem; }
