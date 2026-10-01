@@ -4,8 +4,8 @@
   "version": "0.0.1",
   "type": "module",
   "allowScripts": {
-    "@tailwindcss/oxide@4.1.12": true,
-    "esbuild@0.25.12": true
+    "@tailwindcss/oxide": true,
+    "esbuild": true
   },
   "scripts": {
     "dev": "vite",
