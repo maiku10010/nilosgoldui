@@ -1,10 +1,12 @@
-import { BASE_URL } from "./constants";
+// Checks both VITE_API_BASE_URL and VITE_API_URL as a fallback
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || "";
 
 export const api = {
   // ─── 1. SALES ROUTER ───────────────────────────────────────
   sales: {
-    getAll: () => {
-      return fetch(`${BASE_URL}/sales`).then(res => res.json());
+    getAll: async () => {
+      const res = await fetch(`${BASE_URL}/sales`);
+      return res.json();
     },
     create: (data: any) => {
       return fetch(`${BASE_URL}/sales`, {
