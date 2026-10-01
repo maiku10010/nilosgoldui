@@ -14,6 +14,23 @@ import { hasMinimumDownPayment, isValidEmail, isValidPHContact } from "../valida
 // ── config ─────────────────────────────────────────────────────────────────
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "https://nilosgold.vercel.app").replace(/\/$/, "");
 const apiFetch = (input: RequestInfo | URL, init: RequestInit = {}) => fetch(input, { ...init, credentials: "include" });
+const notify = (message: string) => window.dispatchEvent(new CustomEvent("nilosgold:toast", { detail: message }));
+// Keep existing call sites on the in-app toast surface instead of native dialogs.
+const alert = notify;
+
+function ToastHost() {
+  const [message, setMessage] = useState("");
+  useEffect(() => {
+    const onToast = (event: Event) => {
+      setMessage(String((event as CustomEvent).detail ?? ""));
+      window.setTimeout(() => setMessage(""), 4200);
+    };
+    window.addEventListener("nilosgold:toast", onToast);
+    return () => window.removeEventListener("nilosgold:toast", onToast);
+  }, []);
+  if (!message) return null;
+  return <div className="fixed bottom-5 right-5 z-[100] max-w-sm rounded-lg border border-border bg-card px-4 py-3 text-sm text-card-foreground shadow-2xl" role="status" aria-live="polite">{message}</div>;
+}
 
 type ConfirmationRequest = { title: string; message: string; confirmLabel?: string; onConfirm: () => void | Promise<void> };
 const ConfirmationContext = createContext<(request: ConfirmationRequest) => void>(() => undefined);
@@ -1604,7 +1621,7 @@ export default function App() {
   return <ConfirmationContext.Provider value={request => {
     // The provider is kept available to nested action components; AppContent owns the visible dialog.
     void request;
-  }}><AppContent /></ConfirmationContext.Provider>;
+  }}><AppContent /><ToastHost /></ConfirmationContext.Provider>;
 }
 
 function LoginScreen({ onLogin }: { onLogin: (user: any) => void }) {
