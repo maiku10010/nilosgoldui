@@ -9,7 +9,7 @@ import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
 } from "recharts";
-import { hasMinimumDownPayment, isValidEmail, isValidPHContact } from "../validation";
+import { isValidEmail, isValidPHContact } from "../validation";
 
 // ── config ─────────────────────────────────────────────────────────────────
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "https://nilosgold.vercel.app").replace(/\/$/, "");
@@ -92,8 +92,9 @@ const normalizeSale = (row: any): Sale => ({
   contactNum: row.contactNum ?? row.client?.contactNum ?? "",
   serviceType: row.serviceType ?? "Custom",
   price: numeric(row.price),
-  downpayment: numeric(row.downpayment),
-  balance: numeric(row.balance ?? (numeric(row.price) - numeric(row.downpayment))),
+  payment: numeric(row.payment),
+  balance: numeric(row.balance ?? (numeric(row.price) - numeric(row.payment))),
+  receiptSentAt: row.receiptSentAt ? String(row.receiptSentAt) : null,
   status: statusLabel(row.status) as SaleStatus,
 });
 const normalizeJobCost = (row: any): JobCost => {
@@ -105,7 +106,7 @@ const normalizeJobCost = (row: any): JobCost => {
   return { jobCostId: String(row.jobCostId ?? ""), invoiceId: String(row.invoiceId ?? sale?.invoiceId ?? ""), clientName: String(row.clientName ?? sale?.client?.clientName ?? row.inquiry?.customerName ?? ""), itemName: row.itemName ?? "", deadline: row.deadline || row.deliveryDate ? String(row.deadline ?? row.deliveryDate).slice(0, 10) : "", empId: row.empId, inquiryId: row.inquiryId ?? row.inquiry?.inquiryId, status: statusLabel(row.status), sale: sale ? normalizeSale(sale) : undefined, goldUsed: numeric(row.goldUsed), goldScrap: numeric(row.goldScrap), goldCostPerG, goldCost, stoneCost: numeric(row.stoneCost), laborCost: numeric(row.laborCost), totalCost, sellingPrice, profit: numeric(row.profit ?? sellingPrice - totalCost), marginPct: numeric(row.marginPct ?? (sellingPrice ? ((sellingPrice - totalCost) / sellingPrice) * 100 : 0)) };
 };
 const normalizeInventory = (row: any): InvEntry => ({ id: row.referenceId, date: apiDate(row.updatedAt ?? row.date), referenceId: row.referenceId, itemName: row.itemName ?? row.referenceId, category: row.category ?? "GOLD", quantityIn: numeric(row.quantityIn ?? row.goldIn), quantityOut: numeric(row.quantityOut ?? row.goldOut), quantityLoss: numeric(row.quantityLoss ?? row.scraps ?? row.scrap), balance: numeric(row.balance ?? row.totalGold), unit: row.unit ?? "grams", unitPrice: numeric(row.unitPrice) });
-const normalizeInquiry = (row: any): Inquiry => ({ inquiryId: String(row.inquiryId ?? ""), date: apiDate(row.inqDate ?? row.date), customerName: String(row.customerName ?? ""), contactInfo: String(row.contactInfo ?? ""), email: String(row.email ?? ""), details: String(row.details ?? ""), category: String(row.category ?? ""), quotedPrice: numeric(row.quotedPrice), status: statusLabel(row.status) as InqStatus });
+const normalizeInquiry = (row: any): Inquiry => ({ inquiryId: String(row.inquiryId ?? ""), date: apiDate(row.inqDate ?? row.date), customerName: String(row.customerName ?? ""), contactInfo: String(row.contactInfo ?? ""), email: String(row.email ?? ""), details: String(row.details ?? ""), category: String(row.category ?? ""), quotedPrice: numeric(row.quotedPrice), isFullyPaid: Boolean(row.isFullyPaid), status: statusLabel(row.status) as InqStatus });
 const normalizeExpense = (row: any): Expense => ({ expenseId: String(row.expenseId ?? ""), expDate: apiDate(row.expDate ?? row.date), category: String(row.category ?? ""), description: String(row.description ?? ""), amount: numeric(row.amount) });
 const asRows = (value: unknown): any[] => Array.isArray(value) ? value : [];
 
@@ -117,7 +118,7 @@ type InqStatus = "Yes" | "No" | "Pending" | "Approved" | "Rejected" | "Finished"
 interface Sale {
   id: string; invoiceId: string; date: string; clientId?: string; jobCostId?: string;
   clientName: string; contactNum: string; serviceType: ServiceType;
-  price: number; downpayment: number; balance: number; status: SaleStatus;
+  price: number; payment: number; balance: number; status: SaleStatus; receiptSentAt?: string | null;
 }
 interface JobCost {
   jobCostId: string; invoiceId: string; clientName: string; itemName: string; deadline: string; empId?: string;
@@ -132,7 +133,7 @@ interface InvEntry {
 }
 interface Inquiry {
   inquiryId: string; date: string; customerName: string; contactInfo: string; email: string;
-  details: string; category: string; quotedPrice: number; status: InqStatus;
+  details: string; category: string; quotedPrice: number; isFullyPaid: boolean; status: InqStatus;
 }
 interface Expense {
   expenseId: string; expDate: string; category: string; description: string; amount: number;
@@ -340,7 +341,7 @@ function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onVie
   const toggleSalesSort = (key: string) => setSalesSort(s => ({ key, direction: s.key === key ? (s.direction === 1 ? -1 : 1) : 1 }));
   const toggleJobSort = (key: string) => setJobSort(s => ({ key, direction: s.key === key ? (s.direction === 1 ? -1 : 1) : 1 }));
   const totalSales    = useMemo(() => sales.reduce((a, s) => a + s.price, 0), [sales]);
-  const cashCollected = useMemo(() => sales.reduce((a, s) => a + s.downpayment, 0), [sales]);
+  const cashCollected = useMemo(() => sales.reduce((a, s) => a + s.payment, 0), [sales]);
   const receivables   = totalSales - cashCollected;
 
   const totalRevenue  = useMemo(() => sales.reduce((a, s) => a + s.price, 0), [sales]);
@@ -579,7 +580,8 @@ function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onVie
 }
 
 // ── daily sales ─────────────────────────────────────────────────────────────
-function DailySalesView({ sales, onUpdate, onDelete }: { sales: Sale[]; onUpdate: (s: Sale) => void; onDelete: (id: string) => void }) {
+function DailySalesView({ sales, onUpdate, onDelete, onSendReceipt }: { sales: Sale[]; onUpdate: (s: Sale) => void; onDelete: (id: string) => void; onSendReceipt: (id: string) => Promise<Sale> }) {
+  const requestConfirmation = useConfirmation();
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortSpec>({ key: "date", direction: -1 });
   const toggleSort = (key: string) => setSort(s => ({ key, direction: s.key === key ? (s.direction === 1 ? -1 : 1) : 1 }));
@@ -587,13 +589,13 @@ function DailySalesView({ sales, onUpdate, onDelete }: { sales: Sale[]; onUpdate
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
-  const [form, setForm] = useState({ invoiceId:"", date:"", clientName:"", contactNum:"", serviceType:"Custom" as ServiceType, price:"", downpayment:"" });
+  const [form, setForm] = useState({ invoiceId:"", date:"", clientName:"", contactNum:"", serviceType:"Custom" as ServiceType, price:"", payment:"" });
 
   const filtered = sortRecords(useMemo(() => sales.filter(s =>
     [s.clientName, s.invoiceId, s.serviceType, s.status].some(v => v.toLowerCase().includes(q.toLowerCase()))
   ), [sales, q]), sort);
 
-  const resetForm = () => setForm({ invoiceId:"", date:todayISO(), clientName:"", contactNum:"", serviceType:"Custom", price:"", downpayment:"" });
+  const resetForm = () => setForm({ invoiceId:"", date:todayISO(), clientName:"", contactNum:"", serviceType:"Custom", price:"", payment:"" });
   const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
 
   const submit = async (e: React.FormEvent) => {
@@ -603,12 +605,12 @@ function DailySalesView({ sales, onUpdate, onDelete }: { sales: Sale[]; onUpdate
     setIsSubmitting(true);
     try {
       if (!editingId) throw new Error("Finish an approved job costing to create a Daily Sales entry.");
-      const price = Number(form.price); const downpayment = Number(form.downpayment);
+      const price = Number(form.price); const payment = Number(form.payment);
       if (!isValidPHContact(form.contactNum)) throw new Error("Enter a valid Philippine contact number (09XXXXXXXXX or +639XXXXXXXXX).");
-      if (!Number.isFinite(price) || !hasMinimumDownPayment(downpayment, price) || downpayment > price) throw new Error("Down payment must be at least 25% of the total price and no greater than the total price.");
+      if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(payment) || payment < 0 || payment > price) throw new Error("Payment must be zero or greater and no greater than the total price.");
       const response = await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(editingId)}`, { method:"PUT", headers:{"Content-Type":"application/json"},
         body:JSON.stringify({ invoiceId:form.invoiceId, date:form.date, serviceType:form.serviceType, price,
-          downpayment, clientName:form.clientName, contactNum:form.contactNum }) });
+          payment, clientName:form.clientName, contactNum:form.contactNum }) });
       const saved = await response.json();
       if (response.status === 202) { alert(saved.message); closeModal(); setIsSubmitting(false); submittingRef.current = false; return; }
       if (!response.ok) throw new Error(saved.error ?? "Sale could not be saved");
@@ -627,28 +629,29 @@ function DailySalesView({ sales, onUpdate, onDelete }: { sales: Sale[]; onUpdate
       </div>
       <TableWrap>
         <thead><tr>
-          {[["Date","date"],["Invoice #","invoiceId"],["Client Name","clientName"],["Contact","contactNum"],["Type","serviceType"],["Total Price","price"],["Downpayment","downpayment"],["Balance","balance"],["Status","status"]].map(([h,k])=><SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}<th className={thc}>Actions</th>
+          {[["Date","date"],["Invoice #","invoiceId"],["Client Name","clientName"],["Contact","contactNum"],["Type","serviceType"],["Total Price","price"],["Payment","payment"],["Balance","balance"],["Status","status"]].map(([h,k])=><SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}<th className={thc}>Actions</th>
         </tr></thead>
         <tbody>
           {filtered.map(s => (
-            <TRow key={s.id} onClick={() => { setEditingId(s.invoiceId); setForm({ invoiceId:s.invoiceId, date:s.date, clientName:s.clientName, contactNum:s.contactNum, serviceType:s.serviceType, price:String(s.price), downpayment:String(s.downpayment) }); setOpen(true); }}>
+            <TRow key={s.id} onClick={() => { setEditingId(s.invoiceId); setForm({ invoiceId:s.invoiceId, date:s.date, clientName:s.clientName, contactNum:s.contactNum, serviceType:s.serviceType, price:String(s.price), payment:String(s.payment) }); setOpen(true); }}>
               <td className={tdc}>{fmtDate(s.date)}</td>
               <td className={tdc + " text-primary/80 dark:text-amber-400/80"}>{s.invoiceId}</td>
               <td className={tdc + " font-sans font-medium"}>{s.clientName}</td>
               <td className={tdc + " text-muted-foreground"}>{s.contactNum}</td>
               <td className={tdc}>{s.serviceType}</td>
               <td className={tdr}>{php(s.price)}</td>
-              <td className={tdr + " text-emerald-700 dark:text-emerald-400"}>{php(s.downpayment)}</td>
+              <td className={tdr + " text-emerald-700 dark:text-emerald-400"}>{php(s.payment)}</td>
               <td className={tdr + " text-amber-700 dark:text-amber-400"}>{php(s.balance)}</td>
               <td className={tdc}><StatusBadge status={s.status} /></td>
               <td className={tdc}>
                 <div className="flex items-center gap-2">
-                  <button type="button" onClick={() => { setEditingId(s.invoiceId); setForm({ invoiceId:s.invoiceId, date:s.date, clientName:s.clientName, contactNum:s.contactNum, serviceType:s.serviceType, price:String(s.price), downpayment:String(s.downpayment) }); setOpen(true); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit">
+                  <button type="button" onClick={() => { setEditingId(s.invoiceId); setForm({ invoiceId:s.invoiceId, date:s.date, clientName:s.clientName, contactNum:s.contactNum, serviceType:s.serviceType, price:String(s.price), payment:String(s.payment) }); setOpen(true); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit">
                     <PenSquare size={13} />
                   </button>
                   <button type="button" onClick={() => onDelete(s.id)} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Delete">
                     <Trash2 size={13} />
                   </button>
+                  {s.receiptSentAt ? <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-400">Receipt Sent</span> : <button type="button" onClick={e => { e.stopPropagation(); requestConfirmation({ title:"Send official receipt?", message:`Send the receipt for invoice ${s.invoiceId} to the customer now?`, confirmLabel:"Send Receipt", onConfirm:async()=>{ try { const updated=await onSendReceipt(s.invoiceId); onUpdate(updated); alert(`Receipt sent for ${s.invoiceId}.`); } catch(error) { alert(error instanceof Error ? error.message : "Receipt could not be sent."); } } }); }} className="rounded-lg bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary hover:bg-primary/20">Send Receipt</button>}
                 </div>
               </td>
             </TRow>
@@ -669,7 +672,7 @@ function DailySalesView({ sales, onUpdate, onDelete }: { sales: Sale[]; onUpdate
               </select>
             </FF>
             <FF label="Total Price (₱)"><input type="number" min="0.01" step="0.01" className={ic} value={form.price} onChange={e=>setForm(f=>({...f,price:e.target.value}))} placeholder="0.00" required /></FF>
-            <FF label="Downpayment (₱)"><input type="number" min="0" max={form.price || undefined} step="0.01" className={ic} value={form.downpayment} onChange={e=>setForm(f=>({...f,downpayment:e.target.value}))} placeholder="0.00" /></FF>
+            <FF label="Payment (₱)"><input type="number" min="0" max={form.price || undefined} step="0.01" className={ic} value={form.payment} onChange={e=>setForm(f=>({...f,payment:e.target.value}))} placeholder="0.00" /></FF>
           </div>
         </Modal>
       )}
@@ -910,12 +913,12 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
-  const [form, setForm] = useState({ customerName:"", contactInfo:"", email:"", details:"", category:"", quotedPrice:"", status:"Pending" as InqStatus });
+  const [form, setForm] = useState({ customerName:"", contactInfo:"", email:"", details:"", category:"", quotedPrice:"", isFullyPaid:false, status:"Pending" as InqStatus });
   const filtered = sortRecords(useMemo(() => inquiries.filter(i =>
     [i.customerName, i.category, i.details, i.email, i.inquiryId].some(v => v.toLowerCase().includes(q.toLowerCase()))
   ), [inquiries, q]), sort);
 
-  const resetForm = () => setForm({ customerName:"", contactInfo:"", email:"", details:"", category:"", quotedPrice:"", status:"Pending" });
+  const resetForm = () => setForm({ customerName:"", contactInfo:"", email:"", details:"", category:"", quotedPrice:"", isFullyPaid:false, status:"Pending" });
   const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
 
   const submit = async (e: React.FormEvent) => {
@@ -926,14 +929,14 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
     const entry: Inquiry = { inquiryId: editingId ?? "",
       date: editingId ? (inquiries.find(i => i.inquiryId === editingId)?.date ?? todayISO()) : todayISO(), customerName:form.customerName,
       contactInfo:form.contactInfo, email:form.email, details:form.details, category:form.category,
-      quotedPrice:parseFloat(form.quotedPrice)||0, status:form.status };
+      quotedPrice:parseFloat(form.quotedPrice)||0, isFullyPaid:form.isFullyPaid, status:form.status };
     try {
       if (!isValidPHContact(form.contactInfo)) throw new Error("Enter a valid Philippine contact number (09XXXXXXXXX or +639XXXXXXXXX).");
       if (form.email && !isValidEmail(form.email)) throw new Error("Enter a valid email address.");
       const response = await apiFetch(`${BASE_URL}/inquiries${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"},
         body:JSON.stringify({ date:entry.date, customerName:entry.customerName,
           contactInfo:entry.contactInfo, email:entry.email, details:entry.details, category:entry.category,
-          quotedPrice:entry.quotedPrice }) });
+          quotedPrice:entry.quotedPrice, isFullyPaid:entry.isFullyPaid }) });
       const data = await response.json();
       if (response.status === 202) { alert(data.message); closeModal(); setIsSubmitting(false); submittingRef.current = false; return; }
       if (!response.ok) throw new Error(data.error ?? "Inquiry could not be saved");
@@ -957,11 +960,11 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
       </div>
       <TableWrap>
         <thead><tr>
-          {[["Date","date"],["Inquiry ID","inquiryId"],["Client Name","customerName"],["Contact","contactInfo"],["Email","email"],["Category","category"],["Details","details"],["Quoted Price","quotedPrice"],["Status","status"]].map(([h,k])=><SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}<th className={thc}>Actions</th>
+          {[["Date","date"],["Inquiry ID","inquiryId"],["Client Name","customerName"],["Contact","contactInfo"],["Email","email"],["Category","category"],["Details","details"],["Quoted Price","quotedPrice"],["Fully Paid","isFullyPaid"],["Status","status"]].map(([h,k])=><SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}<th className={thc}>Actions</th>
         </tr></thead>
         <tbody>
           {filtered.map(i => (
-            <TRow key={i.inquiryId} onClick={() => { if (i.status === "Pending") { setEditingId(i.inquiryId); setForm({ customerName:i.customerName, contactInfo:i.contactInfo, email:i.email, details:i.details, category:i.category, quotedPrice:String(i.quotedPrice), status:i.status }); setOpen(true); } }}>
+            <TRow key={i.inquiryId} onClick={() => { if (i.status === "Pending") { setEditingId(i.inquiryId); setForm({ customerName:i.customerName, contactInfo:i.contactInfo, email:i.email, details:i.details, category:i.category, quotedPrice:String(i.quotedPrice), isFullyPaid:i.isFullyPaid, status:i.status }); setOpen(true); } }}>
               <td className={tdc}>{fmtDate(i.date)}</td>
               <td className={tdc + " text-muted-foreground"}>{i.inquiryId}</td>
               <td className={tdc + " font-sans font-medium"}>{i.customerName}</td>
@@ -970,11 +973,11 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
               <td className={tdc}>{i.category}</td>
               <td className={tdc + " font-sans max-w-[200px] truncate text-muted-foreground"}>{i.details}</td>
               <td className={tdr + " text-amber-700 dark:text-amber-300"}>{php(i.quotedPrice)}</td>
-              <td className={tdc}><StatusBadge status={i.status} /></td>
+              <td className={tdc}>{i.isFullyPaid ? "Yes" : "No"}</td><td className={tdc}><StatusBadge status={i.status} /></td>
               <td className={tdc}>
                 <div className="flex items-center gap-2">
                   {i.status === "Pending" && <button type="button" onClick={() => onStartCosting(i.inquiryId)} className="rounded-lg bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary hover:bg-primary/20">Start Costing</button>}
-                  {i.status === "Pending" && <button type="button" onClick={e => { e.stopPropagation(); setEditingId(i.inquiryId); setForm({ customerName:i.customerName, contactInfo:i.contactInfo, email:i.email, details:i.details, category:i.category, quotedPrice:String(i.quotedPrice), status:i.status }); setOpen(true); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit">
+                  {i.status === "Pending" && <button type="button" onClick={e => { e.stopPropagation(); setEditingId(i.inquiryId); setForm({ customerName:i.customerName, contactInfo:i.contactInfo, email:i.email, details:i.details, category:i.category, quotedPrice:String(i.quotedPrice), isFullyPaid:i.isFullyPaid, status:i.status }); setOpen(true); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit">
                     <PenSquare size={13} />
                   </button>}
                   {i.status === "Pending" && <button type="button" onClick={() => onDelete(i.inquiryId)} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Delete">
@@ -984,7 +987,7 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
               </td>
             </TRow>
           ))}
-          {!filtered.length && <EmptyRow cols={10} />}
+          {!filtered.length && <EmptyRow cols={11} />}
         </tbody>
       </TableWrap>
       {open && (
@@ -995,7 +998,7 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
             <FF label="Email for receipt / pickup"><input type="email" className={ic} value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="customer@example.com" /></FF>
             <FF label="Product Category"><input className={ic} value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))} placeholder="e.g. Custom Ring" required /></FF>
             <FF label="Quoted Price (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.quotedPrice} onChange={e=>setForm(f=>({...f,quotedPrice:e.target.value}))} placeholder="0.00" required /></FF>
-            <div className="col-span-2"><FF label="Details / Notes"><textarea className={ic + " h-20 resize-none"} value={form.details} onChange={e=>setForm(f=>({...f,details:e.target.value}))} placeholder="Describe the customer's request…" /></FF></div>
+            <label className="flex items-center gap-2 self-end pb-2 text-sm"><input type="checkbox" checked={form.isFullyPaid} onChange={e=>setForm(f=>({...f,isFullyPaid:e.target.checked}))}/> Fully Paid</label><div className="col-span-2"><FF label="Details / Notes"><textarea className={ic + " h-20 resize-none"} value={form.details} onChange={e=>setForm(f=>({...f,details:e.target.value}))} placeholder="Describe the customer's request…" /></FF></div>
             <p className="self-end text-xs text-muted-foreground">Status changes automatically as the inquiry moves through costing and sales.</p>
           </div>
         </Modal>
@@ -1607,8 +1610,8 @@ function AppContent() {
       {/* Page content */}
       <main className="max-w-[1680px] mx-auto">
         {tab === "DASHBOARD"       && <DashboardView sales={visibleSales} jobCosts={visibleJobCosts} expenses={visibleExpenses} inquiries={visibleInquiries} rangeLabel={timelineLabel} isAdmin={isAdmin} onView={(title, record) => setViewRecord({ title, record })} />}
-        {tab === "DAILY_SALES"     && <DailySalesView sales={sales.filter(isCompletedSale)} onUpdate={s => setSales(p => p.map(item => item.invoiceId === s.invoiceId ? s : item))} onDelete={id => deleteFromApi("sales", id, () => { const removed = sales.find(item => item.invoiceId === id); const linkedJob = jobCosts.find(item => item.jobCostId === removed?.jobCostId); setSales(p => p.filter(item => item.invoiceId !== id)); if (removed?.jobCostId) setJobCosts(p => p.filter(item => item.jobCostId !== removed.jobCostId)); if (linkedJob?.inquiryId) setInquiries(p => p.map(i => i.inquiryId === linkedJob.inquiryId ? { ...i, status:"Pending" } : i)); })} />}
-        {tab === "JOB_COSTING"     && <JobCostingView jobCosts={jobCosts} inquiries={inquiries} inventory={inventory} selectedInquiryId={selectedInquiryForCosting} clearSelectedInquiry={() => setSelectedInquiryForCosting(null)} currentGoldRate={goldRate} onAdd={j => { setJobCosts(p => [j, ...p]); if (j.sale) setSales(p => [j.sale!, ...p.filter(s => s.invoiceId !== j.sale!.invoiceId)]); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status:"Approved" } : i)); }} onUpdate={j => { setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? j : item)); if (j.sale) setSales(p => p.map(s => s.invoiceId === j.sale!.invoiceId ? j.sale! : s)); }} onDelete={j => deleteFromApi("job-cost", j.jobCostId, () => { setJobCosts(p => p.filter(item => item.jobCostId !== j.jobCostId)); setSales(p => p.filter(s => s.invoiceId !== j.invoiceId)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status:"Pending" } : i)); })} onApprove={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/approve`, { method:"POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Costing could not be approved."); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Costing could not be approved."); } }} onReady={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/ready`, { method:"POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Item could not be marked ready."); const reason = data.notification?.sent ? (data.notification.reason ?? "Customer notification sent.") : (data.notification?.reason ?? "Customer notification could not be sent."); alert(`Marked ready for pickup. ${reason}`); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Item could not be marked ready."); } }} onFinish={async (j, materials) => { try { const response = await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(j.invoiceId)}/finish`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ invoiceId:j.invoiceId, clientName:j.clientName, materials }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Sale could not be finished."); const sale = normalizeSale(data); setSales(p => [sale, ...p.filter(item => item.invoiceId !== sale.invoiceId)]); setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? { ...item, status:"Finished", sale } : item)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status:"Finished" } : i)); const reason = data.notification?.sent ? (data.notification.reason ?? "Receipt email sent.") : (data.notification?.reason ?? "Receipt email could not be sent."); alert(`Sale completed. ${reason}`); } catch (error) { alert(error instanceof Error ? error.message : "Sale could not be finished."); } }} />}
+        {tab === "DAILY_SALES"     && <DailySalesView sales={sales.filter(isCompletedSale)} onUpdate={s => setSales(p => p.map(item => item.invoiceId === s.invoiceId ? s : item))} onSendReceipt={async id => { const response=await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(id)}/receipt`, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({confirm:true,invoiceId:id})}); const data=await response.json(); if (!response.ok) throw new Error(data.error ?? "Receipt could not be sent."); if (!data.notification?.sent) throw new Error(data.notification?.reason ?? "Receipt could not be sent."); return normalizeSale(data); }} onDelete={id => deleteFromApi("sales", id, () => { const removed = sales.find(item => item.invoiceId === id); const linkedJob = jobCosts.find(item => item.jobCostId === removed?.jobCostId); setSales(p => p.filter(item => item.invoiceId !== id)); if (removed?.jobCostId) setJobCosts(p => p.filter(item => item.jobCostId !== removed.jobCostId)); if (linkedJob?.inquiryId) setInquiries(p => p.map(i => i.inquiryId === linkedJob.inquiryId ? { ...i, status:"Pending" } : i)); })} />}
+        {tab === "JOB_COSTING"     && <JobCostingView jobCosts={jobCosts} inquiries={inquiries} inventory={inventory} selectedInquiryId={selectedInquiryForCosting} clearSelectedInquiry={() => setSelectedInquiryForCosting(null)} currentGoldRate={goldRate} onAdd={j => { setJobCosts(p => [j, ...p]); if (j.sale) setSales(p => [j.sale!, ...p.filter(s => s.invoiceId !== j.sale!.invoiceId)]); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status:"Approved" } : i)); }} onUpdate={j => { setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? j : item)); if (j.sale) setSales(p => p.map(s => s.invoiceId === j.sale!.invoiceId ? j.sale! : s)); }} onDelete={j => deleteFromApi("job-cost", j.jobCostId, () => { setJobCosts(p => p.filter(item => item.jobCostId !== j.jobCostId)); setSales(p => p.filter(s => s.invoiceId !== j.invoiceId)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status:"Pending" } : i)); })} onApprove={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/approve`, { method:"POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Costing could not be approved."); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Costing could not be approved."); } }} onReady={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/ready`, { method:"POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Item could not be marked ready."); const reason = data.notification?.sent ? (data.notification.reason ?? "Customer notification sent.") : (data.notification?.reason ?? "Customer notification could not be sent."); alert(`Marked ready for pickup. ${reason}`); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Item could not be marked ready."); } }} onFinish={async (j, materials) => { try { const response = await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(j.invoiceId)}/finish`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ invoiceId:j.invoiceId, clientName:j.clientName, materials }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Sale could not be finished."); const sale = normalizeSale(data); setSales(p => [sale, ...p.filter(item => item.invoiceId !== sale.invoiceId)]); setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? { ...item, status:"Finished", sale } : item)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status:"Finished" } : i)); alert("Sale completed. Confirm receipt sending from Daily Sales when ready."); } catch (error) { alert(error instanceof Error ? error.message : "Sale could not be finished."); } }} />}
         {tab === "INVENTORY"  && <GoldInventoryView inventory={inventory} goldRate={goldRate} onAdd={e => { setInventory(p => [...p, e]); setReloadKey(k => k + 1); }} onUpdate={e => { setInventory(p => p.map(item => item.id === e.id ? e : item)); setReloadKey(k => k + 1); }} onDelete={id => deleteFromApi("inventory", id, () => { setInventory(p => p.filter(item => item.id !== id)); setReloadKey(k => k + 1); })} />}
         {tab === "INQUIRIES"       && <InquiriesView inquiries={inquiries} onAdd={i => setInquiries(p => [i, ...p])} onUpdate={i => setInquiries(p => p.map(item => item.inquiryId === i.inquiryId ? i : item))} onDelete={id => deleteFromApi("inquiries", id, () => setInquiries(p => p.filter(item => item.inquiryId !== id)))} onStartCosting={id => { setSelectedInquiryForCosting(id); setTab("JOB_COSTING"); }} />}
         {tab === "EXPENSES"        && <ExpensesView expenses={expenses} onAdd={e => setExpenses(p => [e, ...p])} onUpdate={e => setExpenses(p => p.map(item => item.expenseId === e.expenseId ? e : item))} onDelete={id => deleteFromApi("expenses", id, () => setExpenses(p => p.filter(item => item.expenseId !== id)))} />}
