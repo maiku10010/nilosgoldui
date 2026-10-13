@@ -1610,7 +1610,7 @@ function AppContent() {
           {/* KPI strip */}
           <div className="flex gap-2 flex-1 overflow-x-auto">
             <KPICard label="Today" value={today} />
-            <KPICard label={goldInfo?.stale ? "Last Gold Quote / g · 24K" : "Gold Price / g · 24K"} value={goldRate === null ? "Unavailable" : php(goldRate)} sub={goldInfo ? (goldInfo.stale ? "Last known quote" : goldInfo.fxUpdatedAt ? "Live gold · daily PHP FX" : "Live PHP quote") : "Waiting for market data"} vc="text-primary" />
+            <KPICard label={goldInfo?.stale ? "Last Gold Quote / g · 24K" : "Gold Price / g · 24K"} value={goldRate === null ? "Unavailable" : php(goldRate)} vc="text-primary" />
             <KPICard label="Gold Stock (Physical)" value={`${goldStock.toFixed(2)} g`} vc="text-primary" />
             {isAdmin && <KPICard
               label={`Net Profit (${timelineLabel})`}
