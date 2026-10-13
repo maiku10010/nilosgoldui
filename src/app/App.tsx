@@ -90,6 +90,7 @@ const normalizeSale = (row: any): Sale => ({
   clientId: row.clientId ?? row.client?.clientId,
   clientName: row.clientName ?? row.client?.clientName ?? "",
   contactNum: row.contactNum ?? row.client?.contactNum ?? "",
+  email: row.email ?? row.client?.email ?? "",
   serviceType: row.serviceType ?? "Custom",
   price: numeric(row.price),
   payment: numeric(row.payment),
@@ -117,7 +118,7 @@ type InqStatus = "Yes" | "No" | "Pending" | "Approved" | "Rejected" | "Finished"
 
 interface Sale {
   id: string; invoiceId: string; date: string; clientId?: string; jobCostId?: string;
-  clientName: string; contactNum: string; serviceType: ServiceType;
+  clientName: string; contactNum: string; email?: string; serviceType: ServiceType;
   price: number; payment: number; balance: number; status: SaleStatus; receiptSentAt?: string | null;
 }
 interface JobCost {
@@ -580,7 +581,7 @@ function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onVie
 }
 
 // ── daily sales ─────────────────────────────────────────────────────────────
-function DailySalesView({ sales, onUpdate, onDelete, onSendReceipt }: { sales: Sale[]; onUpdate: (s: Sale) => void; onDelete: (id: string) => void; onSendReceipt: (id: string) => Promise<Sale> }) {
+function DailySalesView({ sales, onUpdate, onDelete, onSendReceipt }: { sales: Sale[]; onUpdate: (s: Sale) => void; onDelete: (id: string) => void; onSendReceipt: (id: string, email: string) => Promise<Sale> }) {
   const requestConfirmation = useConfirmation();
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortSpec>({ key: "date", direction: -1 });
@@ -589,13 +590,34 @@ function DailySalesView({ sales, onUpdate, onDelete, onSendReceipt }: { sales: S
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
-  const [form, setForm] = useState({ invoiceId:"", date:"", clientName:"", contactNum:"", serviceType:"Custom" as ServiceType, price:"", payment:"" });
+  const [form, setForm] = useState({ invoiceId:"", date:"", clientName:"", contactNum:"", email:"", serviceType:"Custom" as ServiceType, price:"", payment:"" });
+  const sendingReceipts = useRef(new Set<string>());
+  const [receiptErrors, setReceiptErrors] = useState<Record<string, string>>({});
+  const sendReceipt = (sale: Sale) => requestConfirmation({
+    title: "Send official receipt?",
+    message: `Send the receipt for invoice ${sale.invoiceId} to ${sale.email}?`,
+    confirmLabel: "Send Receipt",
+    onConfirm: async () => {
+      if (sendingReceipts.current.has(sale.invoiceId)) return;
+      sendingReceipts.current.add(sale.invoiceId);
+      try {
+        const updated = await onSendReceipt(sale.invoiceId, sale.email?.trim() ?? "");
+        onUpdate(updated);
+        setReceiptErrors(errors => { const next = { ...errors }; delete next[sale.invoiceId]; return next; });
+        alert(`Receipt sent status confirmed for ${sale.invoiceId}.`);
+      } catch (error) {
+        setReceiptErrors(errors => ({ ...errors, [sale.invoiceId]: error instanceof Error ? error.message : "Receipt could not be sent." }));
+      } finally {
+        sendingReceipts.current.delete(sale.invoiceId);
+      }
+    },
+  });
 
   const filtered = sortRecords(useMemo(() => sales.filter(s =>
     [s.clientName, s.invoiceId, s.serviceType, s.status].some(v => v.toLowerCase().includes(q.toLowerCase()))
   ), [sales, q]), sort);
 
-  const resetForm = () => setForm({ invoiceId:"", date:todayISO(), clientName:"", contactNum:"", serviceType:"Custom", price:"", payment:"" });
+  const resetForm = () => setForm({ invoiceId:"", date:todayISO(), clientName:"", contactNum:"", email:"", serviceType:"Custom", price:"", payment:"" });
   const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
 
   const submit = async (e: React.FormEvent) => {
@@ -606,11 +628,12 @@ function DailySalesView({ sales, onUpdate, onDelete, onSendReceipt }: { sales: S
     try {
       if (!editingId) throw new Error("Finish an approved job costing to create a Daily Sales entry.");
       const price = Number(form.price); const payment = Number(form.payment);
+      if (form.email.trim() && !isValidEmail(form.email)) throw new Error("Enter a valid customer email address.");
       if (!isValidPHContact(form.contactNum)) throw new Error("Enter a valid Philippine contact number (09XXXXXXXXX or +639XXXXXXXXX).");
       if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(payment) || payment < 0 || payment > price) throw new Error("Payment must be zero or greater and no greater than the total price.");
       const response = await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(editingId)}`, { method:"PUT", headers:{"Content-Type":"application/json"},
         body:JSON.stringify({ invoiceId:form.invoiceId, date:form.date, serviceType:form.serviceType, price,
-          payment, clientName:form.clientName, contactNum:form.contactNum }) });
+          payment, clientName:form.clientName, contactNum:form.contactNum, email:form.email.trim() }) });
       const saved = await response.json();
       if (response.status === 202) { alert(saved.message); closeModal(); setIsSubmitting(false); submittingRef.current = false; return; }
       if (!response.ok) throw new Error(saved.error ?? "Sale could not be saved");
@@ -633,7 +656,7 @@ function DailySalesView({ sales, onUpdate, onDelete, onSendReceipt }: { sales: S
         </tr></thead>
         <tbody>
           {filtered.map(s => (
-            <TRow key={s.id} onClick={() => { setEditingId(s.invoiceId); setForm({ invoiceId:s.invoiceId, date:s.date, clientName:s.clientName, contactNum:s.contactNum, serviceType:s.serviceType, price:String(s.price), payment:String(s.payment) }); setOpen(true); }}>
+            <TRow key={s.id} onClick={() => { setEditingId(s.invoiceId); setForm({ invoiceId:s.invoiceId, date:s.date, clientName:s.clientName, contactNum:s.contactNum, email:s.email ?? "", serviceType:s.serviceType, price:String(s.price), payment:String(s.payment) }); setOpen(true); }}>
               <td className={tdc}>{fmtDate(s.date)}</td>
               <td className={tdc + " text-primary/80 dark:text-amber-400/80"}>{s.invoiceId}</td>
               <td className={tdc + " font-sans font-medium"}>{s.clientName}</td>
@@ -645,14 +668,18 @@ function DailySalesView({ sales, onUpdate, onDelete, onSendReceipt }: { sales: S
               <td className={tdc}><StatusBadge status={s.status} /></td>
               <td className={tdc}>
                 <div className="flex items-center gap-2">
-                  <button type="button" onClick={() => { setEditingId(s.invoiceId); setForm({ invoiceId:s.invoiceId, date:s.date, clientName:s.clientName, contactNum:s.contactNum, serviceType:s.serviceType, price:String(s.price), payment:String(s.payment) }); setOpen(true); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit">
+                  <button type="button" onClick={() => { setEditingId(s.invoiceId); setForm({ invoiceId:s.invoiceId, date:s.date, clientName:s.clientName, contactNum:s.contactNum, email:s.email ?? "", serviceType:s.serviceType, price:String(s.price), payment:String(s.payment) }); setOpen(true); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit">
                     <PenSquare size={13} />
                   </button>
                   <button type="button" onClick={() => onDelete(s.id)} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Delete">
                     <Trash2 size={13} />
                   </button>
-                  {s.receiptSentAt ? <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-400">Receipt Sent</span> : <button type="button" onClick={e => { e.stopPropagation(); requestConfirmation({ title:"Send official receipt?", message:`Send the receipt for invoice ${s.invoiceId} to the customer now?`, confirmLabel:"Send Receipt", onConfirm:async()=>{ try { const updated=await onSendReceipt(s.invoiceId); onUpdate(updated); alert(`Receipt sent for ${s.invoiceId}.`); } catch(error) { alert(error instanceof Error ? error.message : "Receipt could not be sent."); } } }); }} className="rounded-lg bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary hover:bg-primary/20">Send Receipt</button>}
+                  {s.receiptSentAt ? <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-400">Receipt Sent · {new Date(s.receiptSentAt).toLocaleString("en-PH", { timeZone: "Asia/Manila" })}</span>
+                    : s.status !== "Finished" ? <span className="text-[10px] text-muted-foreground">Receipt requires a finished sale.</span>
+                    : !s.email?.trim() ? <span className="text-[10px] text-amber-700">Add a customer email using Edit to send a receipt.</span>
+                    : <button type="button" onClick={e => { e.stopPropagation(); sendReceipt(s); }} className="rounded-lg bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary hover:bg-primary/20">{receiptErrors[s.invoiceId] ? "Retry Receipt" : "Send Receipt"}</button>}
                 </div>
+                {!s.receiptSentAt && receiptErrors[s.invoiceId] && <p role="alert" className="mt-2 max-w-xs whitespace-normal text-xs text-red-700 dark:text-red-400">{receiptErrors[s.invoiceId]}</p>}
               </td>
             </TRow>
           ))}
@@ -665,6 +692,7 @@ function DailySalesView({ sales, onUpdate, onDelete, onSendReceipt }: { sales: S
             <FF label="Invoice #"><input className={ic} value={form.invoiceId} readOnly /></FF>
             <FF label="Date"><input type="date" max={todayISO()} className={ic} value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} required /></FF>
             <FF label="Client Name"><input className={ic} value={form.clientName} readOnly /></FF>
+            <FF label="Customer email for receipts"><input type="email" className={ic} value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="customer@example.com" /><span className="text-xs text-muted-foreground">Updates the client's email. Staff changes require admin approval.</span></FF>
             <FF label="Contact #"><input className={ic} value={form.contactNum} onChange={e=>setForm(f=>({...f,contactNum:e.target.value}))} placeholder="09XX-XXX-XXXX" maxLength={30} required /></FF>
             <FF label="Service Type">
               <select className={ic} value={form.serviceType} onChange={e=>setForm(f=>({...f,serviceType:e.target.value as ServiceType}))}>
@@ -1610,7 +1638,7 @@ function AppContent() {
       {/* Page content */}
       <main className="max-w-[1680px] mx-auto">
         {tab === "DASHBOARD"       && <DashboardView sales={visibleSales} jobCosts={visibleJobCosts} expenses={visibleExpenses} inquiries={visibleInquiries} rangeLabel={timelineLabel} isAdmin={isAdmin} onView={(title, record) => setViewRecord({ title, record })} />}
-        {tab === "DAILY_SALES"     && <DailySalesView sales={sales.filter(isCompletedSale)} onUpdate={s => setSales(p => p.map(item => item.invoiceId === s.invoiceId ? s : item))} onSendReceipt={async id => { const response=await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(id)}/receipt`, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({confirm:true,invoiceId:id})}); const data=await response.json(); if (!response.ok) throw new Error(data.error ?? "Receipt could not be sent."); if (!data.notification?.sent) throw new Error(data.notification?.reason ?? "Receipt could not be sent."); return normalizeSale(data); }} onDelete={id => deleteFromApi("sales", id, () => { const removed = sales.find(item => item.invoiceId === id); const linkedJob = jobCosts.find(item => item.jobCostId === removed?.jobCostId); setSales(p => p.filter(item => item.invoiceId !== id)); if (removed?.jobCostId) setJobCosts(p => p.filter(item => item.jobCostId !== removed.jobCostId)); if (linkedJob?.inquiryId) setInquiries(p => p.map(i => i.inquiryId === linkedJob.inquiryId ? { ...i, status:"Pending" } : i)); })} />}
+        {tab === "DAILY_SALES"     && <DailySalesView sales={sales.filter(isCompletedSale)} onUpdate={s => setSales(p => p.map(item => item.invoiceId === s.invoiceId ? s : s.clientId && item.clientId === s.clientId ? { ...item, email: s.email } : item))} onSendReceipt={async (id, email) => { const response=await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(id)}/receipt`, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({confirm:true,invoiceId:id,email})}); const data=await response.json(); if (!response.ok) throw new Error(data.error ?? "Receipt could not be sent."); if (!data.notification?.sent) throw new Error(data.notification?.reason ?? "Receipt could not be sent."); return normalizeSale(data); }} onDelete={id => deleteFromApi("sales", id, () => { const removed = sales.find(item => item.invoiceId === id); const linkedJob = jobCosts.find(item => item.jobCostId === removed?.jobCostId); setSales(p => p.filter(item => item.invoiceId !== id)); if (removed?.jobCostId) setJobCosts(p => p.filter(item => item.jobCostId !== removed.jobCostId)); if (linkedJob?.inquiryId) setInquiries(p => p.map(i => i.inquiryId === linkedJob.inquiryId ? { ...i, status:"Pending" } : i)); })} />}
         {tab === "JOB_COSTING"     && <JobCostingView jobCosts={jobCosts} inquiries={inquiries} inventory={inventory} selectedInquiryId={selectedInquiryForCosting} clearSelectedInquiry={() => setSelectedInquiryForCosting(null)} currentGoldRate={goldRate} onAdd={j => { setJobCosts(p => [j, ...p]); if (j.sale) setSales(p => [j.sale!, ...p.filter(s => s.invoiceId !== j.sale!.invoiceId)]); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status:"Approved" } : i)); }} onUpdate={j => { setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? j : item)); if (j.sale) setSales(p => p.map(s => s.invoiceId === j.sale!.invoiceId ? j.sale! : s)); }} onDelete={j => deleteFromApi("job-cost", j.jobCostId, () => { setJobCosts(p => p.filter(item => item.jobCostId !== j.jobCostId)); setSales(p => p.filter(s => s.invoiceId !== j.invoiceId)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status:"Pending" } : i)); })} onApprove={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/approve`, { method:"POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Costing could not be approved."); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Costing could not be approved."); } }} onReady={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/ready`, { method:"POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Item could not be marked ready."); const reason = data.notification?.sent ? (data.notification.reason ?? "Customer notification sent.") : (data.notification?.reason ?? "Customer notification could not be sent."); alert(`Marked ready for pickup. ${reason}`); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Item could not be marked ready."); } }} onFinish={async (j, materials) => { try { const response = await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(j.invoiceId)}/finish`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ invoiceId:j.invoiceId, clientName:j.clientName, materials }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Sale could not be finished."); const sale = normalizeSale(data); setSales(p => [sale, ...p.filter(item => item.invoiceId !== sale.invoiceId)]); setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? { ...item, status:"Finished", sale } : item)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status:"Finished" } : i)); alert("Sale completed. Confirm receipt sending from Daily Sales when ready."); } catch (error) { alert(error instanceof Error ? error.message : "Sale could not be finished."); } }} />}
         {tab === "INVENTORY"  && <GoldInventoryView inventory={inventory} goldRate={goldRate} onAdd={e => { setInventory(p => [...p, e]); setReloadKey(k => k + 1); }} onUpdate={e => { setInventory(p => p.map(item => item.id === e.id ? e : item)); setReloadKey(k => k + 1); }} onDelete={id => deleteFromApi("inventory", id, () => { setInventory(p => p.filter(item => item.id !== id)); setReloadKey(k => k + 1); })} />}
         {tab === "INQUIRIES"       && <InquiriesView inquiries={inquiries} onAdd={i => setInquiries(p => [i, ...p])} onUpdate={i => setInquiries(p => p.map(item => item.inquiryId === i.inquiryId ? i : item))} onDelete={id => deleteFromApi("inquiries", id, () => setInquiries(p => p.filter(item => item.inquiryId !== id)))} onStartCosting={id => { setSelectedInquiryForCosting(id); setTab("JOB_COSTING"); }} />}
