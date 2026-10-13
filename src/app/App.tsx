@@ -9,7 +9,9 @@ import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
 } from "recharts";
-import { isValidEmail, isValidPHContact } from "../validation";
+import { isValidEmail, isValidPHContact, normalizeContactInput } from "../validation";
+import { ContactInput } from "./components/ContactInput";
+import { summarizeInventory } from "../inventorySummary";
 
 // ── config ─────────────────────────────────────────────────────────────────
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "https://nilosgold.vercel.app").replace(/\/$/, "");
@@ -89,7 +91,7 @@ const normalizeSale = (row: any): Sale => ({
   date: apiDate(row.salesDate ?? row.date),
   clientId: row.clientId ?? row.client?.clientId,
   clientName: row.clientName ?? row.client?.clientName ?? "",
-  contactNum: row.contactNum ?? row.client?.contactNum ?? "",
+  contactNum: normalizeContactInput(row.contactNum ?? row.client?.contactNum ?? ""),
   email: row.email ?? row.client?.email ?? "",
   serviceType: row.serviceType ?? "Custom",
   price: numeric(row.price),
@@ -107,7 +109,7 @@ const normalizeJobCost = (row: any): JobCost => {
   return { jobCostId: String(row.jobCostId ?? ""), invoiceId: String(row.invoiceId ?? sale?.invoiceId ?? ""), clientName: String(row.clientName ?? sale?.client?.clientName ?? row.inquiry?.customerName ?? ""), itemName: row.itemName ?? "", deadline: row.deadline || row.deliveryDate ? String(row.deadline ?? row.deliveryDate).slice(0, 10) : "", empId: row.empId, inquiryId: row.inquiryId ?? row.inquiry?.inquiryId, status: statusLabel(row.status), sale: sale ? normalizeSale(sale) : undefined, goldUsed: numeric(row.goldUsed), goldScrap: numeric(row.goldScrap), goldCostPerG, goldCost, stoneCost: numeric(row.stoneCost), laborCost: numeric(row.laborCost), totalCost, sellingPrice, profit: numeric(row.profit ?? sellingPrice - totalCost), marginPct: numeric(row.marginPct ?? (sellingPrice ? ((sellingPrice - totalCost) / sellingPrice) * 100 : 0)) };
 };
 const normalizeInventory = (row: any): InvEntry => ({ id: row.referenceId, date: apiDate(row.updatedAt ?? row.date), referenceId: row.referenceId, itemName: row.itemName ?? row.referenceId, category: row.category ?? "GOLD", quantityIn: numeric(row.quantityIn ?? row.goldIn), quantityOut: numeric(row.quantityOut ?? row.goldOut), quantityLoss: numeric(row.quantityLoss ?? row.scraps ?? row.scrap), balance: numeric(row.balance ?? row.totalGold), unit: row.unit ?? "grams", unitPrice: numeric(row.unitPrice) });
-const normalizeInquiry = (row: any): Inquiry => ({ inquiryId: String(row.inquiryId ?? ""), date: apiDate(row.inqDate ?? row.date), customerName: String(row.customerName ?? ""), contactInfo: String(row.contactInfo ?? ""), email: String(row.email ?? ""), details: String(row.details ?? ""), category: String(row.category ?? ""), quotedPrice: numeric(row.quotedPrice), isFullyPaid: Boolean(row.isFullyPaid), status: statusLabel(row.status) as InqStatus });
+const normalizeInquiry = (row: any): Inquiry => ({ inquiryId: String(row.inquiryId ?? ""), date: apiDate(row.inqDate ?? row.date), customerName: String(row.customerName ?? ""), contactInfo: normalizeContactInput(String(row.contactInfo ?? "")), email: String(row.email ?? ""), details: String(row.details ?? ""), category: String(row.category ?? ""), quotedPrice: numeric(row.quotedPrice), isFullyPaid: Boolean(row.isFullyPaid), status: statusLabel(row.status) as InqStatus });
 const normalizeExpense = (row: any): Expense => ({ expenseId: String(row.expenseId ?? ""), expDate: apiDate(row.expDate ?? row.date), category: String(row.category ?? ""), description: String(row.description ?? ""), amount: numeric(row.amount) });
 const asRows = (value: unknown): any[] => Array.isArray(value) ? value : [];
 
@@ -629,7 +631,7 @@ function DailySalesView({ sales, onUpdate, onDelete, onSendReceipt }: { sales: S
       if (!editingId) throw new Error("Finish an approved job costing to create a Daily Sales entry.");
       const price = Number(form.price); const payment = Number(form.payment);
       if (form.email.trim() && !isValidEmail(form.email)) throw new Error("Enter a valid customer email address.");
-      if (!isValidPHContact(form.contactNum)) throw new Error("Enter a valid Philippine contact number (09XXXXXXXXX or +639XXXXXXXXX).");
+      if (!isValidPHContact(form.contactNum)) throw new Error("Enter a valid Philippine contact number (11 digits starting with 09).");
       if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(payment) || payment < 0 || payment > price) throw new Error("Payment must be zero or greater and no greater than the total price.");
       const response = await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(editingId)}`, { method:"PUT", headers:{"Content-Type":"application/json"},
         body:JSON.stringify({ invoiceId:form.invoiceId, date:form.date, serviceType:form.serviceType, price,
@@ -693,7 +695,7 @@ function DailySalesView({ sales, onUpdate, onDelete, onSendReceipt }: { sales: S
             <FF label="Date"><input type="date" max={todayISO()} className={ic} value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} required /></FF>
             <FF label="Client Name"><input className={ic} value={form.clientName} readOnly /></FF>
             <FF label="Customer email for receipts"><input type="email" className={ic} value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="customer@example.com" /><span className="text-xs text-muted-foreground">Updates the client's email. Staff changes require admin approval.</span></FF>
-            <FF label="Contact #"><input className={ic} value={form.contactNum} onChange={e=>setForm(f=>({...f,contactNum:e.target.value}))} placeholder="09XX-XXX-XXXX" maxLength={30} required /></FF>
+            <FF label="Contact #"><ContactInput className={ic} value={form.contactNum} onChange={contactNum=>setForm(f=>({...f,contactNum}))} required /></FF>
             <FF label="Service Type">
               <select className={ic} value={form.serviceType} onChange={e=>setForm(f=>({...f,serviceType:e.target.value as ServiceType}))}>
                 {(["Custom","Repair","Resize","Cleaning"] as ServiceType[]).map(t=><option key={t}>{t}</option>)}
@@ -891,10 +893,8 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
   const blank = () => ({ date:todayISO(), referenceId:"", itemName:"", category:"GOLD", quantityIn:"", quantityOut:"", quantityLoss:"", unit:"grams", unitPrice:"" });
   const [form, setForm] = useState(blank);
   const filtered = sortRecords(useMemo(() => inventory.filter(e => (categoryFilter === "ALL" || e.category === categoryFilter) && [e.referenceId, e.itemName, e.category].some(v => v.toLowerCase().includes(q.toLowerCase()))), [inventory, q, categoryFilter]), sort);
-  const goldRows = inventory.filter(e => e.category === "GOLD");
-  const goldByUnit = new Map<string, number>();
-  goldRows.forEach(row => goldByUnit.set(row.unit, row.balance));
-  const goldBalance = (goldByUnit.get("grams") ?? 0) + (goldByUnit.get("troy oz") ?? 0) * 31.1034768;
+  const summary = useMemo(() => summarizeInventory(inventory, filtered), [inventory, filtered]);
+  const goldBalance = summary.goldGrams;
   const units = INVENTORY_UNITS[form.category] ?? ["pieces"];
   const closeModal = () => { setOpen(false); setEditingId(null); setForm(blank()); };
   const edit = (e: InvEntry) => { setEditingId(e.id); setForm({ date:e.date, referenceId:e.referenceId, itemName:e.itemName, category:e.category, quantityIn:String(e.quantityIn), quantityOut:String(e.quantityOut), quantityLoss:String(e.quantityLoss), unit:e.unit, unitPrice:String(e.unitPrice) }); setOpen(true); };
@@ -913,12 +913,26 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
     closeModal(); setIsSubmitting(false); submittingRef.current=false;
   };
   return <div className="p-5 space-y-4">
-    <div className="flex items-center justify-between gap-3 flex-wrap">
-      <div className="flex items-center gap-3 flex-wrap"><SearchBar value={q} onChange={setQ} placeholder="Search reference, item…" />
+    <div><h2 className="text-lg font-semibold">Inventory overview</h2><p className="mt-1 text-xs text-muted-foreground">Track stock, materials, and movement across your workshop.</p></div>
+    <div className="grid items-center gap-4 xl:grid-cols-[minmax(180px,1fr)_minmax(0,2fr)_auto]">
+      <div className="space-y-2"><SearchBar value={q} onChange={setQ} placeholder="Search reference, item…" />
         <select className={ic+" w-auto"} value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)} aria-label="Filter inventory category"><option value="ALL">All categories</option>{INVENTORY_CATEGORIES.map(c=><option key={c} value={c}>{c[0]+c.slice(1).toLowerCase()}</option>)}</select>
-        {goldRate !== null && <div className="rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 text-xs"><span className="text-muted-foreground">Gold stock: </span><b className="text-primary">{goldBalance.toFixed(2)} g · {php(goldBalance*goldRate)}</b></div>}
-      </div><AddBtn onClick={() => { setForm(blank()); setEditingId(null); setOpen(true); }} label="Add Item" />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <section aria-label="Item Summary" className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+          <div className="flex items-center justify-between text-xs font-medium text-muted-foreground"><h3>Item Summary</h3><Package size={17} className="text-primary" /></div>
+          <p className="mt-3 text-3xl font-semibold tabular-nums">{summary.entries.toLocaleString()}</p>
+          <p className="mt-1 text-xs text-muted-foreground">Ledger entries matching your filters</p>
+        </section>
+        <section aria-label="Product Summary" className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+          <div className="flex items-center justify-between text-xs font-medium text-muted-foreground"><h3>Product Summary</h3><Gem size={17} className="text-emerald-600" /></div>
+          <p className="mt-3 text-3xl font-semibold tabular-nums">{summary.inStock.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">in stock / {summary.products}</span></p>
+          <p className="mt-1 text-xs text-muted-foreground">{summary.quantities.length ? summary.quantities.map(([unit, quantity]) => `${quantity.toLocaleString("en-PH", { maximumFractionDigits: 3 })} ${unit}`).join(" · ") : "No stock remaining"}</p>
+        </section>
+      </div>
+      <AddBtn onClick={() => { setForm(blank()); setEditingId(null); setOpen(true); }} label="Add Item" />
     </div>
+    <div className="flex flex-wrap justify-between gap-2 rounded-lg border border-border px-4 py-3 text-xs"><span className="text-muted-foreground">Gold stock <b className="ml-2 text-foreground">{goldBalance.toLocaleString("en-PH", { maximumFractionDigits: 3 })} g</b></span><span className="text-muted-foreground">24K reference value <b className="ml-2 text-primary">{goldRate === null ? "Rate unavailable" : php(goldBalance * goldRate)}</b></span></div>
     <TableWrap><thead><tr>{[["Date","date"],["Category","category"],["Reference","referenceId"],["Item Description","itemName"],["Qty In","quantityIn"],["Unit Price","unitPrice"],["Qty Out","quantityOut"],["Loss / Scrap","quantityLoss"],["Balance","balance"]].map(([h,k])=><SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort}/>)}<th className={thc}>Actions</th></tr></thead>
       <tbody>{filtered.map(e=><TRow key={e.id} onClick={()=>edit(e)}><td className={tdc}>{fmtDate(e.date)}</td><td className={tdc}><span className="rounded bg-primary/10 px-2 py-1 text-[10px] uppercase">{e.category}</span></td><td className={tdc+" text-primary/80"}>{e.referenceId}</td><td className={tdc+" font-sans"}>{e.itemName}</td><td className={tdr}>{e.quantityIn ? `+${e.quantityIn}` : "—"}</td><td className={tdr}>{e.unitPrice ? php(e.unitPrice) : "—"}</td><td className={tdr}>{e.quantityOut ? `-${e.quantityOut}` : "—"}</td><td className={tdr}>{e.quantityLoss || "—"}</td><td className={tdr+" text-primary font-semibold"}>{e.balance} {e.unit}</td><td className={tdc}><div className="flex items-center gap-2"><button type="button" onClick={event=>{event.stopPropagation();edit(e);}} className="rounded p-1.5 text-muted-foreground hover:bg-muted" title="Edit"><PenSquare size={13}/></button><button type="button" onClick={event=>{event.stopPropagation();onDelete(e.id);}} className="rounded p-1.5 text-muted-foreground hover:bg-muted" title="Delete"><Trash2 size={13}/></button></div></td></TRow>)}{!filtered.length&&<EmptyRow cols={10}/>}</tbody>
     </TableWrap>
@@ -959,7 +973,7 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
       contactInfo:form.contactInfo, email:form.email, details:form.details, category:form.category,
       quotedPrice:parseFloat(form.quotedPrice)||0, isFullyPaid:form.isFullyPaid, status:form.status };
     try {
-      if (!isValidPHContact(form.contactInfo)) throw new Error("Enter a valid Philippine contact number (09XXXXXXXXX or +639XXXXXXXXX).");
+      if (!isValidPHContact(form.contactInfo)) throw new Error("Enter a valid Philippine contact number (11 digits starting with 09).");
       if (form.email && !isValidEmail(form.email)) throw new Error("Enter a valid email address.");
       const response = await apiFetch(`${BASE_URL}/inquiries${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method:editingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"},
         body:JSON.stringify({ date:entry.date, customerName:entry.customerName,
@@ -1022,7 +1036,7 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
         <Modal title={editingId ? "Edit Inquiry" : "Add New Inquiry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update Entry" : "Save Entry"} isSubmitting={isSubmitting}>
           <div className="grid grid-cols-2 gap-4">
             <FF label="Customer Name"><input className={ic} value={form.customerName} onChange={e=>setForm(f=>({...f,customerName:e.target.value}))} placeholder="Full name" required /></FF>
-            <FF label="Contact Info"><input className={ic} value={form.contactInfo} onChange={e=>setForm(f=>({...f,contactInfo:e.target.value}))} placeholder="09XX-XXX-XXXX" /></FF>
+            <FF label="Contact Info"><ContactInput className={ic} value={form.contactInfo} onChange={contactInfo=>setForm(f=>({...f,contactInfo}))} required /></FF>
             <FF label="Email for receipt / pickup"><input type="email" className={ic} value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="customer@example.com" /></FF>
             <FF label="Product Category"><input className={ic} value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))} placeholder="e.g. Custom Ring" required /></FF>
             <FF label="Quoted Price (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.quotedPrice} onChange={e=>setForm(f=>({...f,quotedPrice:e.target.value}))} placeholder="0.00" required /></FF>
@@ -1440,6 +1454,8 @@ function AppContent() {
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [goldRate, setGoldRate] = useState<number | null>(null);
+  const [goldInfo, setGoldInfo] = useState<{ source: string; updatedAt: string; stale: boolean; warning?: string; fxUpdatedAt?: string } | null>(null);
+  const [goldError, setGoldError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
   const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
   const isAdmin = String(user?.empRole ?? "").toLowerCase() === "admin";
@@ -1491,15 +1507,19 @@ function AppContent() {
   }, [user?.empId, reloadKey]);
 
   useEffect(() => {
-    if (!user?.empId) { setGoldRate(null); return; }
+    if (!user?.empId) { setGoldRate(null); setGoldInfo(null); setGoldError(""); return; }
     let active = true;
     const loadGoldRate = async () => {
       try {
         const response = await apiFetch(BASE_URL + "/gold/price");
-        if (!response.ok) throw new Error("Live gold pricing is unavailable.");
         const data = await response.json();
-        if (active && Number.isFinite(Number(data.ratePerGram)) && Number(data.ratePerGram) > 0) setGoldRate(Number(data.ratePerGram));
-      } catch { if (active) setGoldRate(null); }
+        if (!response.ok || data.currency !== "PHP" || !Number.isFinite(Number(data.ratePerGram)) || Number(data.ratePerGram) <= 0 || !Number.isFinite(Date.parse(data.updatedAt))) throw new Error("Gold pricing is unavailable. Enter a verified rate manually for job costing.");
+        if (active) {
+          setGoldRate(Number(data.ratePerGram));
+          setGoldInfo({ source: data.source, updatedAt: data.updatedAt, stale: Boolean(data.stale), warning: data.warning, fxUpdatedAt: data.fxUpdatedAt });
+          setGoldError("");
+        }
+      } catch { if (active) { setGoldRate(null); setGoldInfo(null); setGoldError("Gold pricing is unavailable. Enter a verified rate manually for job costing."); } }
     };
     void loadGoldRate();
     const timer = window.setInterval(loadGoldRate, 5 * 60 * 1000);
@@ -1554,10 +1574,7 @@ function AppContent() {
   const timelineLabel = startMonth === endMonth
     ? `${MONTH_NAMES[startMonth]} ${selectedYear}`
     : `${MONTH_NAMES[startMonth].slice(0, 3)}–${MONTH_NAMES[endMonth].slice(0, 3)} ${selectedYear}`;
-  const goldRows = inventory.filter(e => e.category === "GOLD");
-  const goldByUnit = new Map<string, number>();
-  goldRows.forEach(row => goldByUnit.set(row.unit, row.balance));
-  const goldStock = (goldByUnit.get("grams") ?? 0) + (goldByUnit.get("troy oz") ?? 0) * 31.1034768;
+  const goldStock = summarizeInventory(inventory, inventory).goldGrams;
   const totalRev   = visibleSales.reduce((a, s) => a + s.price, 0);
   const totalCost  = visibleJobCosts.reduce((a, j) => a + j.totalCost, 0);
   const totalExp   = visibleExpenses.reduce((a, e) => a + e.amount, 0);
@@ -1593,7 +1610,7 @@ function AppContent() {
           {/* KPI strip */}
           <div className="flex gap-2 flex-1 overflow-x-auto">
             <KPICard label="Today" value={today} />
-            <KPICard label="Live Gold Price / g" value={goldRate === null ? "Unavailable" : php(goldRate)} vc="text-primary" />
+            <KPICard label={goldInfo?.stale ? "Last Gold Quote / g · 24K" : "Gold Price / g · 24K"} value={goldRate === null ? "Unavailable" : php(goldRate)} sub={goldInfo ? (goldInfo.stale ? "Last known quote" : goldInfo.fxUpdatedAt ? "Live gold · daily PHP FX" : "Live PHP quote") : "Waiting for market data"} vc="text-primary" />
             <KPICard label="Gold Stock (Physical)" value={`${goldStock.toFixed(2)} g`} vc="text-primary" />
             {isAdmin && <KPICard
               label={`Net Profit (${timelineLabel})`}
@@ -1634,6 +1651,10 @@ function AppContent() {
           ))}
         </nav>
       </header>
+
+      <div className="mx-auto max-w-[1680px] px-5 pt-3 text-[11px] text-muted-foreground" role="status">
+        {goldError || (goldInfo ? <><span className={goldInfo.stale ? "text-amber-700 dark:text-amber-400" : ""}>{goldInfo.source} · Quote {new Date(goldInfo.updatedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila" })} (PH time){goldInfo.warning ? ` · ${goldInfo.warning}` : ""}</span>{goldInfo.fxUpdatedAt && <> · FX dated {new Date(goldInfo.fxUpdatedAt).toLocaleDateString("en-PH", { timeZone: "Asia/Manila" })} · <a href="https://www.exchangerate-api.com" target="_blank" rel="noreferrer" className="underline">Rates by ExchangeRate-API</a></>}</> : "Loading gold market rate…")}
+      </div>
 
       {/* Page content */}
       <main className="max-w-[1680px] mx-auto">
