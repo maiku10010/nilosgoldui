@@ -770,6 +770,10 @@ function JobCostingView({ jobCosts, inquiries, inventory, selectedInquiryId, cle
       alert("Enter valid costs and a selling price greater than zero.");
       setIsSubmitting(false); submittingRef.current = false; return;
     }
+    if (form.deadline && form.deadline < todayISO()) {
+      alert("Delivery date must be today or later.");
+      setIsSubmitting(false); submittingRef.current = false; return;
+    }
     try {
       const payload = editingId
         ? { invoiceId:form.invoiceId, clientName:form.clientName, itemName:form.itemName, deadline:form.deadline || undefined, empId:form.empId || undefined, goldUsed, goldScrap, goldCostPerG, stoneCost, laborCost, sellingPrice }
@@ -869,7 +873,7 @@ function JobCostingView({ jobCosts, inquiries, inventory, selectedInquiryId, cle
           <FF label="Stone Cost (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.stoneCost} onChange={e=>setForm(f=>({...f,stoneCost:e.target.value}))} required /></FF>
           <FF label="Labor Cost (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.laborCost} onChange={e=>setForm(f=>({...f,laborCost:e.target.value}))} required /></FF>
             <FF label="Item Name (optional)"><input className={ic} value={form.itemName} onChange={e=>setForm(f=>({...f,itemName:e.target.value}))} placeholder="e.g. Gold ring" maxLength={120} /></FF>
-            <FF label="Delivery Date / Deadline (optional)"><input type="date" className={ic} value={form.deadline} onChange={e=>setForm(f=>({...f,deadline:e.target.value}))} /></FF>
+            <FF label="Delivery Date / Deadline (optional)"><input type="date" min={todayISO()} className={ic} value={form.deadline} onChange={e=>setForm(f=>({...f,deadline:e.target.value}))} /></FF>
             <FF label="Selling Price (₱)"><input type="number" min="0.01" step="0.01" className={ic} value={form.sellingPrice} onChange={e=>setForm(f=>({...f,sellingPrice:e.target.value}))} required /></FF>
         </div>
         <p className="text-xs text-muted-foreground">Invoice number and job costing ID are assigned automatically. Profit and margin are calculated from these costs.</p>
