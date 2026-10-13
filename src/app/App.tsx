@@ -1455,7 +1455,6 @@ function AppContent() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [goldRate, setGoldRate] = useState<number | null>(null);
   const [goldInfo, setGoldInfo] = useState<{ source: string; updatedAt: string; stale: boolean; warning?: string; fxUpdatedAt?: string } | null>(null);
-  const [goldError, setGoldError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
   const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
   const isAdmin = String(user?.empRole ?? "").toLowerCase() === "admin";
@@ -1507,7 +1506,7 @@ function AppContent() {
   }, [user?.empId, reloadKey]);
 
   useEffect(() => {
-    if (!user?.empId) { setGoldRate(null); setGoldInfo(null); setGoldError(""); return; }
+    if (!user?.empId) { setGoldRate(null); setGoldInfo(null); return; }
     let active = true;
     const loadGoldRate = async () => {
       try {
@@ -1517,9 +1516,8 @@ function AppContent() {
         if (active) {
           setGoldRate(Number(data.ratePerGram));
           setGoldInfo({ source: data.source, updatedAt: data.updatedAt, stale: Boolean(data.stale), warning: data.warning, fxUpdatedAt: data.fxUpdatedAt });
-          setGoldError("");
         }
-      } catch { if (active) { setGoldRate(null); setGoldInfo(null); setGoldError("Gold pricing is unavailable. Enter a verified rate manually for job costing."); } }
+      } catch { if (active) { setGoldRate(null); setGoldInfo(null); } }
     };
     void loadGoldRate();
     const timer = window.setInterval(loadGoldRate, 5 * 60 * 1000);
@@ -1610,7 +1608,7 @@ function AppContent() {
           {/* KPI strip */}
           <div className="flex gap-2 flex-1 overflow-x-auto">
             <KPICard label="Today" value={today} />
-            <KPICard label={goldInfo?.stale ? "Last Gold Quote / g · 24K" : "Gold Price / g · 24K"} value={goldRate === null ? "Unavailable" : php(goldRate)} vc="text-primary" />
+            <KPICard label={goldInfo?.stale ? "Last Gold Quote / g · 24K" : "Gold Price / g · 24K"} value={goldRate === null ? "Unavailable" : php(goldRate)} sub="Live Gold Price" vc="text-primary" />
             <KPICard label="Gold Stock (Physical)" value={`${goldStock.toFixed(2)} g`} vc="text-primary" />
             {isAdmin && <KPICard
               label={`Net Profit (${timelineLabel})`}
@@ -1651,10 +1649,6 @@ function AppContent() {
           ))}
         </nav>
       </header>
-
-      <div className="mx-auto max-w-[1680px] px-5 pt-3 text-[11px] text-muted-foreground" role="status">
-        {goldError || (goldInfo ? <><span className={goldInfo.stale ? "text-amber-700 dark:text-amber-400" : ""}>{goldInfo.source} · Quote {new Date(goldInfo.updatedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila" })} (PH time){goldInfo.warning ? ` · ${goldInfo.warning}` : ""}</span>{goldInfo.fxUpdatedAt && <> · FX dated {new Date(goldInfo.fxUpdatedAt).toLocaleDateString("en-PH", { timeZone: "Asia/Manila" })} · <a href="https://www.exchangerate-api.com" target="_blank" rel="noreferrer" className="underline">Rates by ExchangeRate-API</a></>}</> : "Loading gold market rate…")}
-      </div>
 
       {/* Page content */}
       <main className="max-w-[1680px] mx-auto">
