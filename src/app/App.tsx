@@ -12,6 +12,7 @@ import {
 import { isValidEmail, isValidPHContact, normalizeContactInput } from "../validation";
 import { ContactInput } from "./components/ContactInput";
 import { summarizeInventory } from "../inventorySummary";
+import { approvalChanges, approvalValue } from "../approvalDiff";
 
 // ── config ─────────────────────────────────────────────────────────────────
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "https://nilosgold.vercel.app").replace(/\/$/, "");
@@ -1408,13 +1409,17 @@ function ApprovalQueueView({ onResolved }: { onResolved: () => void }) {
     <div className="flex items-center justify-between"><div><h2 className="text-lg font-semibold">Admin Approval Queue</h2><p className="text-sm text-muted-foreground">Staff edits and archive requests leave records unchanged until approved.</p></div><button type="button" onClick={load} className="rounded-lg border border-border px-3 py-2 text-sm">Refresh</button></div>
     {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
     {!pending.length && !error && <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">No pending requests.</div>}
-    {pending.map(row => <article key={row.requestId} className="rounded-xl border border-border bg-card p-5">
+    {pending.map(row => {
+      const requestedAt = new Date(row.createdAt);
+      const requester = row.requester?.empName ?? row.requester?.empRole ?? "Staff";
+      const changes = approvalChanges(row.beforeData, row.proposedData);
+      return <article key={row.requestId} className="rounded-xl border border-border bg-card p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div><div className="flex items-center gap-2"><h3 className="font-semibold">{row.action} · {String(row.entityType).replace("_", " ")}</h3><StatusBadge status="Pending" /></div><p className="mt-1 text-xs text-muted-foreground">{row.entityId} · requested by {row.requester?.empName ?? "Staff"} · {new Date(row.createdAt).toLocaleString("en-PH")}</p></div>
+        <div><div className="flex items-center gap-2"><h3 className="font-semibold">{row.action} · {String(row.entityType).replaceAll("_", " ")}</h3><StatusBadge status="Pending" /></div><p className="mt-1 text-xs text-muted-foreground">{row.entityId} · requested by {requester} · {requestedAt.toLocaleDateString("en-PH", { year:"numeric", month:"short", day:"2-digit" })} · {requestedAt.toLocaleTimeString("en-PH", { hour:"numeric", minute:"2-digit" })}</p></div>
         <div className="flex gap-2"><button type="button" onClick={() => resolve(row, "reject")} className="rounded-lg border border-border px-3 py-2 text-sm">Reject</button><button type="button" onClick={() => resolve(row, "approve")} className="rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground">Approve</button></div>
       </div>
-      {row.action === "UPDATE" && <div className="mt-4 grid gap-3 md:grid-cols-2"><div className="rounded-lg bg-muted/50 p-3"><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Current values</p><pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words text-xs">{JSON.stringify(row.beforeData, null, 2)}</pre></div><div className="rounded-lg bg-blue-50/60 p-3 dark:bg-blue-950/20"><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Requested values</p><pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words text-xs">{JSON.stringify(row.proposedData, null, 2)}</pre></div></div>}
-    </article>)}
+      {row.action === "UPDATE" && <div className="mt-4 rounded-lg border border-border bg-muted/30 p-4"><p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Requested changes</p>{changes.length ? <dl className="space-y-3">{changes.map(change => <div key={change.key} className="grid gap-1 text-sm sm:grid-cols-[minmax(9rem,0.35fr)_1fr]"><dt className="font-medium text-foreground">{change.label}</dt><dd className="flex min-w-0 flex-wrap items-center gap-2"><span className="break-words text-muted-foreground line-through decoration-red-400/70">{approvalValue(change.initialValue)}</span><span aria-hidden="true" className="text-muted-foreground">→</span><span className="break-words font-medium text-foreground">{approvalValue(change.editedValue)}</span></dd></div>)}</dl> : <p className="text-sm text-muted-foreground">No value changes were detected.</p>}</div>}
+    </article>})}
     {rows.some(row => row.status !== "PENDING") && <details className="rounded-xl border border-border bg-card p-4"><summary className="cursor-pointer text-sm font-medium">Recently reviewed requests</summary><div className="mt-3 space-y-2">{rows.filter(row => row.status !== "PENDING").slice(0, 15).map(row => <div key={row.requestId} className="flex flex-wrap justify-between gap-2 border-t border-border pt-2 text-sm"><span>{row.action} {row.entityType} · {row.entityId}</span><StatusBadge status={statusLabel(row.status)} /></div>)}</div></details>}
   </div>;
 }
