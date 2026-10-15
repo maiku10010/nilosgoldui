@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, createContext, useContext } from "react";
+import { Fragment, useState, useEffect, useMemo, useRef, createContext, useContext } from "react";
 import goldsmithLogo from "../assets/nilosgold_logo.jpg";
 import {
   Search, Plus, X, Crown, TrendingUp, TrendingDown,
@@ -11,7 +11,7 @@ import {
 } from "recharts";
 import { isValidEmail, isValidPHContact, normalizeContactInput } from "../validation";
 import { ContactInput } from "./components/ContactInput";
-import { summarizeInventory } from "../inventorySummary";
+import { summarizeInventory, groupInventory } from "../inventorySummary";
 import { approvalChanges, approvalValue } from "../approvalDiff";
 
 // ── config ─────────────────────────────────────────────────────────────────
@@ -389,7 +389,7 @@ function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onVie
             {[
               { label:"Total Sales", val:php(totalSales), cls:"text-amber-700 dark:text-amber-300 font-semibold" },
               { label:"Cash Collected", val:php(cashCollected), cls:"text-emerald-700 dark:text-emerald-400" },
-              { label:"Receivables", val:php(receivables), cls:"text-amber-700 dark:text-amber-400" },
+              { label:"Collectibles", val:php(receivables), cls:"text-amber-700 dark:text-amber-400" },
             ].map(r => (
               <div key={r.label} className="flex justify-between items-center">
                 <span className="text-[11px] text-muted-foreground">{r.label}</span>
@@ -899,10 +899,20 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
   const [form, setForm] = useState(blank);
   const filtered = sortRecords(useMemo(() => inventory.filter(e => (categoryFilter === "ALL" || e.category === categoryFilter) && [e.referenceId, e.itemName, e.category].some(v => v.toLowerCase().includes(q.toLowerCase()))), [inventory, q, categoryFilter]), sort);
   const summary = useMemo(() => summarizeInventory(inventory, filtered), [inventory, filtered]);
+  const products = useMemo(() => groupInventory(inventory), [inventory]);
+  const visibleProducts = groupInventory(sortRecords(inventory, sort), filtered);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [selectedProduct, setSelectedProduct] = useState("");
+  const selectProduct = (key: string) => {
+    setSelectedProduct(key);
+    const product = products.find(p => p.key === key);
+    setForm(f => product ? { ...blank(), date:f.date, itemName:product.itemName, category:product.category, unit:product.unit } : blank());
+  };
+  const addMovement = (key: string) => { setEditingId(null); selectProduct(key); setOpen(true); };
   const goldBalance = summary.goldGrams;
   const units = INVENTORY_UNITS[form.category] ?? ["pieces"];
-  const closeModal = () => { setOpen(false); setEditingId(null); setForm(blank()); };
-  const edit = (e: InvEntry) => { setEditingId(e.id); setForm({ date:e.date, referenceId:e.referenceId, itemName:e.itemName, category:e.category, quantityIn:String(e.quantityIn), quantityOut:String(e.quantityOut), quantityLoss:String(e.quantityLoss), unit:e.unit, unitPrice:String(e.unitPrice) }); setOpen(true); };
+  const closeModal = () => { setOpen(false); setEditingId(null); setSelectedProduct(""); setForm(blank()); };
+  const edit = (e: InvEntry) => { setSelectedProduct(""); setEditingId(e.id); setForm({ date:e.date, referenceId:e.referenceId, itemName:e.itemName, category:e.category, quantityIn:String(e.quantityIn), quantityOut:String(e.quantityOut), quantityLoss:String(e.quantityLoss), unit:e.unit, unitPrice:String(e.unitPrice) }); setOpen(true); };
   const submit = async (event: React.FormEvent) => {
     event.preventDefault(); if (submittingRef.current) return;
     submittingRef.current = true; setIsSubmitting(true);
@@ -935,16 +945,28 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
           <p className="mt-1 text-xs text-muted-foreground">{summary.quantities.length ? summary.quantities.map(([unit, quantity]) => `${quantity.toLocaleString("en-PH", { maximumFractionDigits: 3 })} ${unit}`).join(" · ") : "No stock remaining"}</p>
         </section>
       </div>
-      <AddBtn onClick={() => { setForm(blank()); setEditingId(null); setOpen(true); }} label="Add Item" />
+      <AddBtn onClick={() => { setForm(blank()); setSelectedProduct(""); setEditingId(null); setOpen(true); }} label="Add Item / Stock" />
     </div>
     <div className="flex flex-wrap justify-between gap-2 rounded-lg border border-border px-4 py-3 text-xs"><span className="text-muted-foreground">Gold stock <b className="ml-2 text-foreground">{goldBalance.toLocaleString("en-PH", { maximumFractionDigits: 3 })} g</b></span><span className="text-muted-foreground">24K reference value <b className="ml-2 text-primary">{goldRate === null ? "Rate unavailable" : php(goldBalance * goldRate)}</b></span></div>
     <TableWrap><thead><tr>{[["Date","date"],["Category","category"],["Reference","referenceId"],["Item Description","itemName"],["Qty In","quantityIn"],["Unit Price","unitPrice"],["Qty Out","quantityOut"],["Loss / Scrap","quantityLoss"],["Balance","balance"]].map(([h,k])=><SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort}/>)}<th className={thc}>Actions</th></tr></thead>
-      <tbody>{filtered.map(e=><TRow key={e.id} onClick={()=>edit(e)}><td className={tdc}>{fmtDate(e.date)}</td><td className={tdc}><span className="rounded bg-primary/10 px-2 py-1 text-[10px] uppercase">{e.category}</span></td><td className={tdc+" text-primary/80"}>{e.referenceId}</td><td className={tdc+" font-sans"}>{e.itemName}</td><td className={tdr}>{e.quantityIn ? `+${e.quantityIn}` : "—"}</td><td className={tdr}>{e.unitPrice ? php(e.unitPrice) : "—"}</td><td className={tdr}>{e.quantityOut ? `-${e.quantityOut}` : "—"}</td><td className={tdr}>{e.quantityLoss || "—"}</td><td className={tdr+" text-primary font-semibold"}>{e.balance} {e.unit}</td><td className={tdc}><div className="flex items-center gap-2"><button type="button" onClick={event=>{event.stopPropagation();edit(e);}} className="rounded p-1.5 text-muted-foreground hover:bg-muted" title="Edit"><PenSquare size={13}/></button><button type="button" onClick={event=>{event.stopPropagation();onDelete(e.id);}} className="rounded p-1.5 text-muted-foreground hover:bg-muted" title="Delete"><Trash2 size={13}/></button></div></td></TRow>)}{!filtered.length&&<EmptyRow cols={10}/>}</tbody>
+      <tbody>{visibleProducts.map(product => <Fragment key={product.key}>
+        <tr className="border-b border-border bg-muted/30">
+          <td className={tdc} colSpan={4}><button type="button" className="flex items-center gap-2 text-left font-semibold" aria-expanded={expanded.has(product.key)} onClick={() => setExpanded(previous => { const next = new Set(previous); if (next.has(product.key)) next.delete(product.key); else next.add(product.key); return next; })}>
+            {expanded.has(product.key) ? <ChevronUp size={15}/> : <ChevronDown size={15}/>}{product.itemName}<span className="font-normal text-muted-foreground">{product.category} · {product.movements.length} movements</span>
+          </button></td>
+          <td className={tdr}>{product.quantityIn.toLocaleString("en-PH", { maximumFractionDigits:3 })}</td><td className={tdr}>—</td>
+          <td className={tdr}>{product.quantityOut.toLocaleString("en-PH", { maximumFractionDigits:3 })}</td><td className={tdr}>{product.quantityLoss.toLocaleString("en-PH", { maximumFractionDigits:3 })}</td>
+          <td className={tdr+" text-primary font-semibold"}>{product.balance.toLocaleString("en-PH", { maximumFractionDigits:3 })} {product.unit}</td>
+          <td className={tdc}><button type="button" className="text-primary hover:underline" onClick={() => addMovement(product.key)}>Add stock change</button></td>
+        </tr>
+        {expanded.has(product.key) && product.movements.map(e => <TRow key={e.id} onClick={()=>edit(e)}><td className={tdc}>{fmtDate(e.date)}</td><td className={tdc}><span className="rounded bg-primary/10 px-2 py-1 text-[10px] uppercase">{e.category}</span></td><td className={tdc+" text-primary/80"}>{e.referenceId}</td><td className={tdc+" pl-8 font-sans"}>↳ {e.itemName}</td><td className={tdr}>{e.quantityIn ? `+${e.quantityIn}` : "—"}</td><td className={tdr}>{e.unitPrice ? php(e.unitPrice) : "—"}</td><td className={tdr}>{e.quantityOut ? `-${e.quantityOut}` : "—"}</td><td className={tdr}>{e.quantityLoss || "—"}</td><td className={tdr+" text-primary font-semibold"}>{e.balance} {e.unit}</td><td className={tdc}><div className="flex items-center gap-2"><button type="button" onClick={event=>{event.stopPropagation();edit(e);}} className="rounded p-1.5 text-muted-foreground hover:bg-muted" title="Edit"><PenSquare size={13}/></button><button type="button" onClick={event=>{event.stopPropagation();onDelete(e.id);}} className="rounded p-1.5 text-muted-foreground hover:bg-muted" title="Delete"><Trash2 size={13}/></button></div></td></TRow>)}
+      </Fragment>)}{!visibleProducts.length && <EmptyRow cols={10}/>}</tbody>
     </TableWrap>
-    {open&&<Modal title={editingId?"Edit Inventory Entry":"Add Inventory Item"} onClose={closeModal} onSubmit={submit} submitLabel={editingId?"Update Entry":"Save Entry"} isSubmitting={isSubmitting}>
+    {open&&<Modal title={editingId?"Edit Inventory Entry":"Add Item / Stock Change"} onClose={closeModal} onSubmit={submit} submitLabel={editingId?"Update Entry":"Save Entry"} isSubmitting={isSubmitting}>
+      {!editingId && <FF label="Product"><select className={ic+" mb-4"} aria-label="Inventory product" value={selectedProduct} onChange={e => selectProduct(e.target.value)}><option value="">Create a new product</option>{products.map(product => <option key={product.key} value={product.key}>{product.itemName} · {product.category} · {product.unit}</option>)}</select></FF>}
       <div className="grid grid-cols-2 gap-4"><FF label="Date"><input type="date" max={todayISO()} className={ic} value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} required/></FF><FF label="Reference"><input className={ic} value={form.referenceId} readOnly placeholder="Assigned when saved"/></FF>
-        <FF label="Category"><select className={ic} value={form.category} onChange={e=>{const category=e.target.value;setForm(f=>({...f,category,unit:INVENTORY_UNITS[category][0]}));}}>{INVENTORY_CATEGORIES.map(c=><option key={c} value={c}>{c[0]+c.slice(1).toLowerCase()}</option>)}</select></FF><FF label="Unit"><select className={ic} value={form.unit} onChange={e=>setForm(f=>({...f,unit:e.target.value}))}>{units.map(u=><option key={u}>{u}</option>)}</select></FF>
-        <div className="col-span-2"><FF label="Item Description"><input className={ic} value={form.itemName} onChange={e=>setForm(f=>({...f,itemName:e.target.value}))} placeholder="e.g. 18k chain, gemstone, ring box" required/></FF></div>
+        <FF label="Category"><select disabled={!!selectedProduct} className={ic} value={form.category} onChange={e=>{const category=e.target.value;setForm(f=>({...f,category,unit:INVENTORY_UNITS[category][0]}));}}>{INVENTORY_CATEGORIES.map(c=><option key={c} value={c}>{c[0]+c.slice(1).toLowerCase()}</option>)}</select></FF><FF label="Unit"><select disabled={!!selectedProduct} className={ic} value={form.unit} onChange={e=>setForm(f=>({...f,unit:e.target.value}))}>{units.map(u=><option key={u}>{u}</option>)}</select></FF>
+        <div className="col-span-2"><FF label="Item Description"><input readOnly={!!selectedProduct} className={ic} value={form.itemName} onChange={e=>setForm(f=>({...f,itemName:e.target.value}))} placeholder="e.g. 18k chain, gemstone, ring box" required/></FF></div>
         <FF label={`Quantity In (${form.unit})`}><input type="number" min="0" step="0.01" className={ic} value={form.quantityIn} onChange={e=>setForm(f=>({...f,quantityIn:e.target.value}))}/></FF><FF label={`Unit Price (₱ / ${form.unit})`}><input type="number" min="0" step="0.01" className={ic} value={form.unitPrice} onChange={e=>setForm(f=>({...f,unitPrice:e.target.value}))}/></FF><FF label={`Quantity Out (${form.unit})`}><input type="number" min="0" step="0.01" className={ic} value={form.quantityOut} onChange={e=>setForm(f=>({...f,quantityOut:e.target.value}))}/></FF><FF label={`Loss / Scrap (${form.unit})`}><input type="number" min="0" step="0.01" className={ic} value={form.quantityLoss} onChange={e=>setForm(f=>({...f,quantityLoss:e.target.value}))}/></FF>
       </div><p className="text-[10px] text-muted-foreground">Stock balance is calculated for each category, item, and unit.</p>
     </Modal>}
@@ -1002,12 +1024,12 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
   return (
     <div className="p-5 space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <SearchBar value={q} onChange={setQ} placeholder="Search client, category…" />
+        <SearchBar value={q} onChange={setQ} placeholder="Search client, service type…" />
         <AddBtn onClick={() => { resetForm(); setEditingId(null); setOpen(true); }} label="Add Inquiry" />
       </div>
       <TableWrap>
         <thead><tr>
-          {[["Date","date"],["Inquiry ID","inquiryId"],["Client Name","customerName"],["Contact","contactInfo"],["Email","email"],["Category","category"],["Details","details"],["Quoted Price","quotedPrice"],["Fully Paid","isFullyPaid"],["Status","status"]].map(([h,k])=><SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}<th className={thc}>Actions</th>
+          {[["Date","date"],["Inquiry ID","inquiryId"],["Client Name","customerName"],["Contact","contactInfo"],["Email","email"],["Service Type","category"],["Details","details"],["Quoted Price","quotedPrice"],["Fully Paid","isFullyPaid"],["Status","status"]].map(([h,k])=><SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}<th className={thc}>Actions</th>
         </tr></thead>
         <tbody>
           {filtered.map(i => (
@@ -1043,7 +1065,7 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
             <FF label="Customer Name"><input className={ic} value={form.customerName} onChange={e=>setForm(f=>({...f,customerName:e.target.value}))} placeholder="Full name" required /></FF>
             <FF label="Contact Info"><ContactInput className={ic} value={form.contactInfo} onChange={contactInfo=>setForm(f=>({...f,contactInfo}))} required /></FF>
             <FF label="Email for receipt / pickup"><input type="email" className={ic} value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="customer@example.com" /></FF>
-            <FF label="Product Category"><input className={ic} value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))} placeholder="e.g. Custom Ring" required /></FF>
+            <FF label="Service Type"><select className={ic} value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))} required><option value="" disabled>Select service type</option>{form.category && !["Custom","Repair","Resize","Cleaning"].includes(form.category) && <option value={form.category}>{form.category} (existing)</option>}{["Custom","Repair","Resize","Cleaning"].map(type => <option key={type} value={type}>{type}</option>)}</select></FF>
             <FF label="Quoted Price (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.quotedPrice} onChange={e=>setForm(f=>({...f,quotedPrice:e.target.value}))} placeholder="0.00" required /></FF>
             <label className="flex items-center gap-2 self-end pb-2 text-sm"><input type="checkbox" checked={form.isFullyPaid} onChange={e=>setForm(f=>({...f,isFullyPaid:e.target.checked}))}/> Fully Paid</label><div className="col-span-2"><FF label="Details / Notes"><textarea className={ic + " h-20 resize-none"} value={form.details} onChange={e=>setForm(f=>({...f,details:e.target.value}))} placeholder="Describe the customer's request…" /></FF></div>
             <p className="self-end text-xs text-muted-foreground">Status changes automatically as the inquiry moves through costing and sales.</p>
