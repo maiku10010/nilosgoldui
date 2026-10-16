@@ -196,3 +196,20 @@
 .section-label, .dashboard-recent-title { font-size: 12px; font-weight: 500; color: var(--muted-foreground); line-height: 1.5; }
 button, input, select, textarea { font-family: inherit; }
 small { font-size: 12px; }
+
+/* Jobs keeps identifiers, amounts, statuses, and actions on a single line. */
+.jobs-table-scroll { max-height: min(65vh, 640px); overflow: auto; scrollbar-gutter: stable; }
+.jobs-table { width: 100%; min-width: 1280px; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 12px; }
+.jobs-table th { position: sticky; top: 0; z-index: 1; height: 48px; background: var(--card); color: var(--muted-foreground); text-align: left; font-weight: 500; box-shadow: 0 1px 0 var(--border); }
+.jobs-table th, .jobs-table td { padding: 8px 10px; white-space: nowrap; }
+.jobs-table td { height: 56px; border-bottom: 1px solid var(--border); }
+.jobs-table tbody tr:last-child td { border-bottom: 0; }
+.jobs-table tbody tr:hover { background: var(--muted); }
+.jobs-id-column { width: 200px; }
+.jobs-client-column { width: 150px; }
+.jobs-type-column { width: 84px; }
+.jobs-margin-column { width: 132px; }
+.jobs-status-column { width: 136px; }
+.jobs-actions-column { width: 220px; }
+.job-id { display: block; width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--primary-text); }
+.jobs-table .jobs-breakdown-row td { padding: 16px; background: var(--card); }
