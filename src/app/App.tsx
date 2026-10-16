@@ -4,7 +4,8 @@ import goldsmithLogo from "../assets/nilosgold_logo.jpg";
 import {
   Search, Plus, X, Crown, TrendingUp, TrendingDown,
   Package, BarChart3, DollarSign, Gem, Sun, Moon, PenSquare, Trash2,
-  ArrowUpDown, ChevronUp, ChevronDown,
+  ArrowUpDown, ChevronUp, ChevronDown, LayoutDashboard, BriefcaseBusiness,
+  Receipt, ShieldCheck, ScrollText, PanelLeftClose, PanelLeftOpen, UserRound, LogOut, MessageSquare,
 } from "lucide-react";
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -14,6 +15,8 @@ import { isValidEmail, isValidPHContact, normalizeContactInput } from "../valida
 import { ContactInput } from "./components/ContactInput";
 import { summarizeInventory, groupInventory } from "../inventorySummary";
 import { approvalChanges, approvalValue } from "../approvalDiff";
+import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "./components/ui/sheet";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuItem } from "./components/ui/dropdown-menu";
 
 // ── config ─────────────────────────────────────────────────────────────────
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "https://nilosgold.vercel.app").replace(/\/$/, "");
@@ -371,6 +374,20 @@ function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onVie
 
   const netProfit = grossProfit - totalExpenses;
   const netMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+  const profitTrend = useMemo(() => {
+    const daily = new Map<string, number>();
+    const saleDates = new Map(sales.map(sale => [sale.invoiceId, sale.date]));
+    const add = (date: string, amount: number) => daily.set(date, (daily.get(date) ?? 0) + amount);
+    sales.forEach(sale => add(sale.date, sale.price));
+    jobCosts.forEach(job => {
+      const date = saleDates.get(job.invoiceId);
+      if (date) add(date, -job.totalCost);
+    });
+    expenses.forEach(expense => add(expense.expDate, -expense.amount));
+    let cumulative = 0;
+    return [...daily].sort(([a], [b]) => a.localeCompare(b)).map(([date, amount]) => ({ date, profit: cumulative += amount }));
+  }, [sales, jobCosts, expenses]);
+
   const totalInq = inquiries.length;
   const closedInq = inquiries.filter(i => ["Approved", "Finished", "Yes"].includes(i.status)).length;
   const convRate = totalInq > 0 ? (closedInq / totalInq) * 100 : 0;
@@ -386,134 +403,42 @@ function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onVie
 
   return (
     <div className="p-5 space-y-5">
-      {/* 4-column KPI grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-
-        {/* Daily Sales */}
-        <div className={cardCls}>
-          <div className="flex items-center gap-2 mb-4">
-            <DollarSign size={13} className="text-primary shrink-0" />
-            <span className="text-sm font-mono text-muted-foreground uppercase tracking-widest">Sales Summary · {rangeLabel}</span>
-          </div>
-          <div className="space-y-3">
-            {[
-              { label: "Total Sales", val: php(totalSales), cls: "text-amber-700 dark:text-amber-300 font-semibold" },
-              { label: "Cash Collected", val: php(cashCollected), cls: "text-emerald-700 dark:text-emerald-400" },
-              { label: "Collectibles", val: php(receivables), cls: "text-amber-700 dark:text-amber-400" },
-            ].map(r => (
-              <div key={r.label} className="flex justify-between items-center">
-                <span className="text-[11px] text-muted-foreground">{r.label}</span>
-                <span className={`text-sm tabular-nums ${r.cls}`}>{r.val}</span>
-              </div>
-            ))}
-            <div className="h-px bg-border" />
-            <div className="flex justify-between items-center">
-              <span className="text-[11px] text-muted-foreground">Total Transactions</span>
-              <span className="text-xl font-bold text-foreground tabular-nums">{sales.length}</span>
+      <section aria-label="Key performance indicators" className="mx-auto grid w-full max-w-[1440px] grid-cols-12">
+        <div className="col-span-12 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+          {[
+            { label: "Total Sales", value: php(totalSales), detail: `${sales.length} transactions` },
+            { label: "Cash Collected", value: php(cashCollected), detail: `${php(receivables)} outstanding` },
+            { label: "Expenses", value: php(totalExpenses), detail: `${expenses.length} expenses` },
+          ].map(metric => (
+            <div key={metric.label} className="min-w-0 rounded-xl border border-border bg-card p-5 xl:p-6">
+              <p className="text-[11px] font-sans uppercase tracking-[0.12em] text-foreground opacity-70">{metric.label}</p>
+              <p className="mt-5 break-words font-['Fraunces',serif] text-[clamp(1.5rem,2.4vw,2.25rem)] font-medium leading-tight tracking-tight tabular-nums">{metric.value}</p>
+              <p className="mt-3 text-xs text-muted-foreground">{metric.detail}</p>
+              <p className="mt-6 text-[11px] text-muted-foreground">{rangeLabel}</p>
             </div>
-          </div>
+          ))}
+          {isAdmin ? <div className="relative min-w-0 overflow-hidden rounded-xl border border-border bg-card p-6 xl:col-span-2">
+            <p className="text-[11px] font-sans uppercase tracking-[0.12em] text-foreground opacity-70">Net Profit</p>
+            <p className={`mt-4 break-words font-['Fraunces',serif] text-[clamp(3rem,4.5vw,4rem)] font-medium leading-none tracking-tight tabular-nums ${netProfit >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>{php(netProfit)}</p>
+            <span className={`mt-4 inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium tabular-nums ${netProfit >= 0 ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-red-500/10 text-red-700 dark:text-red-400"}`}>{pct(netMargin)} margin</span>
+            <div className="mt-4 flex items-end gap-4">
+              <p className="flex-1 text-[11px] text-muted-foreground">{rangeLabel}</p>
+              <div className="h-12 w-36 shrink-0" role="img" aria-label={`Cumulative net profit trend for ${rangeLabel}`}>
+                {profitTrend.length > 1 ? <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={profitTrend} margin={{ top: 4, right: 2, bottom: 2, left: 2 }}>
+                    <Area type="linear" dataKey="profit" stroke={netProfit >= 0 ? "#059669" : "#dc2626"} fill={netProfit >= 0 ? "#059669" : "#dc2626"} fillOpacity={0.08} strokeWidth={2} isAnimationActive={false} />
+                  </AreaChart>
+                </ResponsiveContainer> : <span className="flex h-full items-center text-[10px] text-muted-foreground">{profitTrend.length ? "Trend needs more activity" : "No activity yet"}</span>}
+              </div>
+            </div>
+          </div> : <div className="min-w-0 rounded-xl border border-border bg-card p-6 xl:col-span-2">
+            <p className="text-[11px] font-sans uppercase tracking-[0.12em] text-foreground opacity-70">Inquiries</p>
+            <p className="mt-4 font-['Fraunces',serif] text-6xl font-medium tabular-nums">{totalInq}</p>
+            <span className="mt-4 inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-[11px] text-primary">{pct(convRate)} conversion</span>
+            <p className="mt-4 text-xs text-muted-foreground">{closedInq} closed · {rangeLabel}</p>
+          </div>}
         </div>
-
-        {/* Gross Profit */}
-        <div className={cardCls}>
-          <div className="flex items-center gap-2 mb-4">
-            <TrendingUp size={13} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <span className="text-sm font-mono text-muted-foreground uppercase tracking-widest">Revenue and Job Cost · {rangeLabel}</span>
-          </div>
-          <div className="space-y-3">
-            {[
-              { label: "Total Revenue", val: php(totalRevenue), cls: "text-amber-700 dark:text-amber-300" },
-              { label: "Total Job Cost", val: php(totalJobCost), cls: "text-red-700 dark:text-red-400" },
-            ].map(r => (
-              <div key={r.label} className="flex justify-between items-center">
-                <span className="text-[11px] text-muted-foreground">{r.label}</span>
-                <span className={`text-sm tabular-nums ${r.cls}`}>{r.val}</span>
-              </div>
-            ))}
-            {isAdmin && <div className="h-px bg-border" />}
-            {isAdmin && <div className="flex justify-between items-center">
-              <span className="text-[11px] text-muted-foreground">Gross Profit</span>
-              <span className="text-base tabular-nums text-emerald-700 dark:text-emerald-400 font-bold">{php(grossProfit)}</span>
-            </div>}
-            {isAdmin && <div className="flex justify-between items-center">
-              <span className="text-[11px] text-muted-foreground">Avg Margin</span>
-              <span className="text-sm tabular-nums text-emerald-700 dark:text-emerald-300">{pct(avgMargin)}</span>
-            </div>}
-            {/*
-            <div className="flex justify-between items-center">
-              <span className="text-[11px] text-muted-foreground">Gross Profit</span>
-              <span className="text-base tabular-nums text-emerald-700 dark:text-emerald-400 font-bold">{php(grossProfit)}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-[11px] text-muted-foreground">Avg Margin</span>
-              <span className="text-sm tabular-nums text-emerald-700 dark:text-emerald-300">{pct(avgMargin)}</span>
-            </div>
-            */}
-          </div>
-        </div>
-
-        {/* Expenses */}
-        <div className={cardCls}>
-          <div className="flex items-center gap-2 mb-4">
-            <BarChart3 size={13} className="text-muted-foreground shrink-0" />
-            <span className="text-sm font-mono text-muted-foreground uppercase tracking-widest">Expenses · {rangeLabel}</span>
-          </div>
-          <div className="space-y-2.5">
-            {Object.entries(expByCat).map(([cat, amt]) => (
-              <div key={cat} className="flex justify-between items-center">
-                <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: catColors[cat] ?? "#64748b" }} />
-                  {cat}
-                </span>
-                <span className="text-xs tabular-nums text-foreground/80 dark:text-slate-300">{php(amt)}</span>
-              </div>
-            ))}
-            <div className="h-px bg-border" />
-            <div className="flex justify-between items-center">
-              <span className="text-[11px] text-foreground/70 font-medium">Total</span>
-              <span className="text-base tabular-nums text-red-700 dark:text-red-400 font-bold">{php(totalExpenses)}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Net Profit + Funnel */}
-        <div className={cardCls}>
-          {isAdmin && <>
-            <div className="flex items-center gap-2 mb-3">
-              <Gem size={13} className="text-primary shrink-0" />
-              <span className="text-sm font-mono text-muted-foreground uppercase tracking-widest">Net Profit · {rangeLabel}</span>
-            </div>
-            <div className="mb-4">
-              <div className={`text-2xl font-bold tabular-nums ${netProfit >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
-                {php(netProfit)}
-              </div>
-              <div className="text-[11px] text-muted-foreground mt-0.5">{pct(netMargin)} net margin</div>
-            </div>
-            <div className="h-px bg-border mb-4" />
-          </>}
-          {!isAdmin && <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-3">Inquiry Funnel</div>}
-          <div className="space-y-2">
-            {[
-              { label: "Total Inquiries", val: totalInq, w: 100, color: "#d4a017" },
-              { label: "Closed", val: closedInq, w: convRate, color: "#059669" },
-            ].map(r => (
-              <div key={r.label}>
-                <div className="flex justify-between mb-1">
-                  <span className="text-[11px] text-muted-foreground">{r.label}</span>
-                  <span className="text-xs text-foreground font-semibold tabular-nums">{r.val}</span>
-                </div>
-                <div className="w-full bg-muted dark:bg-slate-800 rounded-full h-1">
-                  <div className="h-1 rounded-full" style={{ width: `${r.w}%`, background: r.color }} />
-                </div>
-              </div>
-            ))}
-            <div className="flex justify-between items-center pt-1">
-              <span className="text-[11px] text-foreground/70 font-medium">Conversion Rate</span>
-              <span className="text-sm text-emerald-700 dark:text-emerald-400 font-bold tabular-nums">{pct(convRate)}</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      </section>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
         <section>
@@ -1259,32 +1184,36 @@ function ProfitAnalysisView({ sales, jobCosts, expenses, selectedYear, setSelect
   const totalExp = selectedExpenses.reduce((a, e) => a + e.amount, 0);
   const netProfit = grossProfit - totalExp;
   const netMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
-  const daysInSelectedMonth = new Date(selectedYear, startMonth + 1, 0).getDate();
-  const chartData = startMonth === endMonth
-    ? Array.from({ length: Math.ceil(daysInSelectedMonth / 7) }, (_, index) => {
-      const fromDay = index * 7 + 1;
-      const toDay = Math.min(fromDay + 6, daysInSelectedMonth);
-      const belongsToWeek = (date: string) => Number(date.slice(8, 10)) >= fromDay && Number(date.slice(8, 10)) <= toDay;
-      const revenue = selectedSales.filter(s => belongsToWeek(s.date)).reduce((sum, s) => sum + s.price, 0);
-      const cost = selectedJobCosts.filter(j => belongsToWeek(salesByInvoice.get(j.invoiceId)?.date ?? "")).reduce((sum, j) => sum + j.totalCost, 0);
-      const weekExpenses = selectedExpenses.filter(e => belongsToWeek(e.expDate)).reduce((sum, e) => sum + e.amount, 0);
-      return { month: `W${index + 1}`, period: `Week ${index + 1} · ${MONTH_NAMES[startMonth]} ${fromDay}–${toDay}`, revenue, cost, netProfit: revenue - cost - weekExpenses };
-    })
-    : Array.from({ length: endMonth - startMonth + 1 }, (_, offset) => {
-      const monthIndex = startMonth + offset;
-      const revenue = selectedSales.filter(s => Number(s.date.slice(5, 7)) - 1 === monthIndex).reduce((sum, s) => sum + s.price, 0);
-      const cost = selectedJobCosts.filter(j => Number(salesByInvoice.get(j.invoiceId)?.date.slice(5, 7)) - 1 === monthIndex).reduce((sum, j) => sum + j.totalCost, 0);
-      const monthExpenses = selectedExpenses.filter(e => Number(e.expDate.slice(5, 7)) - 1 === monthIndex).reduce((sum, e) => sum + e.amount, 0);
-      return { month: MONTH_NAMES[monthIndex].slice(0, 3), revenue, cost, netProfit: revenue - cost - monthExpenses };
-    });
+  const chartData = Array.from({ length: endMonth - startMonth + 1 }, (_, offset) => {
+    const monthIndex = startMonth + offset;
+    const revenue = selectedSales.filter(s => Number(s.date.slice(5, 7)) - 1 === monthIndex).reduce((sum, s) => sum + s.price, 0);
+    const cost = selectedJobCosts.filter(j => Number(salesByInvoice.get(j.invoiceId)?.date.slice(5, 7)) - 1 === monthIndex).reduce((sum, j) => sum + j.totalCost, 0);
+    return { month: MONTH_NAMES[monthIndex].slice(0, 3), revenue, cost };
+  });
+  const comparisonTotals = [
+    { label: "Revenue", value: totalRevenue, color: "#1746a2" },
+    { label: "Cost", value: totalCost, color: "#d4a017" },
+    { label: "Expenses", value: totalExp, color: "#64748b" },
+  ];
+  const comparisonMax = Math.max(1, ...comparisonTotals.map(item => Math.abs(item.value)));
   const rangeLabel = startMonth === endMonth
     ? `${MONTH_NAMES[startMonth]} ${selectedYear}`
     : `${MONTH_NAMES[startMonth].slice(0, 3)}–${MONTH_NAMES[endMonth].slice(0, 3)} ${selectedYear}`;
 
-  const expByCat = selectedExpenses.reduce((acc, e) => {
-    acc[e.category] = (acc[e.category] || 0) + e.amount; return acc;
-  }, {} as Record<string, number>);
-  const pieData = Object.entries(expByCat).map(([name, value]) => ({ name, value }));
+  const rankedCategories = Object.entries(selectedExpenses.reduce((totals, expense) => {
+    totals[expense.category] = (totals[expense.category] ?? 0) + expense.amount;
+    return totals;
+  }, {} as Record<string, number>))
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
+  const topCategories = rankedCategories.slice(0, 5).map((category, index) => ({ ...category, color: PIE_COLORS[index] }));
+  const remainingCategories = rankedCategories.slice(5);
+  const otherTotal = remainingCategories.reduce((sum, category) => sum + category.value, 0);
+  const expenseDonut = [
+    ...topCategories,
+    ...(remainingCategories.length ? [{ name: "Other", value: otherTotal, color: "#94a3b8" }] : []),
+  ];
+  const expenseShare = (value: number) => totalExp > 0 ? value / totalExp * 100 : 0;
 
   const byService = (["Custom", "Repair", "Resize", "Cleaning"] as ServiceType[]).map(type => {
     const jcs = selectedJobCosts.filter(j => salesByInvoice.get(j.invoiceId)?.serviceType === type);
@@ -1310,10 +1239,10 @@ function ProfitAnalysisView({ sales, jobCosts, expenses, selectedYear, setSelect
         ))}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-        <div className={cardCls + " xl:col-span-2"}>
+      <div className="grid grid-cols-12 gap-5">
+        <section aria-label="Monthly revenue and cost" className={cardCls + " col-span-12 min-w-0 xl:col-span-7"}>
           <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-            <p className="text-sm font-mono text-muted-foreground uppercase tracking-widest">{startMonth === endMonth ? "Weekly" : "Monthly"} Revenue vs. Cost vs. Net Profit ({rangeLabel})</p>
+            <div><h2 className="text-sm font-medium">Monthly Revenue vs. Cost</h2><p className="mt-1 text-xs text-muted-foreground">{rangeLabel}</p></div>
             <div className="flex flex-wrap gap-2">
               <label className="text-[10px] text-muted-foreground">From
                 <select aria-label="Start month" className={`${ic} ml-2 w-auto py-1.5`} value={startMonth} onChange={e => setStartMonth(Number(e.target.value))}>
@@ -1332,52 +1261,106 @@ function ProfitAnalysisView({ sales, jobCosts, expenses, selectedYear, setSelect
               </label>
             </div>
           </div>
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 10 }}>
-              <defs>
-                <linearGradient id="gRev" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#1746a2" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="#1746a2" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="gNet" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#d4a017" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="#d4a017" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="month" tick={{ fill: "var(--muted-foreground)", fontSize: 12, fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: "var(--muted-foreground)", fontSize: 10, fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} tickFormatter={v => "₱" + (v / 1000) + "K"} />
-              <Tooltip content={<ChartTip />} />
-              <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#1746a2" strokeWidth={2} fill="url(#gRev)" />
-              <Area type="monotone" dataKey="cost" name="Job Cost" stroke="#111318" strokeWidth={1.5} fill="none" strokeDasharray="4 2" />
-              <Area type="monotone" dataKey="netProfit" name="Net Profit" stroke="#d4a017" strokeWidth={2} fill="url(#gNet)" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className={cardCls}>
-          <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-4">Expense Breakdown ({rangeLabel})</p>
-          <ResponsiveContainer width="100%" height={180}>
-            <PieChart>
-              <Pie data={pieData} cx="50%" cy="50%" innerRadius={45} outerRadius={75} dataKey="value" strokeWidth={0}>
-                {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-              </Pie>
-              <Tooltip content={<ChartTip />} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="space-y-1.5 mt-2">
-            {pieData.map((d, i) => (
-              <div key={d.name} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full shrink-0" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
-                  <span className="text-[10px] text-muted-foreground font-mono">{d.name}</span>
-                </div>
-                <span className="text-[10px] text-foreground/80 font-mono tabular-nums">{php(d.value)}</span>
-              </div>
-            ))}
+          <div className="mb-5 flex items-center gap-5 text-xs text-muted-foreground" aria-label="Chart legend">
+            {comparisonTotals.slice(0, 2).map(item => <span key={item.label} className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: item.color }} aria-hidden="true" />{item.label}</span>)}
           </div>
-        </div>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart accessibilityLayer data={chartData} barGap={4} barCategoryGap="25%" margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+              <XAxis dataKey="month" tick={{ fill: "var(--muted-foreground)", fontSize: 11, fontFamily: "Inter" }} axisLine={false} tickLine={false} tickMargin={12} />
+              <YAxis width={64} tick={{ fill: "var(--muted-foreground)", fontSize: 10, fontFamily: "Inter" }} axisLine={false} tickLine={false} tickFormatter={v => "₱" + new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(v)} />
+              <Tooltip content={<ChartTip />} cursor={{ fill: "var(--muted)", opacity: 0.5 }} />
+              <Bar dataKey="revenue" name="Revenue" fill="#1746a2" radius={[3, 3, 0, 0]} maxBarSize={32} />
+              <Bar dataKey="cost" name="Cost" fill="#d4a017" radius={[3, 3, 0, 0]} maxBarSize={32} />
+            </BarChart>
+          </ResponsiveContainer>
+        </section>
+
+        <section aria-labelledby="period-comparison-title" className={cardCls + " col-span-12 min-w-0 xl:col-span-5"}>
+          <h2 id="period-comparison-title" className="text-sm font-medium">Period totals</h2>
+          <p className="mt-1 text-xs text-muted-foreground">{rangeLabel}</p>
+          <div className="mt-8 space-y-7">
+            {comparisonTotals.map(item => <div key={item.label}>
+              <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                <span className="text-[11px] font-sans uppercase tracking-[0.12em] text-foreground opacity-70">{item.label}</span>
+                <span className="break-words font-['Fraunces',serif] text-2xl font-medium tabular-nums">{php(item.value)}</span>
+              </div>
+              <div className="h-3 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                <div className="h-full rounded-full" style={{ width: `${Math.abs(item.value) / comparisonMax * 100}%`, backgroundColor: item.color }} />
+              </div>
+            </div>)}
+          </div>
+          <p className="mt-7 text-[11px] text-muted-foreground">Shared scale across all three totals.</p>
+        </section>
       </div>
+
+      <section aria-labelledby="expense-breakdown-title" className={cardCls}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 id="expense-breakdown-title" className="text-sm font-medium">Expense breakdown</h2>
+            <p className="mt-1 text-xs text-muted-foreground">Top five categories · {rangeLabel}</p>
+          </div>
+          <Sheet>
+            <SheetTrigger asChild>
+              <button type="button" className="rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary">See all<span className="sr-only"> expense categories</span></button>
+            </SheetTrigger>
+            <SheetContent className="w-full sm:max-w-lg">
+              <SheetHeader className="border-b border-border p-6 pr-12">
+                <SheetTitle>All expense categories</SheetTitle>
+                <SheetDescription>{rangeLabel} · {php(totalExp)} total expenses. Ranked by amount; shares use the full period total.</SheetDescription>
+              </SheetHeader>
+              <div className="min-h-0 overflow-y-auto px-6 pb-6">
+                {rankedCategories.length ? <table className="w-full text-sm">
+                  <thead><tr className="border-b border-border text-[11px] uppercase text-muted-foreground"><th scope="col" className="py-3 text-left font-medium">Category</th><th scope="col" className="py-3 text-right font-medium">Amount</th><th scope="col" className="py-3 pl-3 text-right font-medium">Share</th></tr></thead>
+                  <tbody>{rankedCategories.map((category, index) => <tr key={category.name} className="border-b border-border">
+                    <th scope="row" className="py-4 pr-3 text-left font-normal"><span className="mr-2 text-xs text-muted-foreground">{index + 1}.</span>{category.name}</th>
+                    <td className="py-4 text-right tabular-nums">{php(category.value)}</td>
+                    <td className="py-4 pl-3 text-right tabular-nums text-muted-foreground">{expenseShare(category.value).toFixed(1)}%</td>
+                  </tr>)}</tbody>
+                </table> : <p className="py-8 text-sm text-muted-foreground">No expenses in this period.</p>}
+              </div>
+            </SheetContent>
+          </Sheet>
+        </div>
+        {totalExp > 0 ? <div className="mt-6 grid grid-cols-12 items-center gap-8">
+          <div className="relative col-span-12 mx-auto h-[260px] w-[260px] max-w-full lg:col-span-5" role="img" aria-label={`Expense share by category: ${expenseDonut.map(category => `${category.name} ${expenseShare(category.value).toFixed(1)}%`).join(", ")}`}>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={expenseDonut} cx="50%" cy="50%" innerRadius={83} outerRadius={115} paddingAngle={2} dataKey="value" nameKey="name" stroke="var(--card)" strokeWidth={2}>
+                  {expenseDonut.map((category, index) => <Cell key={`${index}-${category.name}`} fill={category.color} />)}
+                </Pie>
+                <Tooltip content={<ChartTip />} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-14 text-center">
+              <span className="text-[11px] uppercase tracking-widest text-foreground opacity-70">Total expenses</span>
+              <span className="mt-2 max-w-full break-words font-['Fraunces',serif] text-xl font-medium leading-tight tabular-nums">{php(totalExp)}</span>
+            </div>
+          </div>
+          <div className="col-span-12 min-w-0 lg:col-span-7">
+            <ol className="space-y-5">
+              {topCategories.map((category, index) => <li key={category.name}>
+                <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+                  <span className="w-4 text-xs tabular-nums text-muted-foreground">{index + 1}</span>
+                  <span className="min-w-0 flex-1 font-medium">{category.name}</span>
+                  <span className="font-['Fraunces',serif] text-lg tabular-nums">{php(category.value)}</span>
+                  <span className="w-14 text-right text-xs tabular-nums text-muted-foreground">{expenseShare(category.value).toFixed(1)}%</span>
+                </div>
+                <div className="ml-7 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true"><div className="h-full rounded-full" style={{ width: `${expenseShare(category.value)}%`, backgroundColor: category.color }} /></div>
+              </li>)}
+            </ol>
+            {remainingCategories.length > 0 && <div className="mt-5 border-t border-border pt-4">
+              <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+                <span className="h-2 w-4 shrink-0 rounded-sm bg-slate-400" aria-hidden="true" />
+                <span className="flex-1">Other <span className="text-xs text-muted-foreground">({remainingCategories.length} categories)</span></span>
+                <span className="font-['Fraunces',serif] text-lg tabular-nums">{php(otherTotal)}</span>
+                <span className="w-14 text-right text-xs tabular-nums text-muted-foreground">{expenseShare(otherTotal).toFixed(1)}%</span>
+              </div>
+              <div className="ml-7 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true"><div className="h-full rounded-full bg-slate-400" style={{ width: `${expenseShare(otherTotal)}%` }} /></div>
+            </div>}
+          </div>
+        </div> : <p className="py-12 text-center text-sm text-muted-foreground">No expense amounts to display for this period.</p>}
+      </section>
 
       <div className={cardCls}>
         <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-4">Average Margin % by Service Type</p>
@@ -1491,6 +1474,7 @@ function AppContent() {
     catch { return false; }
   });
   const [tab, setTab] = useState<Tab>("DASHBOARD");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [startMonth, setStartMonth] = useState(0);
   const [endMonth, setEndMonth] = useState(new Date().getMonth());
@@ -1631,76 +1615,80 @@ function AppContent() {
   const today = new Date().toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
 
   const TAB_LABELS: Record<Tab, string> = {
-    DASHBOARD: "Dashboard", DAILY_SALES: "Daily Sales", JOB_COSTING: "Job Costing",
+    DASHBOARD: "Dashboard", DAILY_SALES: "Sales", JOB_COSTING: "Jobs",
     INVENTORY: "Inventory", INQUIRIES: "Inquiries", EXPENSES: "Expenses",
-    PROFIT_ANALYSIS: "Profit Analysis", APPROVALS: "Approvals", AUDIT_LOGS: "Audit Logs",
+    PROFIT_ANALYSIS: "Reports", APPROVALS: "Approvals", AUDIT_LOGS: "Audit Logs",
+  };
+
+  const NAV_ICONS = {
+    DASHBOARD: LayoutDashboard, DAILY_SALES: DollarSign, JOB_COSTING: BriefcaseBusiness,
+    EXPENSES: Receipt, PROFIT_ANALYSIS: BarChart3, INVENTORY: Package,
+    INQUIRIES: MessageSquare, APPROVALS: ShieldCheck, AUDIT_LOGS: ScrollText,
+  };
+  const renderNavItem = (destination: Tab) => {
+    const Icon = NAV_ICONS[destination];
+    return <button key={destination} type="button" onClick={() => setTab(destination)} aria-current={tab === destination ? "page" : undefined} aria-label={TAB_LABELS[destination]} title={sidebarCollapsed ? TAB_LABELS[destination] : undefined}
+      className={`flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-primary ${tab === destination ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"}`}>
+      <Icon size={18} className="shrink-0" aria-hidden="true" />
+      {!sidebarCollapsed && <span>{TAB_LABELS[destination]}</span>}
+    </button>;
   };
 
   return (
     <div className="min-h-screen bg-background text-foreground transition-colors duration-200" style={{ fontFamily: "'Inter', sans-serif" }}>
-      {/* Sticky header */}
-      <header className="sticky top-0 z-40 bg-sidebar border-b border-sidebar-border shadow-lg shadow-black/10 dark:shadow-black/40">
-        {/* Brand + KPI + toggle row */}
-        <div className="flex items-center gap-4 px-5 py-3 border-b border-sidebar-border">
-          {/* Branding */}
-          <div className="flex items-center gap-3 shrink-0 mr-2">
-            <BrandLogo className="w-10 h-10 shadow-sm" />
-            <div>
-              <div className="text-sm font-bold text-primary leading-tight tracking-wide" style={{ fontFamily: "'Playfair Display', serif" }}>
-                NILO&apos;S GOLDSMITH
-              </div>
-              <div className="text-xs font-mono text-muted-foreground tracking-wide leading-tight">
-                Goldsmith Accounting System
-              </div>
-            </div>
+      <header className="sticky top-0 z-40 h-20 border-b border-sidebar-border bg-sidebar">
+        <div className="mx-auto flex h-full max-w-[1440px] items-center gap-6 px-5 lg:px-8">
+          <div className="flex min-w-0 items-center gap-3">
+            <BrandLogo className="h-10 w-10 shrink-0" />
+            <span className="text-sm font-semibold tracking-wide text-primary sm:text-base" style={{ fontFamily: "'Fraunces', serif" }}>NILO&apos;S GOLDSMITH</span>
           </div>
-
-          {/* KPI strip */}
-          <div className="flex gap-2 flex-1 overflow-x-auto">
-            <KPICard label="Today" value={today} />
-            <KPICard label={goldInfo?.stale ? "Last Gold Quote / g · 24K" : "Gold Price / g · 24K"} value={goldRate === null ? "Unavailable" : php(goldRate)} sub="Live Gold Price" vc="text-primary" />
-            <KPICard label="Gold Stock (Physical)" value={`${goldStock.toFixed(2)} g`} vc="text-primary" />
-            {isAdmin && <KPICard
-              label={`Net Profit (${timelineLabel})`}
-              value={php(netProfit)}
-              sub={`${pct(netMargin)} Margin`}
-              vc="text-emerald-700 dark:text-emerald-400"
-              badge={netProfit >= 0
-                ? { text: "HEALTHY", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/25" }
-                : { text: "REVIEW", cls: "bg-red-500/15 text-red-700 dark:text-red-400 border border-red-500/25" }}
-            />}
-          </div>
-
-          {/* Theme toggle */}
-          <button
-            onClick={() => setDark(d => !d)}
-            className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg border border-sidebar-border hover:bg-sidebar-accent transition-colors text-muted-foreground hover:text-foreground"
-            title={dark ? "Switch to light mode" : "Switch to dark mode"}
-          >
-            {dark ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
-          <button type="button" onClick={signOut} className="shrink-0 rounded-lg border border-sidebar-border px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-sidebar-accent hover:text-foreground transition-colors">Sign out</button>
+          <span className="hidden border-l border-border pl-6 text-xs text-muted-foreground md:block">{today}</span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" aria-label="Open user menu" className="ml-auto flex shrink-0 items-center gap-3 rounded-lg p-2 text-sm hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-primary">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary"><UserRound size={17} aria-hidden="true" /></span>
+                <span className="hidden max-w-40 truncate text-left sm:block">{user?.empName || user?.userName || "Account"}</span>
+                <ChevronDown size={14} aria-hidden="true" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel className="break-words">{user?.empName || user?.userName || "Account"}<span className="mt-1 block text-xs font-normal capitalize text-muted-foreground">{user?.empRole}</span></DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => setDark(d => !d)}>{dark ? <Sun size={16} /> : <Moon size={16} />}{dark ? "Light appearance" : "Dark appearance"}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => { void signOut(); }}><LogOut size={16} />Sign out</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-
-        {/* Tab nav*/}
-        <nav className="flex items-center overflow-x-auto px-5 gap-0.5 py-2">
-          {TABS.filter(t => isAdmin || !["PROFIT_ANALYSIS", "APPROVALS", "AUDIT_LOGS"].includes(t)).map(t => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-4 py-1.5 rounded-md text-[10px] font-mono uppercase tracking-widest whitespace-nowrap transition-all ${tab === t
-                ? "bg-primary/15 text-primary border border-primary/30"
-                : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent"
-                }`}
-            >
-              {TAB_LABELS[t]}
-            </button>
-          ))}
-        </nav>
       </header>
 
-      {/* Page content */}
-      <main className="max-w-[1680px] mx-auto">
+      <div className="mx-auto flex max-w-[1440px] items-start">
+        <aside className={`sticky top-20 flex h-[calc(100dvh-5rem)] shrink-0 flex-col border-r border-sidebar-border bg-sidebar p-3 transition-[width] duration-200 motion-reduce:transition-none ${sidebarCollapsed ? "w-[72px]" : "w-[200px] lg:w-[224px]"}`}>
+          <button type="button" onClick={() => setSidebarCollapsed(value => !value)} aria-expanded={!sidebarCollapsed} aria-controls="primary-navigation" aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} className="mb-5 flex h-10 items-center gap-3 rounded-lg px-3 text-muted-foreground hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-primary">
+            {sidebarCollapsed ? <PanelLeftOpen size={18} className="shrink-0" /> : <><PanelLeftClose size={18} className="shrink-0" /><span className="text-xs">Collapse sidebar</span></>}
+          </button>
+          <nav id="primary-navigation" aria-label="Main navigation" className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+            <div className="space-y-1">
+              {(["DASHBOARD", "DAILY_SALES", "JOB_COSTING", "EXPENSES", "PROFIT_ANALYSIS"] as Tab[]).filter(t => isAdmin || t !== "PROFIT_ANALYSIS").map(t => renderNavItem(t))}
+            </div>
+            <div className="mt-6 space-y-1 border-t border-sidebar-border pt-4" role="group" aria-label="Job resources">
+              {!sidebarCollapsed && <p className="px-3 pb-2 text-[11px] uppercase tracking-widest text-muted-foreground">Job resources</p>}
+              {renderNavItem("INVENTORY")}
+              {renderNavItem("INQUIRIES")}
+            </div>
+            {isAdmin && <div className="mt-auto space-y-1 border-t border-sidebar-border pt-4" role="group" aria-label="Admin">
+              <p className={`pb-2 text-[11px] uppercase tracking-widest text-muted-foreground ${sidebarCollapsed ? "text-center text-[9px] tracking-normal" : "px-3"}`}>Admin</p>
+              {renderNavItem("APPROVALS")}
+              {renderNavItem("AUDIT_LOGS")}
+            </div>}
+          </nav>
+        </aside>
+
+        <main className="min-w-0 flex-1">
+          {tab === "DASHBOARD" && <div className="flex flex-wrap gap-3 px-5 pt-5">
+            <KPICard label={goldInfo?.stale ? "Last Gold Quote / g · 24K" : "Gold Price / g · 24K"} value={goldRate === null ? "Unavailable" : php(goldRate)} sub="Live Gold Price" vc="text-primary" />
+            <KPICard label="Gold Stock (Physical)" value={`${goldStock.toFixed(2)} g`} vc="text-primary" />
+
+          </div>}
         {tab === "DASHBOARD" && <DashboardView sales={visibleSales} jobCosts={visibleJobCosts} expenses={visibleExpenses} inquiries={visibleInquiries} rangeLabel={timelineLabel} isAdmin={isAdmin} onView={(title, record) => setViewRecord({ title, record })} />}
         {tab === "DAILY_SALES" && <DailySalesView sales={sales.filter(isCompletedSale)} onUpdate={s => setSales(p => p.map(item => item.invoiceId === s.invoiceId ? s : s.clientId && item.clientId === s.clientId ? { ...item, email: s.email } : item))} onDelete={id => deleteFromApi("sales", id, () => { const removed = sales.find(item => item.invoiceId === id); const linkedJob = jobCosts.find(item => item.jobCostId === removed?.jobCostId); setSales(p => p.filter(item => item.invoiceId !== id)); if (removed?.jobCostId) setJobCosts(p => p.filter(item => item.jobCostId !== removed.jobCostId)); if (linkedJob?.inquiryId) setInquiries(p => p.map(i => i.inquiryId === linkedJob.inquiryId ? { ...i, status: "Pending" } : i)); })} />}
         {tab === "JOB_COSTING" && <JobCostingView jobCosts={visibleJobCosts} inquiries={inquiries} inventory={inventory} selectedInquiryId={selectedInquiryForCosting} clearSelectedInquiry={() => setSelectedInquiryForCosting(null)} rangeLabel={timelineLabel} onAdd={j => { setJobCosts(p => [j, ...p]); if (j.sale) setSales(p => [j.sale!, ...p.filter(s => s.invoiceId !== j.sale!.invoiceId)]); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Approved" } : i)); }} onUpdate={j => { setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? j : item)); if (j.sale) setSales(p => p.map(s => s.invoiceId === j.sale!.invoiceId ? j.sale! : s)); }} onDelete={j => deleteFromApi("job-cost", j.jobCostId, () => { setJobCosts(p => p.filter(item => item.jobCostId !== j.jobCostId)); setSales(p => p.filter(s => s.invoiceId !== j.invoiceId)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Pending" } : i)); })} onApprove={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/approve`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Costing could not be approved."); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Costing could not be approved."); } }} onReady={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/ready`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Item could not be marked ready."); const reason = data.notification?.sent ? (data.notification.reason ?? "Customer notification sent.") : (data.notification?.reason ?? "Customer notification could not be sent."); alert(`Marked ready for pickup. ${reason}`); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Item could not be marked ready."); } }} onFinish={async (j, materials) => { try { const response = await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(j.invoiceId)}/finish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ invoiceId: j.invoiceId, clientName: j.clientName, materials }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Sale could not be finished."); const sale = normalizeSale(data); setSales(p => [sale, ...p.filter(item => item.invoiceId !== sale.invoiceId)]); setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? { ...item, status: "Finished", sale } : item)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Finished" } : i)); alert("Sale completed. Confirm receipt sending from Daily Sales when ready."); } catch (error) { alert(error instanceof Error ? error.message : "Sale could not be finished."); } }} />}
@@ -1710,7 +1698,8 @@ function AppContent() {
         {tab === "PROFIT_ANALYSIS" && <ProfitAnalysisView sales={sales.filter(isCompletedSale)} jobCosts={jobCosts} expenses={expenses} selectedYear={selectedYear} setSelectedYear={setSelectedYear} startMonth={startMonth} setStartMonth={setStartMonth} endMonth={endMonth} setEndMonth={setEndMonth} />}
         {tab === "APPROVALS" && isAdmin && <ApprovalQueueView onResolved={() => setReloadKey(k => k + 1)} />}
         {tab === "AUDIT_LOGS" && isAdmin && <AuditLogsView />}
-      </main>
+        </main>
+      </div>
       <RecordDetails title={viewRecord?.title ?? "Record details"} record={viewRecord?.record ?? null} onClose={() => setViewRecord(null)} />
       {confirmation && <ConfirmationDialog request={confirmation} onClose={() => setConfirmation(null)} />}
     </div>
