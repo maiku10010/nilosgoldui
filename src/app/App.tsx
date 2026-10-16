@@ -15,6 +15,7 @@ import { isValidEmail, isValidPHContact, normalizeContactInput } from "../valida
 import { ContactInput } from "./components/ContactInput";
 import { summarizeInventory, groupInventory } from "../inventorySummary";
 import { approvalChanges, approvalValue } from "../approvalDiff";
+import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "./components/ui/sheet";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuItem } from "./components/ui/dropdown-menu";
 
 // ── config ─────────────────────────────────────────────────────────────────
@@ -1199,6 +1200,21 @@ function ProfitAnalysisView({ sales, jobCosts, expenses, selectedYear, setSelect
     ? `${MONTH_NAMES[startMonth]} ${selectedYear}`
     : `${MONTH_NAMES[startMonth].slice(0, 3)}–${MONTH_NAMES[endMonth].slice(0, 3)} ${selectedYear}`;
 
+  const rankedCategories = Object.entries(selectedExpenses.reduce((totals, expense) => {
+    totals[expense.category] = (totals[expense.category] ?? 0) + expense.amount;
+    return totals;
+  }, {} as Record<string, number>))
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
+  const topCategories = rankedCategories.slice(0, 5).map((category, index) => ({ ...category, color: PIE_COLORS[index] }));
+  const remainingCategories = rankedCategories.slice(5);
+  const otherTotal = remainingCategories.reduce((sum, category) => sum + category.value, 0);
+  const expenseDonut = [
+    ...topCategories,
+    ...(remainingCategories.length ? [{ name: "Other", value: otherTotal, color: "#94a3b8" }] : []),
+  ];
+  const expenseShare = (value: number) => totalExp > 0 ? value / totalExp * 100 : 0;
+
   const byService = (["Custom", "Repair", "Resize", "Cleaning"] as ServiceType[]).map(type => {
     const jcs = selectedJobCosts.filter(j => salesByInvoice.get(j.invoiceId)?.serviceType === type);
     const margin = jcs.length ? jcs.reduce((a, j) => a + j.marginPct, 0) / jcs.length : 0;
@@ -1277,6 +1293,74 @@ function ProfitAnalysisView({ sales, jobCosts, expenses, selectedYear, setSelect
           <p className="mt-7 text-[11px] text-muted-foreground">Shared scale across all three totals.</p>
         </section>
       </div>
+
+      <section aria-labelledby="expense-breakdown-title" className={cardCls}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 id="expense-breakdown-title" className="text-sm font-medium">Expense breakdown</h2>
+            <p className="mt-1 text-xs text-muted-foreground">Top five categories · {rangeLabel}</p>
+          </div>
+          <Sheet>
+            <SheetTrigger asChild>
+              <button type="button" className="rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary">See all<span className="sr-only"> expense categories</span></button>
+            </SheetTrigger>
+            <SheetContent className="w-full sm:max-w-lg">
+              <SheetHeader className="border-b border-border p-6 pr-12">
+                <SheetTitle>All expense categories</SheetTitle>
+                <SheetDescription>{rangeLabel} · {php(totalExp)} total expenses. Ranked by amount; shares use the full period total.</SheetDescription>
+              </SheetHeader>
+              <div className="min-h-0 overflow-y-auto px-6 pb-6">
+                {rankedCategories.length ? <table className="w-full text-sm">
+                  <thead><tr className="border-b border-border text-[11px] uppercase text-muted-foreground"><th scope="col" className="py-3 text-left font-medium">Category</th><th scope="col" className="py-3 text-right font-medium">Amount</th><th scope="col" className="py-3 pl-3 text-right font-medium">Share</th></tr></thead>
+                  <tbody>{rankedCategories.map((category, index) => <tr key={category.name} className="border-b border-border">
+                    <th scope="row" className="py-4 pr-3 text-left font-normal"><span className="mr-2 text-xs text-muted-foreground">{index + 1}.</span>{category.name}</th>
+                    <td className="py-4 text-right tabular-nums">{php(category.value)}</td>
+                    <td className="py-4 pl-3 text-right tabular-nums text-muted-foreground">{expenseShare(category.value).toFixed(1)}%</td>
+                  </tr>)}</tbody>
+                </table> : <p className="py-8 text-sm text-muted-foreground">No expenses in this period.</p>}
+              </div>
+            </SheetContent>
+          </Sheet>
+        </div>
+        {totalExp > 0 ? <div className="mt-6 grid grid-cols-12 items-center gap-8">
+          <div className="relative col-span-12 mx-auto h-[260px] w-[260px] max-w-full lg:col-span-5" role="img" aria-label={`Expense share by category: ${expenseDonut.map(category => `${category.name} ${expenseShare(category.value).toFixed(1)}%`).join(", ")}`}>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={expenseDonut} cx="50%" cy="50%" innerRadius={83} outerRadius={115} paddingAngle={2} dataKey="value" nameKey="name" stroke="var(--card)" strokeWidth={2}>
+                  {expenseDonut.map((category, index) => <Cell key={`${index}-${category.name}`} fill={category.color} />)}
+                </Pie>
+                <Tooltip content={<ChartTip />} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-14 text-center">
+              <span className="text-[11px] uppercase tracking-widest text-foreground opacity-70">Total expenses</span>
+              <span className="mt-2 max-w-full break-words font-['Fraunces',serif] text-xl font-medium leading-tight tabular-nums">{php(totalExp)}</span>
+            </div>
+          </div>
+          <div className="col-span-12 min-w-0 lg:col-span-7">
+            <ol className="space-y-5">
+              {topCategories.map((category, index) => <li key={category.name}>
+                <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+                  <span className="w-4 text-xs tabular-nums text-muted-foreground">{index + 1}</span>
+                  <span className="min-w-0 flex-1 font-medium">{category.name}</span>
+                  <span className="font-['Fraunces',serif] text-lg tabular-nums">{php(category.value)}</span>
+                  <span className="w-14 text-right text-xs tabular-nums text-muted-foreground">{expenseShare(category.value).toFixed(1)}%</span>
+                </div>
+                <div className="ml-7 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true"><div className="h-full rounded-full" style={{ width: `${expenseShare(category.value)}%`, backgroundColor: category.color }} /></div>
+              </li>)}
+            </ol>
+            {remainingCategories.length > 0 && <div className="mt-5 border-t border-border pt-4">
+              <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+                <span className="h-2 w-4 shrink-0 rounded-sm bg-slate-400" aria-hidden="true" />
+                <span className="flex-1">Other <span className="text-xs text-muted-foreground">({remainingCategories.length} categories)</span></span>
+                <span className="font-['Fraunces',serif] text-lg tabular-nums">{php(otherTotal)}</span>
+                <span className="w-14 text-right text-xs tabular-nums text-muted-foreground">{expenseShare(otherTotal).toFixed(1)}%</span>
+              </div>
+              <div className="ml-7 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true"><div className="h-full rounded-full bg-slate-400" style={{ width: `${expenseShare(otherTotal)}%` }} /></div>
+            </div>}
+          </div>
+        </div> : <p className="py-12 text-center text-sm text-muted-foreground">No expense amounts to display for this period.</p>}
+      </section>
 
       <div className={cardCls}>
         <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-4">Average Margin % by Service Type</p>
