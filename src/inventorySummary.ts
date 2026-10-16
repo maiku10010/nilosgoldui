@@ -1,6 +1,6 @@
-type Movement = { category: string; unit: string; itemName: string; quantityIn: number; quantityOut: number; quantityLoss: number };
+type Movement = { category: string; unit: string; itemName: string; goldKarat?: number | null; quantityIn: number; quantityOut: number; quantityLoss: number };
 const TROY_OUNCE_GRAMS = 31.1034768;
-const stockKey = (row: Movement) => row.category === "GOLD" ? "GOLD:grams" : JSON.stringify([row.category, row.unit, row.itemName.trim().toLowerCase()]);
+const stockKey = (row: Movement) => row.category === "GOLD" ? `GOLD:${row.goldKarat ?? "unknown"}:grams` : JSON.stringify([row.category, row.unit, row.itemName.trim().toLowerCase()]);
 
 export function summarizeInventory(all: Movement[], visible: Movement[]) {
   const products = new Map<string, { unit: string; quantity: number }>();
@@ -23,17 +23,17 @@ export function summarizeInventory(all: Movement[], visible: Movement[]) {
   }
   return { entries: visible.length, products: visibleKeys.size, inStock,
     quantities: [...quantities].sort(([a], [b]) => a.localeCompare(b)),
-    goldGrams: Math.max(0, products.get("GOLD:grams")?.quantity ?? 0) };
+    goldGrams: Math.max(0, [...products.entries()].filter(([key]) => key.startsWith("GOLD:")).reduce((sum, [, product]) => sum + product.quantity, 0)) };
 }
 
 // Match the API's stock pools, retaining individual movements for audit/editing.
 export function groupInventory<T extends Movement>(all: T[], visible: T[] = all) {
   const visibleKeys = new Set(visible.map(stockKey));
-  const groups = new Map<string, { key: string; itemName: string; category: string; unit: string; quantityIn: number; quantityOut: number; quantityLoss: number; balance: number; movements: T[] }>();
+  const groups = new Map<string, { key: string; itemName: string; category: string; goldKarat?: number | null; unit: string; quantityIn: number; quantityOut: number; quantityLoss: number; balance: number; movements: T[] }>();
   for (const row of all) {
     const key = stockKey(row);
     if (!visibleKeys.has(key)) continue;
-    const group = groups.get(key) ?? { key, itemName: row.category === "GOLD" ? "Gold stock" : row.itemName, category: row.category, unit: row.category === "GOLD" ? "grams" : row.unit, quantityIn: 0, quantityOut: 0, quantityLoss: 0, balance: 0, movements: [] };
+    const group = groups.get(key) ?? { key, itemName: row.category === "GOLD" ? `Gold${row.goldKarat == null ? " (karat unspecified)" : ` · ${row.goldKarat}K`}` : row.itemName, category: row.category, goldKarat: row.category === "GOLD" ? row.goldKarat : null, unit: row.category === "GOLD" ? "grams" : row.unit, quantityIn: 0, quantityOut: 0, quantityLoss: 0, balance: 0, movements: [] };
     const factor = row.category === "GOLD" && row.unit === "troy oz" ? TROY_OUNCE_GRAMS : 1;
     group.quantityIn += row.quantityIn * factor;
     group.quantityOut += row.quantityOut * factor;

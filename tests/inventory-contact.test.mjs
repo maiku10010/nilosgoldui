@@ -25,6 +25,13 @@ test('gold uses one pool across descriptions and troy-ounce/gram units', () => {
   const result = summarizeInventory(rows, rows);
   assert.equal(result.products, 1); assert.ok(Math.abs(result.goldGrams - 30) < 0.000001);
 });
+test('gold stock pools are separated by karat while dashboard grams include all karats', () => {
+  const rows = [row({ category: 'GOLD', goldKarat: 14, unit: 'grams', quantityIn: 10 }), row({ category: 'GOLD', goldKarat: 18, unit: 'grams', quantityIn: 5 }), row({ category: 'GOLD', goldKarat: 14, unit: 'grams', quantityOut: 2 })];
+  const result = summarizeInventory(rows, rows);
+  assert.equal(result.products, 2);
+  assert.equal(result.inStock, 2);
+  assert.equal(result.goldGrams, 13);
+});
 test('empty and depleted products are counted accurately', () => {
   assert.equal(summarizeInventory([], []).products, 0);
   const rows = [row({ quantityIn: 1 }), row({ quantityOut: 1 })];
@@ -50,4 +57,11 @@ test('grouped gold movements convert ounces to grams and other units stay separa
   assert.ok(Math.abs(groups[0].balance - 30) < 0.000001);
   assert.equal(groups[0].movements.length, 2);
   assert.deepEqual(groupInventory([]), []);
+});
+test('grouped gold inventory keeps each karat in its own stock pool', async () => {
+  const { groupInventory } = await import('../src/inventorySummary.ts');
+  const rows = [row({ category: 'GOLD', goldKarat: 10, unit: 'grams', quantityIn: 4 }), row({ category: 'GOLD', goldKarat: 24, unit: 'grams', quantityIn: 7 })];
+  const groups = groupInventory(rows);
+  assert.equal(groups.length, 2);
+  assert.deepEqual(groups.map(group => group.itemName), ['Gold · 10K', 'Gold · 24K']);
 });
