@@ -1704,7 +1704,7 @@ function AppContent() {
           <button type="button" onClick={signOut} className="shrink-0 rounded-lg border border-sidebar-border px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-sidebar-accent hover:text-foreground transition-colors">Sign out</button>
         </div>
 
-        {/* Tab nav */}
+        {/* Tab nav*/}
         <nav className="flex items-center overflow-x-auto px-5 gap-0.5 py-2">
           {TABS.filter(t => isAdmin || !["PROFIT_ANALYSIS", "APPROVALS", "AUDIT_LOGS"].includes(t)).map(t => (
             <button
