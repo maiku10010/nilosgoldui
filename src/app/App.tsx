@@ -249,6 +249,13 @@ function AddBtn({ onClick, label }: { onClick: () => void; label: string }) {
   );
 }
 
+function AddStockChangeButton({ onClick }: { onClick: () => void }) {
+  return <button type="button" onClick={event => { event.stopPropagation(); onClick(); }}
+    className="inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-primary bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+    <Plus size={16} aria-hidden="true" />Add Stock Change
+  </button>;
+}
+
 // Table primitives – both light and dark adaptive
 const thc = [
   "px-3 py-2.5 text-left text-[10px] text-muted-foreground uppercase tracking-widest font-medium whitespace-nowrap border-r border-border/50 last:border-r-0",
@@ -933,8 +940,11 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
     closeModal(); setIsSubmitting(false); submittingRef.current = false;
   };
   return <div className="p-5 space-y-4">
-    <div><h2 className="text-lg font-semibold">Inventory overview</h2><p className="mt-1 text-xs text-muted-foreground">Track stock, materials, and movement across your workshop.</p></div>
-    <div className="grid items-center gap-4 xl:grid-cols-[minmax(180px,1fr)_minmax(0,2fr)_auto]">
+    <div className="flex flex-wrap items-center justify-between gap-4">
+      <div><h2 className="text-lg font-semibold">Inventory overview</h2><p className="mt-1 text-xs text-muted-foreground">Track stock, materials, and movement across your workshop.</p></div>
+      <AddStockChangeButton onClick={() => { setForm(blank()); setSelectedProduct(""); setEditingId(null); setOpen(true); }} />
+    </div>
+    <div className="grid items-center gap-4 xl:grid-cols-[minmax(180px,1fr)_minmax(0,2fr)]">
       <div className="space-y-2"><SearchBar value={q} onChange={setQ} placeholder="Search reference, item…" />
         <select className={ic + " w-auto"} value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} aria-label="Filter inventory category"><option value="ALL">All categories</option>{INVENTORY_CATEGORIES.map(c => <option key={c} value={c}>{c[0] + c.slice(1).toLowerCase()}</option>)}</select>
       </div>
@@ -950,14 +960,13 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
           <p className="mt-1 text-xs text-muted-foreground">{summary.quantities.length ? summary.quantities.map(([unit, quantity]) => `${quantity.toLocaleString("en-PH", { maximumFractionDigits: 3 })} ${unit}`).join(" · ") : "No stock remaining"}</p>
         </section>
       </div>
-      <AddBtn onClick={() => { setForm(blank()); setSelectedProduct(""); setEditingId(null); setOpen(true); }} label="Add Stock Change" />
     </div>
     <div className="flex flex-wrap justify-between gap-2 rounded-lg border border-border px-4 py-3 text-xs"><span className="text-muted-foreground">Gold stock <b className="ml-2 text-foreground">{goldBalance.toLocaleString("en-PH", { maximumFractionDigits: 3 })} g</b></span><span className="text-muted-foreground">24K reference value <b className="ml-2 text-primary">{goldRate === null ? "Rate unavailable" : php(goldBalance * goldRate)}</b></span></div>
   <TableWrap><thead><tr>{[["Date", "date"], ["Category", "category"], ["Reference", "referenceId"], ["Item Description", "itemName"], ["In", "quantityIn"], ["Unit Price", "unitPrice"], ["Out", "quantityOut"], ["Loss / Scrap", "quantityLoss"], ["Balance", "balance"]].map(([h, k]) => <SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}<th className={thc}>Actions</th></tr></thead>
-    <tbody>{filtered.map(e => <TRow key={e.id} onClick={() => edit(e)}><td className={tdc}>{fmtDate(e.date)}</td><td className={tdc}><span className="rounded bg-primary/10 px-2 py-1 text-[10px] uppercase">{e.category}</span></td><td className={tdc + " text-primary/80"}>{e.referenceId}</td><td className={tdc + " font-sans"}>{e.itemName}</td><td className={tdr}>{e.quantityIn ? `+${e.quantityIn}` : "—"}</td><td className={tdr}>{e.unitPrice ? php(e.unitPrice) : "—"}</td><td className={tdr}>{e.quantityOut ? `-${e.quantityOut}` : "—"}</td><td className={tdr}>{e.quantityLoss || "—"}</td><td className={tdr + " text-primary font-semibold"}>{e.balance} {e.unit}</td><td className={tdc}><div className="flex items-center gap-2"><button type="button" onClick={event => { event.stopPropagation(); edit(e); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted" title="Edit"><PenSquare size={13} /></button><button type="button" onClick={event => { event.stopPropagation(); onDelete(e.id); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted" title="Delete"><Trash2 size={13} /></button></div></td></TRow>)}{!filtered.length && <EmptyRow cols={10} />}</tbody>
+    <tbody>{filtered.map(e => <TRow key={e.id} onClick={() => edit(e)}><td className={tdc}>{fmtDate(e.date)}</td><td className={tdc}><span className="rounded bg-primary/10 px-2 py-1 text-[10px] uppercase">{e.category}</span></td><td className={tdc + " text-primary/80"}>{e.referenceId}</td><td className={tdc + " font-sans"}>{e.itemName}</td><td className={tdr}>{e.quantityIn ? `+${e.quantityIn}` : "—"}</td><td className={tdr}>{e.unitPrice ? php(e.unitPrice) : "—"}</td><td className={tdr}>{e.quantityOut ? `-${e.quantityOut}` : "—"}</td><td className={tdr}>{e.quantityLoss || "—"}</td><td className={tdr + " text-primary font-semibold"}>{e.balance} {e.unit}</td><td className={tdc}><div className="flex items-center gap-2"><AddStockChangeButton onClick={() => { setEditingId(null); setSelectedProduct(""); setForm({ ...blank(), itemName: e.itemName, category: e.category, unit: e.unit, unitPrice: e.unitPrice > 0 ? String(e.unitPrice) : "" }); setOpen(true); }} /><button type="button" onClick={event => { event.stopPropagation(); edit(e); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted" title="Edit"><PenSquare size={13} /></button><button type="button" onClick={event => { event.stopPropagation(); onDelete(e.id); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted" title="Delete"><Trash2 size={13} /></button></div></td></TRow>)}{!filtered.length && <EmptyRow cols={10} />}</tbody>
   </TableWrap>
   {
-    open && <Modal title={editingId ? "Edit Inventory Entry" : "Add Inventory Item"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update Entry" : "Save Entry"} isSubmitting={isSubmitting}>
+    open && <Modal title={editingId ? "Edit Inventory Entry" : "Add Stock Change"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update Entry" : "Save Entry"} isSubmitting={isSubmitting}>
       <div className="grid grid-cols-2 gap-4"><FF label="Date"><input type="date" max={todayISO()} className={ic} value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required /></FF><FF label="Reference"><input className={ic} value={form.referenceId} readOnly placeholder="Assigned when saved" /></FF>
         <FF label="Category"><select className={ic} value={form.category} onChange={e => { const category = e.target.value; setForm(f => ({ ...f, category, unit: INVENTORY_UNITS[category][0] })); }}>{INVENTORY_CATEGORIES.map(c => <option key={c} value={c}>{c[0] + c.slice(1).toLowerCase()}</option>)}</select></FF><FF label="Unit"><select className={ic} value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}>{units.map(u => <option key={u}>{u}</option>)}</select></FF>
         <div className="col-span-2"><FF label="Item Description"><input className={ic} value={form.itemName} onChange={e => setForm(f => ({ ...f, itemName: e.target.value }))} placeholder="e.g. 18k chain, gemstone, ring box" required /></FF></div>
