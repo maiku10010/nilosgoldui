@@ -249,10 +249,12 @@ function AddBtn({ onClick, label }: { onClick: () => void; label: string }) {
   );
 }
 
-function AddStockChangeButton({ onClick }: { onClick: () => void }) {
+function AddStockChangeButton({ onClick, compact = false }: { onClick: () => void; compact?: boolean }) {
   return <button type="button" onClick={event => { event.stopPropagation(); onClick(); }}
-    className="inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-primary bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-    <Plus size={16} aria-hidden="true" />Add Stock Change
+    className={`inline-flex shrink-0 items-center justify-center whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${compact
+      ? "gap-1 rounded border border-primary/20 bg-primary/5 px-2 py-1 text-[11px] text-primary hover:bg-primary/10"
+      : "gap-2 rounded-lg border border-primary bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-90"}`}>
+    <Plus size={compact ? 12 : 16} aria-hidden="true" />{compact ? "Add stock" : "Add Stock Change"}
   </button>;
 }
 
@@ -975,7 +977,7 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
           <td className={tdr}>{product.quantityIn.toLocaleString("en-PH", { maximumFractionDigits:3 })}</td><td className={tdr}>—</td>
           <td className={tdr}>{product.quantityOut.toLocaleString("en-PH", { maximumFractionDigits:3 })}</td><td className={tdr}>{product.quantityLoss.toLocaleString("en-PH", { maximumFractionDigits:3 })}</td>
           <td className={tdr+" text-primary font-semibold"}>{product.balance.toLocaleString("en-PH", { maximumFractionDigits:3 })} {product.unit}</td>
-          <td className={tdc}><AddStockChangeButton onClick={() => addMovement(product.key)} /></td>
+          <td className={tdc}><AddStockChangeButton compact onClick={() => addMovement(product.key)} /></td>
         </tr>
         {expanded.has(product.key) && product.movements.map(e => <TRow key={e.id} onClick={()=>edit(e)}><td className={tdc}>{fmtDate(e.date)}</td><td className={tdc}><span className="rounded bg-primary/10 px-2 py-1 text-[10px] uppercase">{e.category}</span></td><td className={tdc+" text-primary/80"}>{e.referenceId}</td><td className={tdc+" pl-8 font-sans"}>↳ {e.itemName}</td><td className={tdr}>{e.quantityIn ? `+${e.quantityIn}` : "—"}</td><td className={tdr}>{e.unitPrice ? php(e.unitPrice) : "—"}</td><td className={tdr}>{e.quantityOut ? `-${e.quantityOut}` : "—"}</td><td className={tdr}>{e.quantityLoss || "—"}</td><td className={tdr+" text-primary font-semibold"}>{e.balance} {e.unit}</td><td className={tdc}><div className="flex items-center gap-2"><button type="button" onClick={event=>{event.stopPropagation();edit(e);}} className="rounded p-1.5 text-muted-foreground hover:bg-muted" title="Edit"><PenSquare size={13}/></button><button type="button" onClick={event=>{event.stopPropagation();onDelete(e.id);}} className="rounded p-1.5 text-muted-foreground hover:bg-muted" title="Delete"><Trash2 size={13}/></button></div></td></TRow>)}
       </Fragment>)}{!visibleProducts.length && <EmptyRow cols={10}/>}</tbody>
