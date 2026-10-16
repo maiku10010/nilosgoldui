@@ -30,3 +30,24 @@ test('empty and depleted products are counted accurately', () => {
   const rows = [row({ quantityIn: 1 }), row({ quantityOut: 1 })];
   assert.equal(summarizeInventory(rows, rows).inStock, 0);
 });
+
+test('product rows contain stock changes as children with full balance when searching a movement', async () => {
+  const { groupInventory } = await import('../src/inventorySummary.ts');
+  const rows = [row({ referenceId: 'IN', quantityIn: 10 }), row({ referenceId: 'OUT', itemName: ' ring BOX ', quantityOut: 3 }), row({ referenceId: 'LOSS', quantityLoss: 2 }), row({ itemName: 'Necklace box', quantityIn: 4 })];
+  const groups = groupInventory(rows, [rows[1]]);
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].balance, 5);
+  assert.deepEqual(groups[0].movements, rows.slice(0, 3));
+  assert.equal(groupInventory(rows).length, 2);
+});
+
+test('grouped gold movements convert ounces to grams and other units stay separate', async () => {
+  const { groupInventory } = await import('../src/inventorySummary.ts');
+  const rows = [row({ category:'GOLD', unit:'troy oz', quantityIn:1 }), row({ category:'GOLD', unit:'grams', quantityOut:1.1034768 }), row({ quantityIn:2 }), row({ unit:'boxes', quantityIn:3 })];
+  const groups = groupInventory(rows);
+  assert.equal(groups.length, 3);
+  assert.equal(groups[0].unit, 'grams');
+  assert.ok(Math.abs(groups[0].balance - 30) < 0.000001);
+  assert.equal(groups[0].movements.length, 2);
+  assert.deepEqual(groupInventory([]), []);
+});
