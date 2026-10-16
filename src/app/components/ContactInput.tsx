@@ -17,7 +17,7 @@ export function ContactInput({ value, onChange, className, required = false }: {
         const pasted = event.clipboardData.getData("text");
         onChange(normalizeContactInput(value.slice(0, input.selectionStart ?? value.length) + pasted + value.slice(input.selectionEnd ?? value.length)));
       }} />
-    <div id={counterId} className="flex justify-between gap-2 text-[10px] text-muted-foreground">
+    <div id={counterId} className="flex justify-between gap-2 text-xs text-muted-foreground">
       <span>PH mobile · starts with 09</span><span className="tabular-nums" aria-live="polite">{value.length}/11</span>
     </div>
   </div>;

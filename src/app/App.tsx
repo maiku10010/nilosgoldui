@@ -1,3 +1,6 @@
+import { Button } from "./components/ui/button";
+import { Badge, sentenceCase } from "./components/ui/badge";
+import { PageHeader } from "./components/PageHeader";
 import { roundTwo } from "../rounding";
 import { Fragment, useState, useEffect, useMemo, useRef, createContext, useContext } from "react";
 import goldsmithLogo from "../assets/nilosgold_logo.jpg";
@@ -46,25 +49,17 @@ const useConfirmation = () => useContext(ConfirmationContext);
 function ConfirmationDialog({ request, onClose }: { request: ConfirmationRequest; onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const confirm = async () => { setBusy(true); try { await request.onConfirm(); onClose(); } finally { setBusy(false); } };
-  return <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="confirmation-title">
+  return <div className="fixed inset-0 z-[60] flex items-center justify-center bg-overlay backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="confirmation-title">
     <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-2xl mx-4">
       <h2 id="confirmation-title" className="text-base font-semibold">{request.title}</h2>
       <p className="mt-2 text-sm text-muted-foreground">{request.message}</p>
-      <div className="mt-6 flex justify-end gap-3"><button type="button" disabled={busy} onClick={onClose} className="rounded-lg bg-muted px-4 py-2 text-sm">Cancel</button><button type="button" disabled={busy} onClick={confirm} className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-60">{busy ? "Working…" : (request.confirmLabel ?? "Confirm")}</button></div>
+      <div className="mt-6 flex justify-end gap-3"><Button variant="secondary" type="button" disabled={busy} onClick={onClose} className="text-sm">Cancel</Button><Button variant="primary" type="button" disabled={busy} onClick={confirm} className="text-sm">{busy ? "Working…" : (request.confirmLabel ?? "Confirm")}</Button></div>
     </div>
   </div>;
 }
 
 // ── formatters ─────────────────────────────────────────────────────────────
-const marginCls = (m: number) => {
-  if (m >= 50) {
-    return "inline-flex items-center justify-center px-2 py-0.5 rounded-md text-[10px] font-mono font-medium uppercase tracking-widest border bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 min-w-[56px]";
-  }
-  if (m >= 25) {
-    return "inline-flex items-center justify-center px-2 py-0.5 rounded-md text-[10px] font-mono font-medium uppercase tracking-widest border bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30 min-w-[56px]";
-  }
-  return "inline-flex items-center justify-center px-2 py-0.5 rounded-md text-[10px] font-mono font-medium uppercase tracking-widest border bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30 min-w-[56px]";
-};
+const marginVariant = (margin: number) => margin >= 50 ? "success" : margin >= 25 ? "warning" : "danger";
 
 const php = (n: number) =>
   "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -155,54 +150,30 @@ type Tab = (typeof TABS)[number];
 
 // ── shared ui primitives ────────────────────────────────────────────────────
 
-// Status badge: adaptive text so it reads on both light and dark
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    Ongoing: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30",
-    Paid: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30",
-    Released: "bg-sky-500/15 text-sky-700 dark:text-sky-400 border-sky-500/30",
-    Finished: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30",
-    Approved: "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30",
-    "Ready for Pickup": "bg-sky-500/15 text-sky-700 dark:text-sky-400 border-sky-500/30",
-    Yes: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30",
-    No: "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30",
-    Rejected: "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30",
-    Pending: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30",
-    "In Progress": "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30",
-    Partial: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30",
-    Cancelled: "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30",
-  };
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-medium uppercase tracking-widest border ${map[status] ?? "bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/30"}`}>
-      {status}
-    </span>
-  );
-}
-
 function Modal({ title, onClose, onSubmit, children, submitLabel = "Save Entry", isSubmitting = false, submitDisabled = false }: {
   title: string; onClose: () => void; onSubmit: (e: React.FormEvent) => void; children: React.ReactNode;
   submitLabel?: string; isSubmitting?: boolean; submitDisabled?: boolean;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-card border border-border rounded-xl w-full max-w-lg mx-4 shadow-2xl shadow-black/30 dark:shadow-black/60 max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay backdrop-blur-sm">
+      <div className="bg-card border border-border rounded-xl w-full max-w-lg mx-4 shadow-2xl shadow-ink/30 max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
-          <span className="text-primary font-mono text-[11px] uppercase tracking-widest font-semibold">{title}</span>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+          <span className="text-xl font-semibold">{title}</span>
+          <Button variant="ghost" size="icon" aria-label="Close dialog" onClick={onClose} >
             <X size={16} />
-          </button>
+          </Button>
         </div>
         <form onSubmit={onSubmit} className="p-6 space-y-4 overflow-y-auto">
           {children}
           <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose}
-              className="flex-1 px-4 py-2 bg-muted text-foreground rounded-lg text-sm hover:bg-muted/80 transition-colors">
+            <Button variant="secondary" type="button" onClick={onClose}
+              className="flex-1 text-sm">
               Cancel
-            </button>
-            <button type="submit" disabled={isSubmitting || submitDisabled}
-              className="flex-1 px-4 py-2 bg-primary hover:opacity-90 text-primary-foreground rounded-lg text-sm font-medium transition-opacity disabled:opacity-60 disabled:cursor-not-allowed">
+            </Button>
+            <Button variant="primary" type="submit" disabled={isSubmitting || submitDisabled}
+              className="flex-1 text-sm disabled:cursor-not-allowed">
               {isSubmitting ? "Saving..." : submitLabel}
-            </button>
+            </Button>
           </div>
         </form>
       </div>
@@ -213,7 +184,7 @@ function Modal({ title, onClose, onSubmit, children, submitLabel = "Save Entry",
 function FF({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1">{label}</label>
+      <label className="block text-xs font-sans text-muted-foreground section-label mb-1">{sentenceCase(label)}</label>
       {children}
     </div>
   );
@@ -221,12 +192,12 @@ function FF({ label, children }: { label: string; children: React.ReactNode }) {
 
 // Input/select base class – light: white bg, dark: near-black bg
 const ic = [
-  "w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/30",
-  "bg-white dark:bg-slate-900/80",
+  "w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring",
+  "bg-card ",
   "border border-border",
   "text-foreground",
   "placeholder:text-muted-foreground",
-  "focus:border-primary/60",
+  "focus:border-ring",
 ].join(" ");
 
 function SearchBar({ value, onChange, placeholder }: {
@@ -237,7 +208,7 @@ function SearchBar({ value, onChange, placeholder }: {
       <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
       <input
         value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-        className="pl-8 pr-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary/50 w-64 bg-white dark:bg-slate-900/60 border border-border text-foreground placeholder:text-muted-foreground"
+        className="pl-8 pr-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring w-64 bg-card border border-border text-foreground placeholder:text-muted-foreground"
       />
     </div>
   );
@@ -245,39 +216,37 @@ function SearchBar({ value, onChange, placeholder }: {
 
 function AddBtn({ onClick, label }: { onClick: () => void; label: string }) {
   return (
-    <button type="button" onClick={onClick}
-      className="flex items-center gap-2 px-4 py-2 bg-primary hover:opacity-90 text-primary-foreground rounded-lg text-sm font-medium transition-opacity">
+    <Button variant="primary" type="button" onClick={onClick}
+      className="flex items-center gap-2 text-sm">
       <Plus size={13} /> {label}
-    </button>
+    </Button>
   );
 }
 
 function AddStockChangeButton({ onClick, compact = false }: { onClick: () => void; compact?: boolean }) {
-  return <button type="button" onClick={event => { event.stopPropagation(); onClick(); }}
-    className={`inline-flex shrink-0 items-center justify-center whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${compact
-      ? "gap-1 rounded border border-primary/20 bg-primary/5 px-2 py-1 text-[11px] text-primary hover:bg-primary/10"
-      : "gap-2 rounded-lg border border-primary bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-90"}`}>
-    <Plus size={compact ? 12 : 16} aria-hidden="true" />{compact ? "Add stock" : "Add Stock Change"}
-  </button>;
+  return <Button variant={compact ? "secondary" : "primary"} size={compact ? "sm" : "default"}
+    onClick={event => { event.stopPropagation(); onClick(); }}>
+    <Plus size={16} aria-hidden="true" />{compact ? "Add stock" : "Add stock change"}
+  </Button>;
 }
 
 // Table primitives – both light and dark adaptive
 const thc = [
-  "px-3 py-2.5 text-left text-[10px] text-muted-foreground uppercase tracking-widest font-medium whitespace-nowrap border-r border-border/50 last:border-r-0",
-  "bg-muted/60 dark:bg-slate-900/70",
+  "px-3 py-2.5 text-left text-xs text-muted-foreground section-label font-medium whitespace-nowrap border-r border-border/50 last:border-r-0",
+  "bg-muted/60",
   "border-b border-border",
 ].join(" ");
 
 const tdc = [
   "px-3 py-2.5 text-xs whitespace-nowrap border-t border-border border-r border-border/50 last:border-r-0",
-  "text-foreground/80 dark:text-slate-300",
+  "text-foreground/80",
 ].join(" ");
 
 const tdr = tdc + " text-right tabular-nums";
 
 function TRow({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) {
   return (
-    <tr onClick={e => { if (onClick && !(e.target as HTMLElement).closest("button")) onClick(); }} onKeyDown={e => { if (onClick && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onClick(); } }} tabIndex={onClick ? 0 : undefined} className={`hover:bg-muted/40 dark:hover:bg-slate-800/25 transition-colors ${onClick ? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" : ""}`}>
+    <tr onClick={e => { if (onClick && !(e.target as HTMLElement).closest("button")) onClick(); }} onKeyDown={e => { if (onClick && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onClick(); } }} tabIndex={onClick ? 0 : undefined} className={`hover:bg-muted/40 dark:hover:bg-muted/25 transition-colors ${onClick ? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" : ""}`}>
       {children}
     </tr>
   );
@@ -300,9 +269,9 @@ function SortableHeader({ label, sortKey, sort, onSort }: {
 }) {
   const active = sort.key === sortKey;
   return <th className={thc} aria-sort={active ? (sort.direction === 1 ? "ascending" : "descending") : "none"}>
-    <button type="button" onClick={() => onSort(sortKey)} className="inline-flex items-center gap-1.5 hover:text-primary transition-colors">
-      {label}{active ? (sort.direction === 1 ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ArrowUpDown size={12} className="opacity-40" />}
-    </button>
+    <Button variant="ghost" type="button" onClick={() => onSort(sortKey)} className="h-auto justify-start gap-1.5 px-0 text-xs">
+      {sentenceCase(label)}{active ? (sort.direction === 1 ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ArrowUpDown size={12} className="opacity-40" />}
+    </Button>
   </th>;
 }
 
@@ -310,13 +279,13 @@ function BrandLogo({ className = "" }: { className?: string }) {
   const [failed, setFailed] = useState(false);
   return failed
     ? <div className={`rounded-xl bg-primary text-primary-foreground flex items-center justify-center ${className}`}><Crown size={20} /></div>
-    : <img src="/nilosgold_logo.jpg" alt="Nilo's Goldsmith" onError={() => setFailed(true)} className={`rounded-xl object-contain bg-white ${className}`} />;
+    : <img src="/nilosgold_logo.jpg" alt="Nilo's Goldsmith" onError={() => setFailed(true)} className={`rounded-xl object-contain bg-card ${className}`} />;
 }
 
 function TableWrap({ children }: { children: React.ReactNode }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-border">
-      <table className="w-full text-xs font-mono min-w-max">{children}</table>
+      <table className="w-full text-xs font-sans min-w-max">{children}</table>
     </div>
   );
 }
@@ -336,8 +305,8 @@ const ChartTip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   const tipLabel = payload[0]?.payload?.period ?? label;
   return (
-    <div className="bg-card border border-border rounded-lg p-3 shadow-xl text-xs font-mono">
-      <p className="text-muted-foreground mb-2 uppercase tracking-widest text-[10px]">{tipLabel}</p>
+    <div className="bg-card border border-border rounded-lg p-3 shadow-xl text-xs font-sans">
+      <p className="text-muted-foreground mb-2 section-label text-xs">{tipLabel}</p>
       {payload.map((p: any) => (
         <p key={p.name} style={{ color: p.color }} className="tabular-nums">
           {p.name}: {php(p.value)}
@@ -396,45 +365,45 @@ function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onVie
   const recentJC = sortRecords(useMemo(() => [...jobCosts], [jobCosts]), jobSort).slice(0, 6);
 
   const catColors: Record<string, string> = {
-    "Rent": "#1746a2", "Staff Salary": "#d4a017", "Utilities": "#496bb2", "Supplies": "#111318", "Tax & Permits": "#b18a16",
+    "Rent": "var(--primary)", "Staff Salary": "var(--chart-2)", "Utilities": "var(--chart-3)", "Supplies": "var(--foreground)", "Tax & Permits": "var(--chart-4)",
   };
 
   const cardCls = "bg-card border border-border rounded-xl p-5";
 
   return (
-    <div className="p-5 space-y-5">
-      <section aria-label="Key performance indicators" className="mx-auto grid w-full max-w-[1440px] grid-cols-12">
-        <div className="col-span-12 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+    <div className="space-y-5">
+      <section aria-label="Key performance indicators" className="grid w-full grid-cols-12">
+        <div className="col-span-12 grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4">
           {[
-            { label: "Total Sales", value: php(totalSales), detail: `${sales.length} transactions` },
-            { label: "Cash Collected", value: php(cashCollected), detail: `${php(receivables)} outstanding` },
+            { label: "Total sales", value: php(totalSales), detail: `${sales.length} transactions` },
+            { label: "Cash collected", value: php(cashCollected), detail: `${php(receivables)} outstanding` },
             { label: "Expenses", value: php(totalExpenses), detail: `${expenses.length} expenses` },
           ].map(metric => (
             <div key={metric.label} className="min-w-0 rounded-xl border border-border bg-card p-5 xl:p-6">
-              <p className="text-[11px] font-sans uppercase tracking-[0.12em] text-foreground opacity-70">{metric.label}</p>
-              <p className="mt-5 break-words font-['Fraunces',serif] text-[clamp(1.5rem,2.4vw,2.25rem)] font-medium leading-tight tracking-tight tabular-nums">{metric.value}</p>
+              <p className="text-xs font-sans section-label text-muted-foreground">{metric.label}</p>
+              <p className="mt-5 break-words hero-kpi">{metric.value}</p>
               <p className="mt-3 text-xs text-muted-foreground">{metric.detail}</p>
-              <p className="mt-6 text-[11px] text-muted-foreground">{rangeLabel}</p>
+              <p className="mt-6 text-xs text-muted-foreground">{rangeLabel}</p>
             </div>
           ))}
-          {isAdmin ? <div className="relative min-w-0 overflow-hidden rounded-xl border border-border bg-card p-6 xl:col-span-2">
-            <p className="text-[11px] font-sans uppercase tracking-[0.12em] text-foreground opacity-70">Net Profit</p>
-            <p className={`mt-4 break-words font-['Fraunces',serif] text-[clamp(3rem,4.5vw,4rem)] font-medium leading-none tracking-tight tabular-nums ${netProfit >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>{php(netProfit)}</p>
-            <span className={`mt-4 inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium tabular-nums ${netProfit >= 0 ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-red-500/10 text-red-700 dark:text-red-400"}`}>{pct(netMargin)} margin</span>
+          {isAdmin ? <div className="relative min-w-0 overflow-hidden rounded-xl border border-border bg-card p-6">
+            <p className="text-xs font-sans section-label text-muted-foreground">Net profit</p>
+            <p className={`mt-4 break-words hero-kpi ${netProfit >= 0 ? "text-success " : "text-danger "}`}>{php(netProfit)}</p>
+            <Badge className="mt-4" variant={netProfit >= 0 ? "success" : "danger"}>{pct(netMargin)} margin</Badge>
             <div className="mt-4 flex items-end gap-4">
-              <p className="flex-1 text-[11px] text-muted-foreground">{rangeLabel}</p>
+              <p className="flex-1 text-xs text-muted-foreground">{rangeLabel}</p>
               <div className="h-12 w-36 shrink-0" role="img" aria-label={`Cumulative net profit trend for ${rangeLabel}`}>
                 {profitTrend.length > 1 ? <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={profitTrend} margin={{ top: 4, right: 2, bottom: 2, left: 2 }}>
-                    <Area type="linear" dataKey="profit" stroke={netProfit >= 0 ? "#059669" : "#dc2626"} fill={netProfit >= 0 ? "#059669" : "#dc2626"} fillOpacity={0.08} strokeWidth={2} isAnimationActive={false} />
+                    <Area type="linear" dataKey="profit" stroke={netProfit >= 0 ? "var(--success)" : "var(--danger)"} fill={netProfit >= 0 ? "var(--success)" : "var(--danger)"} fillOpacity={0.08} strokeWidth={2} isAnimationActive={false} />
                   </AreaChart>
-                </ResponsiveContainer> : <span className="flex h-full items-center text-[10px] text-muted-foreground">{profitTrend.length ? "Trend needs more activity" : "No activity yet"}</span>}
+                </ResponsiveContainer> : <span className="flex h-full items-center text-xs text-muted-foreground">{profitTrend.length ? "Trend needs more activity" : "No activity yet"}</span>}
               </div>
             </div>
-          </div> : <div className="min-w-0 rounded-xl border border-border bg-card p-6 xl:col-span-2">
-            <p className="text-[11px] font-sans uppercase tracking-[0.12em] text-foreground opacity-70">Inquiries</p>
-            <p className="mt-4 font-['Fraunces',serif] text-6xl font-medium tabular-nums">{totalInq}</p>
-            <span className="mt-4 inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-[11px] text-primary">{pct(convRate)} conversion</span>
+          </div> : <div className="min-w-0 rounded-xl border border-border bg-card p-6">
+            <p className="text-xs font-sans section-label text-muted-foreground">Inquiries</p>
+            <p className="mt-4 hero-kpi">{totalInq}</p>
+            <Badge className="mt-4">{pct(convRate)} conversion</Badge>
             <p className="mt-4 text-xs text-muted-foreground">{closedInq} closed · {rangeLabel}</p>
           </div>}
         </div>
@@ -442,22 +411,22 @@ function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onVie
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
         <section>
-          <h2 className="mb-3 text-xs font-mono uppercase tracking-widest text-muted-foreground">Daily Sales Log · Recent Entries</h2>
+          <h2 className="mb-3 text-xs font-sans section-label text-muted-foreground">Daily sales log · Recent entries</h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {recentSales.map(s => <button key={s.id} type="button" onClick={() => onView("Sale details", s as unknown as Record<string, unknown>)} className="rounded-xl border border-border bg-card p-4 text-left hover:bg-muted/40">
-              <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold">{s.clientName}</p><p className="truncate text-xs text-primary">{s.invoiceId}</p></div><StatusBadge status={s.status} /></div>
-              <div className="mt-3 flex justify-between gap-3"><div><p className="text-[10px] uppercase tracking-wide text-muted-foreground">{s.serviceType} · {fmtDate(s.date)}</p><p className="mt-1 text-sm font-semibold tabular-nums">{php(s.price)}</p></div><span className="self-end text-[10px] text-muted-foreground">View</span></div>
-            </button>)}
+            {recentSales.map(s => <Button variant="secondary" key={s.id} type="button" onClick={() => onView("Sale details", s as unknown as Record<string, unknown>)} className="h-auto block whitespace-normal rounded-xl border border-border bg-card p-4 text-left hover:bg-muted/40">
+              <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold">{s.clientName}</p><p className="truncate text-xs text-primary-text">{s.invoiceId}</p></div><Badge status={s.status} /></div>
+              <div className="mt-3 flex justify-between gap-3"><div><p className="text-xs section-label text-muted-foreground">{s.serviceType} · {fmtDate(s.date)}</p><p className="mt-1 text-sm font-semibold tabular-nums">{php(s.price)}</p></div><span className="self-end text-xs text-muted-foreground">View</span></div>
+            </Button>)}
             {!recentSales.length && <div className="rounded-xl border border-border bg-card p-6 text-center text-xs text-muted-foreground">No sales in this timeline</div>}
           </div>
         </section>
         <section>
-          <h2 className="mb-3 text-xs font-mono uppercase tracking-widest text-muted-foreground">Job Costing · Recent Entries</h2>
+          <h2 className="mb-3 text-xs font-sans section-label text-muted-foreground">Job costing · Recent entries</h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {recentJC.map(j => <button key={j.jobCostId} type="button" onClick={() => onView("Job cost details", j as unknown as Record<string, unknown>)} className="rounded-xl border border-border bg-card p-4 text-left hover:bg-muted/40">
-              <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold">{j.clientName}</p><p className="truncate text-xs text-primary">{j.invoiceId}</p></div><StatusBadge status={j.status} /></div>
-              <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><span className="text-muted-foreground">Total cost</span><span className="text-right tabular-nums">{php(j.totalCost)}</span>{isAdmin && <><span className="text-muted-foreground">Profit</span><span className="text-right font-semibold tabular-nums text-emerald-700">{php(j.profit)}</span></>}</div>
-            </button>)}
+            {recentJC.map(j => <Button variant="secondary" key={j.jobCostId} type="button" onClick={() => onView("Job cost details", j as unknown as Record<string, unknown>)} className="h-auto block whitespace-normal rounded-xl border border-border bg-card p-4 text-left hover:bg-muted/40">
+              <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold">{j.clientName}</p><p className="truncate text-xs text-primary-text">{j.invoiceId}</p></div><Badge status={j.status} /></div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><span className="text-muted-foreground">Total cost</span><span className="text-right tabular-nums">{php(j.totalCost)}</span>{isAdmin && <><span className="text-muted-foreground">Profit</span><span className="text-right font-semibold tabular-nums text-success">{php(j.profit)}</span></>}</div>
+            </Button>)}
             {!recentJC.length && <div className="rounded-xl border border-border bg-card p-6 text-center text-xs text-muted-foreground">No job costing in this timeline</div>}
           </div>
         </section>
@@ -466,8 +435,8 @@ function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onVie
         {/* Legacy table layout retained for existing sort wiring */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
           <div>
-            <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-3">
-              Daily Sales Log <span className="text-primary/70">— Recent Entries</span>
+            <p className="text-xs font-sans text-muted-foreground section-label mb-3">
+              Daily Sales Log <span className="text-primary-text/70">— Recent Entries</span>
             </p>
             <TableWrap>
               <thead><tr>
@@ -477,19 +446,19 @@ function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onVie
                 {recentSales.map(s => (
                   <TRow key={s.id} onClick={() => onView("Sale details", s as unknown as Record<string, unknown>)}>
                     <td className={tdc}>{fmtDate(s.date)}</td>
-                    <td className={tdc + " text-primary/80 dark:text-amber-400/80"}>{s.invoiceId}</td>
+                    <td className={tdc + " text-primary-text/80 "}>{s.invoiceId}</td>
                     <td className={tdc + " font-sans font-medium"}>{s.clientName}</td>
                     <td className={tdc}>{s.serviceType}</td>
                     <td className={tdr}>{php(s.price)}</td>
-                    <td className={tdc}><StatusBadge status={s.status} /></td>
+                    <td className={tdc}><Badge status={s.status} /></td>
                   </TRow>
                 ))}
               </tbody>
             </TableWrap>
           </div>
           <div>
-            <p className="dashboard-recent-title font-mono text-muted-foreground uppercase tracking-widest mb-3">
-              Job Costing <span className="text-primary/70">— Recent Entries</span>
+            <p className="dashboard-recent-title font-sans text-muted-foreground section-label mb-3">
+              Job Costing <span className="text-primary-text/70">— Recent Entries</span>
             </p>
             <TableWrap>
               <thead><tr>
@@ -498,14 +467,14 @@ function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onVie
               <tbody>
                 {recentJC.map(j => (
                   <TRow key={j.jobCostId} onClick={() => onView("Job cost details", j as unknown as Record<string, unknown>)}>
-                    <td className={tdc + " text-primary/80 dark:text-amber-400/80"}>{j.invoiceId}</td>
+                    <td className={tdc + " text-primary-text/80 "}>{j.invoiceId}</td>
                     <td className={tdc + " font-sans font-medium"}>{j.clientName}</td>
                     <td className={tdr}>{j.goldUsed.toFixed(2)}</td>
-                    <td className={tdr + " text-red-700 dark:text-red-400"}>{php(j.totalCost)}</td>
-                    <td className={tdr + " text-amber-700 dark:text-amber-300"}>{php(j.sellingPrice)}</td>
-                    <td className={tdr + " text-emerald-700 dark:text-emerald-400 font-semibold"}>{php(j.profit)}</td>
+                    <td className={tdr + " text-danger "}>{php(j.totalCost)}</td>
+                    <td className={tdr + " text-warning "}>{php(j.sellingPrice)}</td>
+                    <td className={tdr + " text-success font-semibold"}>{php(j.profit)}</td>
                     <td className={tdc}>
-                      <span className={marginCls(j.marginPct)}>{pct(j.marginPct)}</span>
+                      <Badge variant={marginVariant(j.marginPct)}>{pct(j.marginPct)}</Badge>
                     </td>
                   </TRow>
                 ))}
@@ -566,7 +535,7 @@ function DailySalesView({ sales, onUpdate, onDelete }: { sales: Sale[]; onUpdate
   };
 
   return (
-    <div className="p-5 space-y-4">
+    <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <SearchBar value={q} onChange={setQ} placeholder="Search client, invoice, type…" />
         <p className="text-xs text-muted-foreground">Sales appear here after an approved job costing is finished.</p>
@@ -579,22 +548,22 @@ function DailySalesView({ sales, onUpdate, onDelete }: { sales: Sale[]; onUpdate
           {filtered.map(s => (
             <TRow key={s.id} onClick={() => { setEditingId(s.invoiceId); setForm({ invoiceId: s.invoiceId, date: s.date, clientName: s.clientName, contactNum: s.contactNum, email: s.email ?? "", serviceType: s.serviceType, price: String(s.price), payment: String(s.payment) }); setOpen(true); }}>
               <td className={tdc}>{fmtDate(s.date)}</td>
-              <td className={tdc + " text-primary/80 dark:text-amber-400/80"}>{s.invoiceId}</td>
+              <td className={tdc + " text-primary-text/80 "}>{s.invoiceId}</td>
               <td className={tdc + " font-sans font-medium"}>{s.clientName}</td>
               <td className={tdc + " text-muted-foreground"}>{s.contactNum}</td>
               <td className={tdc}>{s.serviceType}</td>
               <td className={tdr}>{php(s.price)}</td>
-              <td className={tdr + " text-emerald-700 dark:text-emerald-400"}>{php(s.payment)}</td>
-              <td className={tdr + " text-amber-700 dark:text-amber-400"}>{php(s.balance)}</td>
-              <td className={tdc}><StatusBadge status={s.status} /></td>
+              <td className={tdr + " text-success "}>{php(s.payment)}</td>
+              <td className={tdr + " text-warning "}>{php(s.balance)}</td>
+              <td className={tdc}><Badge status={s.status} /></td>
               <td className={tdc}>
                 <div className="flex items-center gap-2">
-                  <button type="button" onClick={() => { setEditingId(s.invoiceId); setForm({ invoiceId: s.invoiceId, date: s.date, clientName: s.clientName, contactNum: s.contactNum, email: s.email ?? "", serviceType: s.serviceType, price: String(s.price), payment: String(s.payment) }); setOpen(true); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit">
+                  <Button variant="secondary" size="icon" aria-label="Edit" type="button" onClick={() => { setEditingId(s.invoiceId); setForm({ invoiceId: s.invoiceId, date: s.date, clientName: s.clientName, contactNum: s.contactNum, email: s.email ?? "", serviceType: s.serviceType, price: String(s.price), payment: String(s.payment) }); setOpen(true); }} title="Edit">
                     <PenSquare size={13} />
-                  </button>
-                  <button type="button" onClick={() => onDelete(s.id)} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Delete">
+                  </Button>
+                  <Button variant="danger" size="icon" aria-label="Delete" type="button" onClick={() => onDelete(s.id)} title="Delete">
                     <Trash2 size={13} />
-                  </button>
+                  </Button>
                 </div>
               </td>
             </TRow>
@@ -718,36 +687,36 @@ function JobCostingView({ jobCosts, inquiries, inventory, selectedInquiryId, cle
   ];
 
   return (
-    <div className="p-5 space-y-4">
-      <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Job Costing · {rangeLabel}</p>
+    <div className="space-y-4">
+      <PageHeader title="Jobs" description="Manage job costs and workshop progress." action={<AddBtn onClick={() => { resetForm(); setEditingId(null); setOpen(true); }} label="Cost a pending inquiry" />} />
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <SearchBar value={q} onChange={setQ} placeholder="Search invoice, client, or job ID…" />
-        <AddBtn onClick={() => { resetForm(); setEditingId(null); setOpen(true); }} label="Cost a Pending Inquiry" />
+
       </div>
 
-      <div className="hidden 2xl:block overflow-hidden rounded-xl border border-border">
-        <table className="w-full table-fixed text-[10px] font-mono">
-          <thead><tr>{[["Job Cost ID", "jobCostId"], ["Invoice #", "invoiceId"], ["Client", "clientName"], ["Gold g", "goldUsed"], ["Gold / g", "goldCostPerG"], ["Gold Cost", "goldCost"], ["Stone", "stoneCost"], ["Labor", "laborCost"], ["Total Cost", "totalCost"], ["Selling", "sellingPrice"], ["Profit", "profit"], ["Margin", "marginPct"], ["Status", "status"]].map(([label, key]) => <th key={key} className="border-b border-border bg-muted/60 px-1 py-2 text-left text-[9px] font-medium uppercase leading-tight tracking-wide text-muted-foreground"><button type="button" className="inline-flex items-center gap-0.5" onClick={() => toggleSort(key)}>{label}{sort.key === key ? (sort.direction === 1 ? <ChevronUp size={10} /> : <ChevronDown size={10} />) : <ArrowUpDown size={9} className="opacity-40" />}</button></th>)}<th className="border-b border-border bg-muted/60 px-1 py-2 text-left text-[9px] uppercase text-muted-foreground">Actions</th></tr></thead>
+      <div className="hidden 2xl:block overflow-x-auto rounded-xl border border-border">
+        <table className="w-full min-w-[1500px] text-xs font-sans">
+          <thead><tr>{[["Job Cost ID", "jobCostId"], ["Invoice #", "invoiceId"], ["Client", "clientName"], ["Gold g", "goldUsed"], ["Gold / g", "goldCostPerG"], ["Gold Cost", "goldCost"], ["Stone", "stoneCost"], ["Labor", "laborCost"], ["Total Cost", "totalCost"], ["Selling", "sellingPrice"], ["Profit", "profit"], ["Margin", "marginPct"], ["Status", "status"]].map(([label, key]) => <th key={key} className="border-b border-border bg-muted/60 px-1 py-2 text-left text-xs font-medium section-label leading-tight tracking-wide text-muted-foreground"><Button variant="ghost" type="button" className="h-auto justify-start gap-0.5 whitespace-normal px-0 text-left text-xs" onClick={() => toggleSort(key)}>{label}{sort.key === key ? (sort.direction === 1 ? <ChevronUp size={10} /> : <ChevronDown size={10} />) : <ArrowUpDown size={9} className="opacity-40" />}</Button></th>)}<th className="border-b border-border bg-muted/60 px-1 py-2 text-left text-xs section-label text-muted-foreground">Actions</th></tr></thead>
           <tbody>{filtered.map(j => <TRow key={j.jobCostId} onClick={() => editJob(j)}>
             <td className="break-all border-t border-border px-1 py-2 text-muted-foreground">{j.jobCostId}</td>
-            <td className="break-all border-t border-border px-1 py-2 text-primary/80">{j.invoiceId || "—"}</td>
+            <td className="break-all border-t border-border px-1 py-2 text-primary-text/80">{j.invoiceId || "—"}</td>
             <td className="truncate border-t border-border px-1 py-2 font-sans font-medium" title={j.clientName}>{j.clientName}</td>
             <td className="border-t border-border px-1 py-2 text-right tabular-nums">{j.goldUsed.toFixed(2)}</td>
             <td className="border-t border-border px-1 py-2 text-right tabular-nums">{php(j.goldCostPerG)}</td>
             <td className="border-t border-border px-1 py-2 text-right tabular-nums">{php(j.goldCost)}</td>
             <td className="border-t border-border px-1 py-2 text-right tabular-nums">{php(j.stoneCost)}</td>
             <td className="border-t border-border px-1 py-2 text-right tabular-nums">{php(j.laborCost)}</td>
-            <td className="border-t border-border px-1 py-2 text-right tabular-nums text-red-700">{php(j.totalCost)}</td>
-            <td className="border-t border-border px-1 py-2 text-right tabular-nums text-amber-700">{php(j.sellingPrice)}</td>
-            <td className="border-t border-border px-1 py-2 text-right tabular-nums text-emerald-700">{php(j.profit)}</td>
-            <td className="border-t border-border px-1 py-2 text-center"><span className={marginCls(j.marginPct)}>{pct(j.marginPct)}</span></td>
-            <td className="border-t border-border px-1 py-2"><StatusBadge status={j.status} /></td>
+            <td className="border-t border-border px-1 py-2 text-right tabular-nums text-danger">{php(j.totalCost)}</td>
+            <td className="border-t border-border px-1 py-2 text-right tabular-nums text-warning">{php(j.sellingPrice)}</td>
+            <td className="border-t border-border px-1 py-2 text-right tabular-nums text-success">{php(j.profit)}</td>
+            <td className="border-t border-border px-1 py-2 text-center"><Badge variant={marginVariant(j.marginPct)}>{pct(j.marginPct)}</Badge></td>
+            <td className="border-t border-border px-1 py-2"><Badge status={j.status} /></td>
             <td className="border-t border-border px-1 py-2"><div className="flex flex-wrap items-center gap-1">
-              <button type="button" onClick={() => editJob(j)} className="rounded p-1 text-muted-foreground hover:bg-muted" title="Edit"><PenSquare size={12} /></button>
-              {j.status === "Pending" && <button type="button" onClick={e => { e.stopPropagation(); onApprove(j); }} className="rounded px-1.5 py-1 text-[9px] font-semibold text-blue-700 hover:bg-blue-500/10">Approve</button>}
-              {["Approved", "In Progress"].includes(j.status) && <button type="button" onClick={e => { e.stopPropagation(); onReady(j); }} className="rounded px-1.5 py-1 text-[9px] font-semibold text-sky-700 hover:bg-sky-500/10">Ready</button>}
-              {["Approved", "Ready for Pickup"].includes(j.status) && <button type="button" onClick={e => { e.stopPropagation(); finishJob(j); }} className="rounded px-1.5 py-1 text-[9px] font-semibold text-emerald-700 hover:bg-emerald-500/10">Finish</button>}
-              <button type="button" onClick={() => onDelete(j)} className="rounded p-1 text-muted-foreground hover:bg-muted" title="Delete"><Trash2 size={12} /></button>
+              <Button variant="secondary" size="icon" aria-label="Edit" type="button" onClick={() => editJob(j)} title="Edit"><PenSquare size={12} /></Button>
+              {j.status === "Pending" && <Button variant="primary" type="button" onClick={e => { e.stopPropagation(); onApprove(j); }} className="text-xs">Approve</Button>}
+              {["Approved", "In Progress"].includes(j.status) && <Button variant="primary" type="button" onClick={e => { e.stopPropagation(); onReady(j); }} className="text-xs">Ready</Button>}
+              {["Approved", "Ready for Pickup"].includes(j.status) && <Button variant="primary" type="button" onClick={e => { e.stopPropagation(); finishJob(j); }} className="text-xs">Finish</Button>}
+              <Button variant="danger" size="icon" aria-label="Delete" type="button" onClick={() => onDelete(j)} title="Delete"><Trash2 size={12} /></Button>
             </div></td>
           </TRow>)}{!filtered.length && <EmptyRow cols={14} />}</tbody>
         </table>
@@ -756,24 +725,24 @@ function JobCostingView({ jobCosts, inquiries, inventory, selectedInquiryId, cle
       <div className="grid grid-cols-1 gap-3 2xl:hidden">
         {filtered.map(j => <article key={j.jobCostId} className="rounded-xl border border-border bg-card p-4">
           <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-            <div><div className="text-sm font-semibold">{j.clientName}</div><div className="text-xs text-primary">{j.invoiceId || "Invoice pending"}</div></div>
-            <StatusBadge status={j.status} />
+            <div><div className="text-sm font-semibold">{j.clientName}</div><div className="text-xs text-primary-text">{j.invoiceId || "Invoice pending"}</div></div>
+            <Badge status={j.status} />
           </div>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
-            {fields(j).map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-[9px] uppercase tracking-wide text-muted-foreground">{label}</dt><dd className="break-words text-xs font-medium tabular-nums">{value}</dd></div>)}
+            {fields(j).map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-xs section-label text-muted-foreground">{sentenceCase(label)}</dt><dd className="break-words text-xs font-medium tabular-nums">{label === "Status" ? <Badge status={value} /> : value}</dd></div>)}
           </dl>
           <div className="mt-3 flex flex-wrap gap-2">
-            <button type="button" onClick={() => editJob(j)} className="rounded-lg border border-border px-3 py-1.5 text-xs">Edit</button>
-            {j.status === "Pending" && <button type="button" onClick={() => onApprove(j)} className="rounded-lg bg-blue-700 px-3 py-1.5 text-xs text-white">Approve Costing</button>}
-            {["Approved", "In Progress"].includes(j.status) && <button type="button" onClick={() => onReady(j)} className="rounded-lg bg-sky-700 px-3 py-1.5 text-xs text-white">Ready for Pickup</button>}
-            {["Approved", "Ready for Pickup"].includes(j.status) && <button type="button" onClick={() => finishJob(j)} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs text-white">Finish Sale</button>}
-            <button type="button" onClick={() => onDelete(j)} className="rounded-lg border border-border px-3 py-1.5 text-xs">Delete</button>
+            <Button variant="secondary" type="button" onClick={() => editJob(j)} className="text-xs">Edit</Button>
+            {j.status === "Pending" && <Button variant="primary" type="button" onClick={() => onApprove(j)} className="text-xs">Approve Costing</Button>}
+            {["Approved", "In Progress"].includes(j.status) && <Button variant="primary" type="button" onClick={() => onReady(j)} className="text-xs">Ready for Pickup</Button>}
+            {["Approved", "Ready for Pickup"].includes(j.status) && <Button variant="primary" type="button" onClick={() => finishJob(j)} className="text-xs">Finish Sale</Button>}
+            <Button variant="danger" type="button" onClick={() => onDelete(j)} className="text-xs">Delete</Button>
           </div>
         </article>)}
         {!filtered.length && <div className="rounded-xl border border-border p-8 text-center text-sm text-muted-foreground">No matching records</div>}
       </div>
 
-      {finishTarget && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true"><div className="w-full max-w-lg rounded-xl border border-border bg-card p-5"><h2 className="font-semibold">Materials used for {finishTarget.invoiceId}</h2><p className="mt-1 text-xs text-muted-foreground">Select packaging or optional materials and enter the quantities used.</p><select aria-label="Extra inventory material" className={ic + " mt-4"} value={finishMaterialId} onChange={e => setFinishMaterialId(e.target.value)}><option value="">Select an inventory item</option>{inventory.filter(item => item.balance > 0 && item.category !== "GOLD" && item.category !== "TOOLS").map(item => <option key={item.referenceId} value={item.referenceId}>{item.itemName} · {item.category} · {item.balance} {item.unit} available</option>)}</select><div className="mt-3 max-h-64 space-y-2 overflow-auto">{inventory.filter(item => item.balance > 0 && item.category !== "GOLD" && item.category !== "TOOLS" && (!finishMaterialId || item.referenceId === finishMaterialId)).map(item => <label key={item.referenceId} className="grid grid-cols-[1fr_6rem] items-center gap-3 rounded border border-border p-2 text-sm"><span>{item.itemName} <small className="text-muted-foreground">({item.category}, {item.balance} {item.unit} available)</small></span><input aria-label={`Quantity of ${item.itemName}`} type="number" min="0" max={item.balance} step="0.01" className={ic} value={finishQuantities[item.referenceId] ?? ""} onChange={e => setFinishQuantities(v => ({ ...v, [item.referenceId]: e.target.value }))} /></label>)}{!inventory.some(item => item.balance > 0 && item.category !== "GOLD" && item.category !== "TOOLS") && <p className="text-sm text-muted-foreground">No packaging or optional material stock is available.</p>}</div><div className="mt-5 flex justify-end gap-2"><button className="rounded-lg border border-border px-4 py-2 text-sm" onClick={() => setFinishTarget(null)}>Cancel</button><button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm text-white" onClick={() => { const materials = Object.entries(finishQuantities).filter(([, q]) => Number(q) > 0).map(([referenceId, q]) => ({ referenceId, quantity: Number(q) })); onFinish(finishTarget, materials); setFinishTarget(null) }}>Finish Sale</button></div></div></div>}
+      {finishTarget && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-overlay p-4" role="dialog" aria-modal="true"><div className="w-full max-w-lg rounded-xl border border-border bg-card p-5"><h2 className="font-semibold">Materials used for {finishTarget.invoiceId}</h2><p className="mt-1 text-xs text-muted-foreground">Select packaging or optional materials and enter the quantities used.</p><select aria-label="Extra inventory material" className={ic + " mt-4"} value={finishMaterialId} onChange={e => setFinishMaterialId(e.target.value)}><option value="">Select an inventory item</option>{inventory.filter(item => item.balance > 0 && item.category !== "GOLD" && item.category !== "TOOLS").map(item => <option key={item.referenceId} value={item.referenceId}>{item.itemName} · {item.category} · {item.balance} {item.unit} available</option>)}</select><div className="mt-3 max-h-64 space-y-2 overflow-auto">{inventory.filter(item => item.balance > 0 && item.category !== "GOLD" && item.category !== "TOOLS" && (!finishMaterialId || item.referenceId === finishMaterialId)).map(item => <label key={item.referenceId} className="grid grid-cols-[1fr_6rem] items-center gap-3 rounded border border-border p-2 text-sm"><span>{item.itemName} <small className="text-muted-foreground">({item.category}, {item.balance} {item.unit} available)</small></span><input aria-label={`Quantity of ${item.itemName}`} type="number" min="0" max={item.balance} step="0.01" className={ic} value={finishQuantities[item.referenceId] ?? ""} onChange={e => setFinishQuantities(v => ({ ...v, [item.referenceId]: e.target.value }))} /></label>)}{!inventory.some(item => item.balance > 0 && item.category !== "GOLD" && item.category !== "TOOLS") && <p className="text-sm text-muted-foreground">No packaging or optional material stock is available.</p>}</div><div className="mt-5 flex justify-end gap-2"><Button variant="secondary" className="text-sm" onClick={() => setFinishTarget(null)}>Cancel</Button><Button variant="primary" className="text-sm" onClick={() => { const materials = Object.entries(finishQuantities).filter(([, q]) => Number(q) > 0).map(([referenceId, q]) => ({ referenceId, quantity: Number(q) })); onFinish(finishTarget, materials); setFinishTarget(null) }}>Finish Sale</Button></div></div></div>}
       {open && <Modal title={editingId ? "Edit Job Costing" : "Cost a Pending Inquiry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update Costing" : "Save Pending Costing"} isSubmitting={isSubmitting}>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {!editingId && <FF label="Pending Inquiry"><select className={ic} value={form.inquiryId} onChange={e => selectInquiry(e.target.value)} required><option value="">Select an inquiry</option>{pendingInquiries.map(i => <option key={i.inquiryId} value={i.inquiryId}>{i.customerName} · {i.category} · {i.inquiryId}</option>)}</select></FF>}
@@ -845,41 +814,38 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
     } catch (error) { alert(error instanceof Error ? error.message : "Inventory entry could not be saved."); setIsSubmitting(false); submittingRef.current = false; return; }
     closeModal(); setIsSubmitting(false); submittingRef.current = false;
   };
-  return <div className="p-5 space-y-4">
-    <div className="flex flex-wrap items-center justify-between gap-4">
-      <div><h2 className="text-lg font-semibold">Inventory overview</h2><p className="mt-1 text-xs text-muted-foreground">Track stock, materials, and movement across your workshop.</p></div>
-      <AddStockChangeButton onClick={() => { setForm(blank()); setSelectedProduct(""); setEditingId(null); setOpen(true); }} />
-    </div>
+  return <div className="space-y-4">
+    <PageHeader title="Inventory" description="Track stock, materials, and movement across your workshop." action={<AddStockChangeButton onClick={() => { setForm(blank()); setSelectedProduct(""); setEditingId(null); setOpen(true); }} />} />
     <div className="grid items-center gap-4 xl:grid-cols-[minmax(180px,1fr)_minmax(0,2fr)]">
       <div className="space-y-2"><SearchBar value={q} onChange={setQ} placeholder="Search reference, item…" />
         <select className={ic + " w-auto"} value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} aria-label="Filter inventory category"><option value="ALL">All categories</option>{INVENTORY_CATEGORIES.map(c => <option key={c} value={c}>{c[0] + c.slice(1).toLowerCase()}</option>)}</select>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <section aria-label="Item Summary" className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-          <div className="flex items-center justify-between text-xs font-medium text-muted-foreground"><h3>Item Summary</h3><Package size={17} className="text-primary" /></div>
+        <section aria-label="Item summary" className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+          <div className="flex items-center justify-between text-xs font-medium text-muted-foreground"><h3>Item summary</h3><Package size={17} className="text-primary-text" /></div>
           <p className="mt-3 text-3xl font-semibold tabular-nums">{summary.entries.toLocaleString()}</p>
           <p className="mt-1 text-xs text-muted-foreground">Ledger entries matching your filters</p>
         </section>
-        <section aria-label="Product Summary" className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
-          <div className="flex items-center justify-between text-xs font-medium text-muted-foreground"><h3>Product Summary</h3><Gem size={17} className="text-emerald-600" /></div>
+        <section aria-label="Product summary" className="rounded-xl border border-success/20 bg-success-tint p-4">
+          <div className="flex items-center justify-between text-xs font-medium text-muted-foreground"><h3>Product summary</h3><Gem size={17} className="text-success" /></div>
           <p className="mt-3 text-3xl font-semibold tabular-nums">{summary.inStock.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">in stock / {summary.products}</span></p>
           <p className="mt-1 text-xs text-muted-foreground">{summary.quantities.length ? summary.quantities.map(([unit, quantity]) => `${quantity.toLocaleString("en-PH", { maximumFractionDigits: 3 })} ${unit}`).join(" · ") : "No stock remaining"}</p>
         </section>
       </div>
     </div>
-    <div className="flex flex-wrap justify-between gap-2 rounded-lg border border-border px-4 py-3 text-xs"><span className="text-muted-foreground">Gold stock <b className="ml-2 text-foreground">{goldBalance.toLocaleString("en-PH", { maximumFractionDigits: 3 })} g</b></span><span className="text-muted-foreground">24K reference value <b className="ml-2 text-primary">{goldRate === null ? "Rate unavailable" : php(goldBalance * goldRate)}</b></span></div>
+    <div className="flex flex-wrap justify-between gap-2 rounded-lg border border-border px-4 py-3 text-xs"><span className="text-muted-foreground">Gold stock <b className="ml-2 text-foreground">{goldBalance.toLocaleString("en-PH", { maximumFractionDigits: 3 })} g</b></span><span className="text-muted-foreground">24K reference value <b className="ml-2 text-primary-text">{goldRate === null ? "Rate unavailable" : php(goldBalance * goldRate)}</b></span></div>
   <TableWrap><thead><tr>{[["Date", "date"], ["Category", "category"], ["Reference", "referenceId"], ["Item Description", "itemName"], ["In", "quantityIn"], ["Unit Price", "unitPrice"], ["Out", "quantityOut"], ["Loss / Scrap", "quantityLoss"], ["Balance", "balance"]].map(([h, k]) => <SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}<th className={thc}>Actions</th></tr></thead>
       <tbody>{visibleProducts.map(product => <Fragment key={product.key}>
         <tr className="border-b border-border bg-muted/30">
-          <td className={tdc} colSpan={4}><button type="button" className="flex items-center gap-2 text-left font-semibold" aria-expanded={expanded.has(product.key)} onClick={() => setExpanded(previous => { const next = new Set(previous); if (next.has(product.key)) next.delete(product.key); else next.add(product.key); return next; })}>
+          <td className={tdc} colSpan={4}><Button variant="ghost" type="button" className="flex items-center gap-2 text-left" aria-expanded={expanded.has(product.key)} onClick={() => setExpanded(previous => { const next = new Set(previous); if (next.has(product.key)) next.delete(product.key); else next.add(product.key); return next; })}>
             {expanded.has(product.key) ? <ChevronUp size={15}/> : <ChevronDown size={15}/>}{product.itemName}<span className="font-normal text-muted-foreground">{product.category} · {product.movements.length} movements</span>
-          </button></td>
+          </Button></td>
           <td className={tdr}>{product.quantityIn.toLocaleString("en-PH", { maximumFractionDigits:3 })}</td><td className={tdr}>—</td>
           <td className={tdr}>{product.quantityOut.toLocaleString("en-PH", { maximumFractionDigits:3 })}</td><td className={tdr}>{product.quantityLoss.toLocaleString("en-PH", { maximumFractionDigits:3 })}</td>
-          <td className={tdr+" text-primary font-semibold"}>{product.balance.toLocaleString("en-PH", { maximumFractionDigits:3 })} {product.unit}</td>
+          <td className={tdr+" text-primary-text font-semibold"}>{product.balance.toLocaleString("en-PH", { maximumFractionDigits:3 })} {product.unit}</td>
           <td className={tdc}><AddStockChangeButton compact onClick={() => addMovement(product.key)} /></td>
         </tr>
-        {expanded.has(product.key) && product.movements.map(e => <TRow key={e.id} onClick={()=>edit(e)}><td className={tdc}>{fmtDate(e.date)}</td><td className={tdc}><span className="rounded bg-primary/10 px-2 py-1 text-[10px] uppercase">{e.category}{e.category === "GOLD" && e.goldKarat != null ? ` · ${e.goldKarat}K` : ""}</span></td><td className={tdc+" text-primary/80"}>{e.referenceId}</td><td className={tdc+" pl-8 font-sans"}>↳ {e.itemName}</td><td className={tdr}>{e.quantityIn ? `+${e.quantityIn}` : "—"}</td><td className={tdr}>{e.unitPrice ? php(e.unitPrice) : "—"}</td><td className={tdr}>{e.quantityOut ? `-${e.quantityOut}` : "—"}</td><td className={tdr}>{e.quantityLoss || "—"}</td><td className={tdr+" text-primary font-semibold"}>{e.balance} {e.unit}</td><td className={tdc}><div className="flex items-center gap-2"><button type="button" onClick={event=>{event.stopPropagation();edit(e);}} className="rounded p-1.5 text-muted-foreground hover:bg-muted" title="Edit"><PenSquare size={13}/></button><button type="button" onClick={event=>{event.stopPropagation();onDelete(e.id);}} className="rounded p-1.5 text-muted-foreground hover:bg-muted" title="Delete"><Trash2 size={13}/></button></div></td></TRow>)}
+        {expanded.has(product.key) && product.movements.map(e => <TRow key={e.id} onClick={()=>edit(e)}><td className={tdc}>{fmtDate(e.date)}</td><td className={tdc}><Badge>{sentenceCase(e.category)}{e.category === "GOLD" && e.goldKarat != null ? ` · ${e.goldKarat}K` : ""}</Badge></td><td className={tdc+" text-primary-text/80"}>{e.referenceId}</td><td className={tdc+" pl-8 font-sans"}>↳ {e.itemName}</td><td className={tdr}>{e.quantityIn ? `+${e.quantityIn}` : "—"}</td><td className={tdr}>{e.unitPrice ? php(e.unitPrice) : "—"}</td><td className={tdr}>{e.quantityOut ? `-${e.quantityOut}` : "—"}</td><td className={tdr}>{e.quantityLoss || "—"}</td><td className={tdr+" text-primary-text font-semibold"}>{e.balance} {e.unit}</td><td className={tdc}><div className="flex items-center gap-2"><Button variant="secondary" size="icon" aria-label="Edit" type="button" onClick={event=>{event.stopPropagation();edit(e);}} title="Edit"><PenSquare size={13}/></Button><Button variant="danger" size="icon" aria-label="Delete" type="button" onClick={event=>{event.stopPropagation();onDelete(e.id);}} title="Delete"><Trash2 size={13}/></Button></div></td></TRow>)}
       </Fragment>)}{!visibleProducts.length && <EmptyRow cols={10}/>}</tbody>
   </TableWrap>
   {
@@ -889,7 +855,7 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
         <FF label="Category"><select disabled={!!selectedProduct} className={ic} value={form.category} onChange={e => { const category = e.target.value; setForm(f => ({ ...f, category, goldKarat: category === "GOLD" ? f.goldKarat : "", unit: INVENTORY_UNITS[category][0] })); }}>{INVENTORY_CATEGORIES.map(c => <option key={c} value={c}>{c[0] + c.slice(1).toLowerCase()}</option>)}</select></FF>{form.category === "GOLD" && <FF label="Karat"><select disabled={!!selectedProduct} className={ic} value={form.goldKarat} onChange={e => setForm(f => ({ ...f, goldKarat: e.target.value }))} required><option value="">Select karat</option>{Array.from({ length: 15 }, (_, i) => i + 10).map(karat => <option key={karat} value={karat}>{karat}K</option>)}</select></FF>}<FF label="Unit"><select disabled={!!selectedProduct} className={ic} value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}>{units.map(u => <option key={u}>{u}</option>)}</select></FF>
         <div className="col-span-2"><FF label="Item Description"><input readOnly={!!selectedProduct} className={ic} value={form.itemName} onChange={e => setForm(f => ({ ...f, itemName: e.target.value }))} placeholder="e.g. 18k chain, gemstone, ring box" required /></FF></div>
         <FF label={`Quantity In (${form.unit})`}><input type="number" min="0" step="0.01" className={ic} value={form.quantityIn} onChange={e => setForm(f => ({ ...f, quantityIn: e.target.value }))} /></FF><FF label={`Unit Price (₱ / ${form.unit})`}><input type="number" required min="0.01" step="0.01" className={ic} value={form.unitPrice} onChange={e => setForm(f => ({ ...f, unitPrice: e.target.value }))} /></FF><FF label={`Quantity Out (${form.unit})`}><input type="number" min="0" step="0.01" className={ic} value={form.quantityOut} onChange={e => setForm(f => ({ ...f, quantityOut: e.target.value }))} /></FF><FF label={`Loss / Scrap (${form.unit})`}><input type="number" min="0" step="0.01" className={ic} value={form.quantityLoss} onChange={e => setForm(f => ({ ...f, quantityLoss: e.target.value }))} /></FF>
-          </div><p className="text-[10px] text-muted-foreground">Stock balance is calculated for each category, item, and unit.</p>
+          </div><p className="text-xs text-muted-foreground">Stock balance is calculated for each category, item, and unit.</p>
         </Modal>}
       </div>;
 }
@@ -949,14 +915,15 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
   };
 
         return (
-        <div className="p-5 space-y-4">
+        <div className="space-y-4">
+          <PageHeader title="Inquiries" description="Manage customer requests and prepare new jobs." action={<AddBtn onClick={() => { resetForm(); setEditingId(null); setOpen(true); }} label="Add inquiry" />} />
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <SearchBar value={q} onChange={setQ} placeholder="Search client, service type…" />
-            <AddBtn onClick={() => { resetForm(); setEditingId(null); setOpen(true); }} label="Add Inquiry" />
+
           </div>
           <TableWrap>
             <thead><tr>
-    { [["Date", "date"], ["Inquiry ID", "inquiryId"], ["Client Name", "customerName"], ["Contact", "contactInfo"], ["Email", "email"], ["Category", "category"], ["Details", "details"], ["Quoted Price", "quotedPrice"], ["Fully Paid", "isFullyPaid"], ["Status", "status"]].map(([h, k]) => <SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />) } <th className={thc}>Actions</th>
+    { [["Date", "date"], ["Inquiry ID", "inquiryId"], ["Client Name", "customerName"], ["Contact", "contactInfo"], ["Email", "email"], ["Category", "category"], ["Details", "details"], ["Quoted Price", "quotedPrice"], ["Fully Paid", "isFullyPaid"], ["Status", "status"]].map(([h, k]) => <SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}<th className={thc}>Actions</th>
         </tr ></thead >
       <tbody>
         {filtered.map(i => (
@@ -968,17 +935,17 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
             <td className={tdc + " text-muted-foreground"}>{i.email}</td>
             <td className={tdc}>{i.category}</td>
             <td className={tdc + " font-sans max-w-[200px] truncate text-muted-foreground"}>{i.details}</td>
-            <td className={tdr + " text-amber-700 dark:text-amber-300"}>{php(i.quotedPrice)}</td>
-            <td className={tdc}>{i.isFullyPaid ? "Yes" : "No"}</td><td className={tdc}><StatusBadge status={i.status} /></td>
+            <td className={tdr + " text-warning "}>{php(i.quotedPrice)}</td>
+            <td className={tdc}><Badge status={i.isFullyPaid ? "Paid" : "Pending"} /></td><td className={tdc}><Badge status={i.status} /></td>
             <td className={tdc}>
               <div className="flex items-center gap-2">
-                {i.status === "Pending" && <button type="button" onClick={() => onStartCosting(i.inquiryId)} className="rounded-lg bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary hover:bg-primary/20">Start Costing</button>}
-                {i.status === "Pending" && <button type="button" onClick={e => { e.stopPropagation(); setEditingId(i.inquiryId); setForm({ customerName: i.customerName, contactInfo: i.contactInfo, email: i.email, details: i.details, category: i.category, quotedPrice: String(i.quotedPrice), isFullyPaid: i.isFullyPaid, status: i.status }); setOpen(true); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit">
+                {i.status === "Pending" && <Button variant="ghost" type="button" onClick={() => onStartCosting(i.inquiryId)} className="text-xs">Start Costing</Button>}
+                {i.status === "Pending" && <Button variant="secondary" size="icon" aria-label="Edit" type="button" onClick={e => { e.stopPropagation(); setEditingId(i.inquiryId); setForm({ customerName: i.customerName, contactInfo: i.contactInfo, email: i.email, details: i.details, category: i.category, quotedPrice: String(i.quotedPrice), isFullyPaid: i.isFullyPaid, status: i.status }); setOpen(true); }} title="Edit">
                   <PenSquare size={13} />
-                </button>}
-                {i.status === "Pending" && <button type="button" onClick={() => onDelete(i.inquiryId)} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Delete">
+                </Button>}
+                {i.status === "Pending" && <Button variant="danger" size="icon" aria-label="Delete" type="button" onClick={() => onDelete(i.inquiryId)} title="Delete">
                   <Trash2 size={13} />
-                </button>}
+                </Button>}
               </div>
             </td>
           </TRow>
@@ -1061,18 +1028,18 @@ function ExpensesView({ expenses, onAdd, onUpdate, onDelete, rangeLabel }: { exp
   };
 
   return (
-    <div className="p-5 space-y-4">
-      <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Expenses · {rangeLabel}</p>
+    <div className="space-y-4">
+      <PageHeader title="Expenses" description="Track operating costs and workshop spending." action={<AddBtn onClick={() => { resetForm(); setEditingId(null); setOpen(true); }} label="Add expense" />} />
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-4">
           <SearchBar value={q} onChange={setQ} placeholder="Search category, description…" />
-          <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-            <TrendingDown size={13} className="text-red-600 dark:text-red-400" />
-            <span className="text-[11px] font-mono text-muted-foreground uppercase tracking-widest">Total:</span>
-            <span className="text-sm font-bold text-red-700 dark:text-red-400 tabular-nums">{php(total)}</span>
+          <div className="flex items-center gap-2 bg-danger-tint border border-danger/20 rounded-lg px-3 py-2">
+            <TrendingDown size={13} className="text-danger " />
+            <span className="text-xs font-sans text-muted-foreground section-label">Total:</span>
+            <span className="text-sm font-bold text-danger tabular-nums">{php(total)}</span>
           </div>
         </div>
-        <AddBtn onClick={() => { resetForm(); setEditingId(null); setOpen(true); }} label="Add Expense" />
+
       </div>
       <TableWrap>
         <thead><tr>
@@ -1084,20 +1051,18 @@ function ExpensesView({ expenses, onAdd, onUpdate, onDelete, rangeLabel }: { exp
               <td className={tdc}>{fmtDate(e.expDate)}</td>
               <td className={tdc + " text-muted-foreground"}>{e.expenseId}</td>
               <td className={tdc}>
-                <span className="px-2 py-0.5 rounded text-[10px] border bg-muted dark:bg-slate-800/60 border-border text-muted-foreground uppercase tracking-wide">
-                  {e.category}
-                </span>
+                <Badge>{e.category}</Badge>
               </td>
               <td className={tdc + " font-sans text-muted-foreground max-w-[300px]"}>{e.description}</td>
-              <td className={tdr + " text-red-700 dark:text-red-400 font-semibold"}>{php(e.amount)}</td>
+              <td className={tdr + " text-danger font-semibold"}>{php(e.amount)}</td>
               <td className={tdc}>
                 <div className="flex items-center gap-2">
-                  <button type="button" onClick={() => { setEditingId(e.expenseId); setForm({ expDate: e.expDate, category: e.category, description: e.description, amount: String(e.amount) }); setOpen(true); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Edit">
+                  <Button variant="secondary" size="icon" aria-label="Edit" type="button" onClick={() => { setEditingId(e.expenseId); setForm({ expDate: e.expDate, category: e.category, description: e.description, amount: String(e.amount) }); setOpen(true); }} title="Edit">
                     <PenSquare size={13} />
-                  </button>
-                  <button type="button" onClick={() => onDelete(e.expenseId)} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Delete">
+                  </Button>
+                  <Button variant="danger" size="icon" aria-label="Delete" type="button" onClick={() => onDelete(e.expenseId)} title="Delete">
                     <Trash2 size={13} />
-                  </button>
+                  </Button>
                 </div>
               </td>
             </TRow>
@@ -1105,9 +1070,9 @@ function ExpensesView({ expenses, onAdd, onUpdate, onDelete, rangeLabel }: { exp
           {!filtered.length && <EmptyRow cols={6} />}
         </tbody>
         <tfoot>
-          <tr className="bg-muted/40 dark:bg-slate-900/50">
-            <td colSpan={4} className="px-3 py-3 text-[11px] font-mono text-muted-foreground uppercase tracking-widest text-right">Total</td>
-            <td className="px-3 py-3 text-right font-bold text-red-700 dark:text-red-400 tabular-nums text-sm">{php(total)}</td>
+          <tr className="bg-muted/40 ">
+            <td colSpan={4} className="px-3 py-3 text-xs font-sans text-muted-foreground section-label text-right">Total</td>
+            <td className="px-3 py-3 text-right font-bold text-danger tabular-nums text-sm">{php(total)}</td>
           </tr>
         </tfoot>
       </TableWrap>
@@ -1131,21 +1096,21 @@ function ExpensesView({ expenses, onAdd, onUpdate, onDelete, rangeLabel }: { exp
 
 // ── profit analysis ─────────────────────────────────────────────────────────
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const PIE_COLORS = ["#1746a2", "#d4a017", "#496bb2", "#e2bb4e", "#111318"];
+const PIE_COLORS = ["var(--primary)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--foreground)"];
 
 function RecordDetails({ title, record, onClose }: { title: string; record: Record<string, unknown> | null; onClose: () => void }) {
   if (!record) return null;
   const entries = Object.entries(record).filter(([key]) => key !== "id");
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4" onMouseDown={onClose}>
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4" onMouseDown={onClose}>
     <section role="dialog" aria-modal="true" aria-label={title} onMouseDown={e => e.stopPropagation()} className="w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl">
-      <div className="mb-5 flex items-center justify-between gap-4">
+      <div className="mb-5 flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">{title}</h2>
-        <button type="button" onClick={onClose} aria-label="Close details" className="rounded-lg p-2 hover:bg-muted"><X size={18} /></button>
+        <Button variant="secondary" size="icon" type="button" onClick={onClose} aria-label="Close details" ><X size={18} /></Button>
       </div>
       <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {entries.map(([key, value]) => <div key={key} className="rounded-lg bg-muted/50 p-3">
-          <dt className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{key.replace(/([A-Z])/g, " $1")}</dt>
-          <dd className="break-words text-sm font-medium">{typeof value === "number" && /price|cost|profit|amount|balance|payment/i.test(key) ? php(value) : String(value ?? "—")}</dd>
+          <dt className="mb-1 text-xs font-medium section-label text-muted-foreground">{sentenceCase(key.replace(/([A-Z])/g, " $1"))}</dt>
+          <dd className="break-words text-sm font-medium">{/status|role|action/i.test(key) ? <Badge status={String(value ?? "Unknown")} /> : typeof value === "number" && /price|cost|profit|amount|balance|payment/i.test(key) ? php(value) : String(value ?? "—")}</dd>
         </div>)}
       </dl>
     </section>
@@ -1191,9 +1156,9 @@ function ProfitAnalysisView({ sales, jobCosts, expenses, selectedYear, setSelect
     return { month: MONTH_NAMES[monthIndex].slice(0, 3), revenue, cost };
   });
   const comparisonTotals = [
-    { label: "Revenue", value: totalRevenue, color: "#1746a2" },
-    { label: "Cost", value: totalCost, color: "#d4a017" },
-    { label: "Expenses", value: totalExp, color: "#64748b" },
+    { label: "Revenue", value: totalRevenue, color: "var(--primary)" },
+    { label: "Cost", value: totalCost, color: "var(--chart-2)" },
+    { label: "Expenses", value: totalExp, color: "var(--chart-4)" },
   ];
   const comparisonMax = Math.max(1, ...comparisonTotals.map(item => Math.abs(item.value)));
   const rangeLabel = startMonth === endMonth
@@ -1211,7 +1176,7 @@ function ProfitAnalysisView({ sales, jobCosts, expenses, selectedYear, setSelect
   const otherTotal = remainingCategories.reduce((sum, category) => sum + category.value, 0);
   const expenseDonut = [
     ...topCategories,
-    ...(remainingCategories.length ? [{ name: "Other", value: otherTotal, color: "#94a3b8" }] : []),
+    ...(remainingCategories.length ? [{ name: "Other", value: otherTotal, color: "var(--chart-5)" }] : []),
   ];
   const expenseShare = (value: number) => totalExp > 0 ? value / totalExp * 100 : 0;
 
@@ -1224,17 +1189,17 @@ function ProfitAnalysisView({ sales, jobCosts, expenses, selectedYear, setSelect
   const cardCls = "bg-card border border-border rounded-xl p-5";
 
   return (
-    <div className="p-5 space-y-5">
+    <div className="space-y-5">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {[
-          { label: `Gross Profit (${rangeLabel})`, val: php(grossProfit), sub: "Revenue minus job costs", cls: "text-emerald-700 dark:text-emerald-400" },
-          { label: `Total Expenses (${rangeLabel})`, val: php(totalExp), sub: "Operating overhead", cls: "text-red-700 dark:text-red-400" },
-          { label: `Net Profit (${rangeLabel})`, val: php(netProfit), sub: `${pct(netMargin)} net margin`, cls: netProfit >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400" },
+          { label: `Gross profit (${rangeLabel})`, val: php(grossProfit), sub: "Revenue minus job costs", cls: "text-success " },
+          { label: `Total expenses (${rangeLabel})`, val: php(totalExp), sub: "Operating overhead", cls: "text-danger " },
+          { label: `Net profit (${rangeLabel})`, val: php(netProfit), sub: `${pct(netMargin)} net margin`, cls: netProfit >= 0 ? "text-success " : "text-danger " },
         ].map(k => (
           <div key={k.label} className={cardCls}>
-            <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-2">{k.label}</div>
-            <div className={`text-2xl font-bold tabular-nums ${k.cls}`}>{k.val}</div>
-            <div className="text-[11px] text-muted-foreground mt-1">{k.sub}</div>
+            <div className="text-xs font-sans text-muted-foreground section-label mb-2">{k.label}</div>
+            <div className={`hero-kpi ${k.cls}`}>{k.val}</div>
+            <div className="text-xs text-muted-foreground mt-1">{k.sub}</div>
           </div>
         ))}
       </div>
@@ -1244,17 +1209,17 @@ function ProfitAnalysisView({ sales, jobCosts, expenses, selectedYear, setSelect
           <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
             <div><h2 className="text-sm font-medium">Monthly Revenue vs. Cost</h2><p className="mt-1 text-xs text-muted-foreground">{rangeLabel}</p></div>
             <div className="flex flex-wrap gap-2">
-              <label className="text-[10px] text-muted-foreground">From
+              <label className="text-xs text-muted-foreground">From
                 <select aria-label="Start month" className={`${ic} ml-2 w-auto py-1.5`} value={startMonth} onChange={e => setStartMonth(Number(e.target.value))}>
                   {MONTH_NAMES.map((month, i) => <option key={month} value={i} disabled={i > endMonth}>{month}</option>)}
                 </select>
               </label>
-              <label className="text-[10px] text-muted-foreground">To
+              <label className="text-xs text-muted-foreground">To
                 <select aria-label="End month" className={`${ic} ml-2 w-auto py-1.5`} value={endMonth} onChange={e => setEndMonth(Number(e.target.value))}>
                   {MONTH_NAMES.map((month, i) => <option key={month} value={i} disabled={i < startMonth || (selectedYear === currentYear && i > new Date().getMonth())}>{month}</option>)}
                 </select>
               </label>
-              <label className="text-[10px] text-muted-foreground">Year
+              <label className="text-xs text-muted-foreground">Year
                 <select aria-label="Year" className={`${ic} ml-2 w-auto py-1.5`} value={selectedYear} onChange={e => { const year = Number(e.target.value); setSelectedYear(year); if (year === currentYear) { const maxMonth = new Date().getMonth(); setStartMonth(m => Math.min(m, maxMonth)); setEndMonth(m => Math.min(m, maxMonth)); } }}>
                   {availableYears.map(year => <option key={year} value={year}>{year}</option>)}
                 </select>
@@ -1267,11 +1232,11 @@ function ProfitAnalysisView({ sales, jobCosts, expenses, selectedYear, setSelect
           <ResponsiveContainer width="100%" height={260}>
             <BarChart accessibilityLayer data={chartData} barGap={4} barCategoryGap="25%" margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-              <XAxis dataKey="month" tick={{ fill: "var(--muted-foreground)", fontSize: 11, fontFamily: "Inter" }} axisLine={false} tickLine={false} tickMargin={12} />
-              <YAxis width={64} tick={{ fill: "var(--muted-foreground)", fontSize: 10, fontFamily: "Inter" }} axisLine={false} tickLine={false} tickFormatter={v => "₱" + new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(v)} />
+              <XAxis dataKey="month" tick={{ fill: "var(--muted-foreground)", fontSize: 12, fontFamily: "Inter" }} axisLine={false} tickLine={false} tickMargin={12} />
+              <YAxis width={64} tick={{ fill: "var(--muted-foreground)", fontSize: 12, fontFamily: "Inter" }} axisLine={false} tickLine={false} tickFormatter={v => "₱" + new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(v)} />
               <Tooltip content={<ChartTip />} cursor={{ fill: "var(--muted)", opacity: 0.5 }} />
-              <Bar dataKey="revenue" name="Revenue" fill="#1746a2" radius={[3, 3, 0, 0]} maxBarSize={32} />
-              <Bar dataKey="cost" name="Cost" fill="#d4a017" radius={[3, 3, 0, 0]} maxBarSize={32} />
+              <Bar dataKey="revenue" name="Revenue" fill="var(--primary)" radius={[3, 3, 0, 0]} maxBarSize={32} />
+              <Bar dataKey="cost" name="Cost" fill="var(--chart-2)" radius={[3, 3, 0, 0]} maxBarSize={32} />
             </BarChart>
           </ResponsiveContainer>
         </section>
@@ -1282,15 +1247,15 @@ function ProfitAnalysisView({ sales, jobCosts, expenses, selectedYear, setSelect
           <div className="mt-8 space-y-7">
             {comparisonTotals.map(item => <div key={item.label}>
               <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                <span className="text-[11px] font-sans uppercase tracking-[0.12em] text-foreground opacity-70">{item.label}</span>
-                <span className="break-words font-['Fraunces',serif] text-2xl font-medium tabular-nums">{php(item.value)}</span>
+                <span className="text-xs font-sans section-label text-muted-foreground">{item.label}</span>
+                <span className="break-words font-sans text-2xl font-medium tabular-nums">{php(item.value)}</span>
               </div>
               <div className="h-3 overflow-hidden rounded-full bg-muted" aria-hidden="true">
                 <div className="h-full rounded-full" style={{ width: `${Math.abs(item.value) / comparisonMax * 100}%`, backgroundColor: item.color }} />
               </div>
             </div>)}
           </div>
-          <p className="mt-7 text-[11px] text-muted-foreground">Shared scale across all three totals.</p>
+          <p className="mt-7 text-xs text-muted-foreground">Shared scale across all three totals.</p>
         </section>
       </div>
 
@@ -1302,7 +1267,7 @@ function ProfitAnalysisView({ sales, jobCosts, expenses, selectedYear, setSelect
           </div>
           <Sheet>
             <SheetTrigger asChild>
-              <button type="button" className="rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary">See all<span className="sr-only"> expense categories</span></button>
+              <Button variant="secondary" type="button" className="text-xs">See all<span className="sr-only"> expense categories</span></Button>
             </SheetTrigger>
             <SheetContent className="w-full sm:max-w-lg">
               <SheetHeader className="border-b border-border p-6 pr-12">
@@ -1311,7 +1276,7 @@ function ProfitAnalysisView({ sales, jobCosts, expenses, selectedYear, setSelect
               </SheetHeader>
               <div className="min-h-0 overflow-y-auto px-6 pb-6">
                 {rankedCategories.length ? <table className="w-full text-sm">
-                  <thead><tr className="border-b border-border text-[11px] uppercase text-muted-foreground"><th scope="col" className="py-3 text-left font-medium">Category</th><th scope="col" className="py-3 text-right font-medium">Amount</th><th scope="col" className="py-3 pl-3 text-right font-medium">Share</th></tr></thead>
+                  <thead><tr className="border-b border-border text-xs section-label text-muted-foreground"><th scope="col" className="py-3 text-left font-medium">Category</th><th scope="col" className="py-3 text-right font-medium">Amount</th><th scope="col" className="py-3 pl-3 text-right font-medium">Share</th></tr></thead>
                   <tbody>{rankedCategories.map((category, index) => <tr key={category.name} className="border-b border-border">
                     <th scope="row" className="py-4 pr-3 text-left font-normal"><span className="mr-2 text-xs text-muted-foreground">{index + 1}.</span>{category.name}</th>
                     <td className="py-4 text-right tabular-nums">{php(category.value)}</td>
@@ -1333,8 +1298,8 @@ function ProfitAnalysisView({ sales, jobCosts, expenses, selectedYear, setSelect
               </PieChart>
             </ResponsiveContainer>
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-14 text-center">
-              <span className="text-[11px] uppercase tracking-widest text-foreground opacity-70">Total expenses</span>
-              <span className="mt-2 max-w-full break-words font-['Fraunces',serif] text-xl font-medium leading-tight tabular-nums">{php(totalExp)}</span>
+              <span className="text-xs section-label text-muted-foreground">Total expenses</span>
+              <span className="mt-2 max-w-full break-words font-sans text-xl font-medium leading-tight tabular-nums">{php(totalExp)}</span>
             </div>
           </div>
           <div className="col-span-12 min-w-0 lg:col-span-7">
@@ -1343,7 +1308,7 @@ function ProfitAnalysisView({ sales, jobCosts, expenses, selectedYear, setSelect
                 <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
                   <span className="w-4 text-xs tabular-nums text-muted-foreground">{index + 1}</span>
                   <span className="min-w-0 flex-1 font-medium">{category.name}</span>
-                  <span className="font-['Fraunces',serif] text-lg tabular-nums">{php(category.value)}</span>
+                  <span className="font-sans text-lg tabular-nums">{php(category.value)}</span>
                   <span className="w-14 text-right text-xs tabular-nums text-muted-foreground">{expenseShare(category.value).toFixed(1)}%</span>
                 </div>
                 <div className="ml-7 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true"><div className="h-full rounded-full" style={{ width: `${expenseShare(category.value)}%`, backgroundColor: category.color }} /></div>
@@ -1351,32 +1316,32 @@ function ProfitAnalysisView({ sales, jobCosts, expenses, selectedYear, setSelect
             </ol>
             {remainingCategories.length > 0 && <div className="mt-5 border-t border-border pt-4">
               <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
-                <span className="h-2 w-4 shrink-0 rounded-sm bg-slate-400" aria-hidden="true" />
+                <span className="h-2 w-4 shrink-0 rounded-sm bg-muted" aria-hidden="true" />
                 <span className="flex-1">Other <span className="text-xs text-muted-foreground">({remainingCategories.length} categories)</span></span>
-                <span className="font-['Fraunces',serif] text-lg tabular-nums">{php(otherTotal)}</span>
+                <span className="font-sans text-lg tabular-nums">{php(otherTotal)}</span>
                 <span className="w-14 text-right text-xs tabular-nums text-muted-foreground">{expenseShare(otherTotal).toFixed(1)}%</span>
               </div>
-              <div className="ml-7 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true"><div className="h-full rounded-full bg-slate-400" style={{ width: `${expenseShare(otherTotal)}%` }} /></div>
+              <div className="ml-7 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true"><div className="h-full rounded-full bg-muted" style={{ width: `${expenseShare(otherTotal)}%` }} /></div>
             </div>}
           </div>
         </div> : <p className="py-12 text-center text-sm text-muted-foreground">No expense amounts to display for this period.</p>}
       </section>
 
       <div className={cardCls}>
-        <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-4">Average Margin % by Service Type</p>
+        <p className="text-xs font-sans text-muted-foreground section-label mb-4">Average margin % by service type</p>
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={byService} margin={{ top: 4, right: 4, bottom: 0, left: 10 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-            <XAxis dataKey="type" tick={{ fill: "var(--muted-foreground)", fontSize: 10, fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fill: "var(--muted-foreground)", fontSize: 10, fontFamily: "JetBrains Mono" }} axisLine={false} tickLine={false} tickFormatter={v => v + "%"} />
+            <XAxis dataKey="type" tick={{ fill: "var(--muted-foreground)", fontSize: 12, fontFamily: "Inter" }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: "var(--muted-foreground)", fontSize: 12, fontFamily: "Inter" }} axisLine={false} tickLine={false} tickFormatter={v => v + "%"} />
             <Tooltip
               formatter={(v: any) => [v + "%", "Avg Margin"]}
-              contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: "8px", fontFamily: "JetBrains Mono", fontSize: "11px", color: "var(--foreground)" }}
+              contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: "8px", fontFamily: "Inter", fontSize: "12px", color: "var(--foreground)" }}
               labelStyle={{ color: "var(--muted-foreground)" }}
               itemStyle={{ color: "var(--foreground)" }}
             />
             <Bar dataKey="margin" name="Margin %" radius={[4, 4, 0, 0]}>
-              {byService.map((_, i) => <Cell key={i} fill={["#1746a2", "#d4a017", "#496bb2", "#111318"][i]} />)}
+              {byService.map((_, i) => <Cell key={i} fill={["var(--primary)", "var(--chart-2)", "var(--chart-3)", "var(--foreground)"][i]} />)}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
@@ -1391,14 +1356,12 @@ function KPICard({ label, value, sub, badge, vc = "" }: {
   badge?: { text: string; cls: string }; vc?: string;
 }) {
   return (
-    <div className="flex flex-col min-w-[148px] bg-sidebar-accent/60 dark:bg-slate-900/50 border border-sidebar-border rounded-lg px-4 py-2.5 shrink-0">
-      <span className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mb-1">{label}</span>
+    <div className="flex flex-col min-w-[148px] bg-sidebar-accent/60 border border-sidebar-border rounded-lg px-4 py-2.5 shrink-0">
+      <span className="text-xs font-sans text-muted-foreground section-label mb-1">{label}</span>
       <span className={`text-sm font-semibold tabular-nums leading-tight text-foreground ${vc}`}>{value}</span>
-      {sub && <span className="text-[10px] text-muted-foreground mt-0.5 tabular-nums">{sub}</span>}
+      {sub && <span className="text-xs text-muted-foreground mt-0.5 tabular-nums">{sub}</span>}
       {badge && (
-        <span className={`mt-1.5 text-[9px] font-mono uppercase tracking-widest px-1.5 py-0.5 rounded w-fit ${badge.cls}`}>
-          {badge.text}
-        </span>
+        <Badge className="mt-1.5" status={badge.text} />
       )}
     </div>
   );
@@ -1426,9 +1389,9 @@ function ApprovalQueueView({ onResolved }: { onResolved: () => void }) {
     } catch (err) { alert(err instanceof Error ? err.message : "Approval could not be completed."); }
   };
   const pending = rows.filter(row => row.status === "PENDING");
-  return <div className="p-5 space-y-4">
-    <div className="flex items-center justify-between"><div><h2 className="text-lg font-semibold">Admin Approval Queue</h2><p className="text-sm text-muted-foreground">Staff edits and archive requests leave records unchanged until approved.</p></div><button type="button" onClick={load} className="rounded-lg border border-border px-3 py-2 text-sm">Refresh</button></div>
-    {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+  return <div className="space-y-4">
+    <PageHeader title="Approvals" description="Staff edits and archive requests leave records unchanged until approved." action={<Button onClick={load}>Refresh</Button>} />
+    {error && <p className="rounded-lg bg-danger-tint p-3 text-sm text-danger">{error}</p>}
     {!pending.length && !error && <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">No pending requests.</div>}
     {pending.map(row => {
       const requestedAt = new Date(row.createdAt);
@@ -1436,13 +1399,13 @@ function ApprovalQueueView({ onResolved }: { onResolved: () => void }) {
       const changes = approvalChanges(row.beforeData, row.proposedData);
       return <article key={row.requestId} className="rounded-xl border border-border bg-card p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><div className="flex items-center gap-2"><h3 className="font-semibold">{row.action} · {String(row.entityType).replaceAll("_", " ")}</h3><StatusBadge status="Pending" /></div><p className="mt-1 text-xs text-muted-foreground">{row.entityId} · requested by {requester} · {requestedAt.toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "2-digit" })} · {requestedAt.toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" })}</p></div>
-          <div className="flex gap-2"><button type="button" onClick={() => resolve(row, "reject")} className="rounded-lg border border-border px-3 py-2 text-sm">Reject</button><button type="button" onClick={() => resolve(row, "approve")} className="rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground">Approve</button></div>
+          <div><div className="flex items-center gap-2"><h3 className="font-semibold"><Badge status={row.action} /> · {sentenceCase(String(row.entityType))}</h3><Badge status="Pending" /></div><p className="mt-1 text-xs text-muted-foreground">{row.entityId} · requested by {requester} · {requestedAt.toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "2-digit" })} · {requestedAt.toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" })}</p></div>
+          <div className="flex gap-2"><Button variant="danger" type="button" onClick={() => resolve(row, "reject")} className="text-sm">Reject</Button><Button variant="primary" type="button" onClick={() => resolve(row, "approve")} className="text-sm">Approve</Button></div>
         </div>
-        {row.action === "UPDATE" && <div className="mt-4 rounded-lg border border-border bg-muted/30 p-4"><p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Requested changes</p>{changes.length ? <dl className="space-y-3">{changes.map(change => <div key={change.key} className="grid gap-1 text-sm sm:grid-cols-[minmax(9rem,0.35fr)_1fr]"><dt className="font-medium text-foreground">{change.label}</dt><dd className="flex min-w-0 flex-wrap items-center gap-2"><span className="break-words text-muted-foreground line-through decoration-red-400/70">{approvalValue(change.initialValue)}</span><span aria-hidden="true" className="text-muted-foreground">→</span><span className="break-words font-medium text-foreground">{approvalValue(change.editedValue)}</span></dd></div>)}</dl> : <p className="text-sm text-muted-foreground">No value changes were detected.</p>}</div>}
+        {row.action === "UPDATE" && <div className="mt-4 rounded-lg border border-border bg-muted/30 p-4"><p className="mb-3 text-xs font-semibold section-label text-muted-foreground">Requested changes</p>{changes.length ? <dl className="space-y-3">{changes.map(change => <div key={change.key} className="grid gap-1 text-sm sm:grid-cols-[minmax(9rem,0.35fr)_1fr]"><dt className="font-medium text-foreground">{change.label}</dt><dd className="flex min-w-0 flex-wrap items-center gap-2"><span className="break-words text-muted-foreground line-through decoration-danger/70">{approvalValue(change.initialValue)}</span><span aria-hidden="true" className="text-muted-foreground">→</span><span className="break-words font-medium text-foreground">{approvalValue(change.editedValue)}</span></dd></div>)}</dl> : <p className="text-sm text-muted-foreground">No value changes were detected.</p>}</div>}
       </article>
     })}
-    {rows.some(row => row.status !== "PENDING") && <details className="rounded-xl border border-border bg-card p-4"><summary className="cursor-pointer text-sm font-medium">Recently reviewed requests</summary><div className="mt-3 space-y-2">{rows.filter(row => row.status !== "PENDING").slice(0, 15).map(row => <div key={row.requestId} className="flex flex-wrap justify-between gap-2 border-t border-border pt-2 text-sm"><span>{row.action} {row.entityType} · {row.entityId}</span><StatusBadge status={statusLabel(row.status)} /></div>)}</div></details>}
+    {rows.some(row => row.status !== "PENDING") && <details className="rounded-xl border border-border bg-card p-4"><summary className="cursor-pointer text-sm font-medium">Recently reviewed requests</summary><div className="mt-3 space-y-2">{rows.filter(row => row.status !== "PENDING").slice(0, 15).map(row => <div key={row.requestId} className="flex flex-wrap justify-between gap-2 border-t border-border pt-2 text-sm"><span><Badge status={row.action} /> {sentenceCase(String(row.entityType))} · {row.entityId}</span><Badge status={statusLabel(row.status)} /></div>)}</div></details>}
   </div>;
 }
 
@@ -1455,11 +1418,11 @@ function AuditLogsView() {
     setRows(asRows(data)); setError("");
   }).catch(err => setError(err instanceof Error ? err.message : "Audit logs could not be loaded."));
   useEffect(() => { void load(); }, []);
-  return <div className="p-5 space-y-4">
-    <div className="flex items-center justify-between"><div><h2 className="text-lg font-semibold">Audit Logs</h2><p className="text-sm text-muted-foreground">Recent sign-ins, changes, archive requests, and Admin decisions.</p></div><button type="button" onClick={load} className="rounded-lg border border-border px-3 py-2 text-sm">Refresh</button></div>
-    {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+  return <div className="space-y-4">
+    <PageHeader title="Audit logs" description="Recent sign-ins, changes, archive requests, and Admin decisions." action={<Button onClick={load}>Refresh</Button>} />
+    {error && <p className="rounded-lg bg-danger-tint p-3 text-sm text-danger">{error}</p>}
     <TableWrap><thead><tr>{["When", "User", "Role", "Action", "Record"].map(label => <th key={label} className={thc}>{label}</th>)}</tr></thead><tbody>
-      {rows.map(row => <tr key={row.logId} className="border-b border-border align-top"><td className={tdc}>{new Date(row.createdAt).toLocaleString("en-PH")}</td><td className={tdc}>{row.actorName}</td><td className={tdc}>{row.actorRole}</td><td className={tdc}><StatusBadge status={row.action} /></td><td className={tdc}>{row.entityType ? row.entityType + " · " + (row.entityId ?? "—") : "—"}</td></tr>)}
+      {rows.map(row => <tr key={row.logId} className="border-b border-border align-top"><td className={tdc}>{new Date(row.createdAt).toLocaleString("en-PH")}</td><td className={tdc}>{row.actorName}</td><td className={tdc}><Badge status={row.actorRole} /></td><td className={tdc}><Badge status={row.action} /></td><td className={tdc}>{row.entityType ? row.entityType + " · " + (row.entityId ?? "—") : "—"}</td></tr>)}
       {!rows.length && !error && <EmptyRow cols={5} />}
     </tbody></TableWrap>
   </div>;
@@ -1627,32 +1590,29 @@ function AppContent() {
   };
   const renderNavItem = (destination: Tab) => {
     const Icon = NAV_ICONS[destination];
-    return <button key={destination} type="button" onClick={() => setTab(destination)} aria-current={tab === destination ? "page" : undefined} aria-label={TAB_LABELS[destination]} title={sidebarCollapsed ? TAB_LABELS[destination] : undefined}
-      className={`flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-primary ${tab === destination ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"}`}>
+    return <Button variant="ghost" key={destination} type="button" onClick={() => setTab(destination)} aria-current={tab === destination ? "page" : undefined} aria-label={TAB_LABELS[destination]} title={sidebarCollapsed ? TAB_LABELS[destination] : undefined}
+      className="sidebar-nav-item">
       <Icon size={18} className="shrink-0" aria-hidden="true" />
       {!sidebarCollapsed && <span>{TAB_LABELS[destination]}</span>}
-    </button>;
+    </Button>;
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground transition-colors duration-200" style={{ fontFamily: "'Inter', sans-serif" }}>
-      <header className="sticky top-0 z-40 h-20 border-b border-sidebar-border bg-sidebar">
-        <div className="mx-auto flex h-full max-w-[1440px] items-center gap-6 px-5 lg:px-8">
-          <div className="flex min-w-0 items-center gap-3">
-            <BrandLogo className="h-10 w-10 shrink-0" />
-            <span className="text-sm font-semibold tracking-wide text-primary sm:text-base" style={{ fontFamily: "'Fraunces', serif" }}>NILO&apos;S GOLDSMITH</span>
-          </div>
-          <span className="hidden border-l border-border pl-6 text-xs text-muted-foreground md:block">{today}</span>
+    <div className="dashboard-shell bg-background text-foreground" data-collapsed={sidebarCollapsed}>
+      <div className="dashboard-workspace">
+      <header className="dashboard-topbar">
+        <div className="flex h-full items-center gap-6 px-8">
+          <span className="text-xs text-muted-foreground">{today}</span>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button type="button" aria-label="Open user menu" className="ml-auto flex shrink-0 items-center gap-3 rounded-lg p-2 text-sm hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-primary">
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary"><UserRound size={17} aria-hidden="true" /></span>
+              <Button variant="ghost" type="button" aria-label="Open user menu" className="ml-auto flex shrink-0 items-center gap-3 text-sm">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary-text"><UserRound size={17} aria-hidden="true" /></span>
                 <span className="hidden max-w-40 truncate text-left sm:block">{user?.empName || user?.userName || "Account"}</span>
                 <ChevronDown size={14} aria-hidden="true" />
-              </button>
+              </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel className="break-words">{user?.empName || user?.userName || "Account"}<span className="mt-1 block text-xs font-normal capitalize text-muted-foreground">{user?.empRole}</span></DropdownMenuLabel>
+              <DropdownMenuLabel className="break-words">{user?.empName || user?.userName || "Account"}<span className="mt-1 block"><Badge status={user?.empRole ?? "Account"} /></span></DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => setDark(d => !d)}>{dark ? <Sun size={16} /> : <Moon size={16} />}{dark ? "Light appearance" : "Dark appearance"}</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => { void signOut(); }}><LogOut size={16} />Sign out</DropdownMenuItem>
@@ -1661,32 +1621,40 @@ function AppContent() {
         </div>
       </header>
 
-      <div className="mx-auto flex max-w-[1440px] items-start">
-        <aside className={`sticky top-20 flex h-[calc(100dvh-5rem)] shrink-0 flex-col border-r border-sidebar-border bg-sidebar p-3 transition-[width] duration-200 motion-reduce:transition-none ${sidebarCollapsed ? "w-[72px]" : "w-[200px] lg:w-[224px]"}`}>
-          <button type="button" onClick={() => setSidebarCollapsed(value => !value)} aria-expanded={!sidebarCollapsed} aria-controls="primary-navigation" aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} className="mb-5 flex h-10 items-center gap-3 rounded-lg px-3 text-muted-foreground hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-primary">
+
+        <aside className="dashboard-sidebar">
+          <div className="flex h-12 shrink-0 items-center gap-2 px-1">
+            <BrandLogo className="h-10 w-10 shrink-0" />
+            {!sidebarCollapsed && <span className="font-serif text-base font-semibold">Nilo&apos;s Goldsmith</span>}
+          </div>
+          <Button variant="ghost" type="button" onClick={() => setSidebarCollapsed(value => !value)} aria-expanded={!sidebarCollapsed} aria-controls="primary-navigation" aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} className="sidebar-toggle">
             {sidebarCollapsed ? <PanelLeftOpen size={18} className="shrink-0" /> : <><PanelLeftClose size={18} className="shrink-0" /><span className="text-xs">Collapse sidebar</span></>}
-          </button>
+          </Button>
           <nav id="primary-navigation" aria-label="Main navigation" className="flex min-h-0 flex-1 flex-col overflow-y-auto">
             <div className="space-y-1">
               {(["DASHBOARD", "DAILY_SALES", "JOB_COSTING", "EXPENSES", "PROFIT_ANALYSIS"] as Tab[]).filter(t => isAdmin || t !== "PROFIT_ANALYSIS").map(t => renderNavItem(t))}
             </div>
             <div className="mt-6 space-y-1 border-t border-sidebar-border pt-4" role="group" aria-label="Job resources">
-              {!sidebarCollapsed && <p className="px-3 pb-2 text-[11px] uppercase tracking-widest text-muted-foreground">Job resources</p>}
+              {!sidebarCollapsed && <p className="px-3 pb-2 text-xs section-label text-muted-foreground">Job resources</p>}
               {renderNavItem("INVENTORY")}
               {renderNavItem("INQUIRIES")}
             </div>
             {isAdmin && <div className="mt-auto space-y-1 border-t border-sidebar-border pt-4" role="group" aria-label="Admin">
-              <p className={`pb-2 text-[11px] uppercase tracking-widest text-muted-foreground ${sidebarCollapsed ? "text-center text-[9px] tracking-normal" : "px-3"}`}>Admin</p>
+              {!sidebarCollapsed && <p className="section-label px-3 pb-2">Admin</p>}
               {renderNavItem("APPROVALS")}
               {renderNavItem("AUDIT_LOGS")}
             </div>}
           </nav>
         </aside>
 
-        <main className="min-w-0 flex-1">
-          {tab === "DASHBOARD" && <div className="flex flex-wrap gap-3 px-5 pt-5">
-            <KPICard label={goldInfo?.stale ? "Last Gold Quote / g · 24K" : "Gold Price / g · 24K"} value={goldRate === null ? "Unavailable" : php(goldRate)} sub="Live Gold Price" vc="text-primary" />
-            <KPICard label="Gold Stock (Physical)" value={`${goldStock.toFixed(2)} g`} vc="text-primary" />
+        <main className="dashboard-main" key={tab}>
+          <div className="dashboard-content">
+          {tab === "DASHBOARD" && <PageHeader title="Dashboard" description="An overview of sales, workshop activity, and profit." action={<Button onClick={() => setTab("INQUIRIES")}>View inquiries</Button>} />}
+          {tab === "DAILY_SALES" && <PageHeader title="Sales" description="Review completed sales, payments, and outstanding balances." action={<Button onClick={() => setTab("JOB_COSTING")}>View jobs</Button>} />}
+          {tab === "PROFIT_ANALYSIS" && <PageHeader title="Reports" description="Understand revenue, costs, and profitability over time." action={<Button onClick={() => setReloadKey(k => k + 1)}>Refresh report</Button>} />}
+          {tab === "DASHBOARD" && <div className="mb-5 flex flex-wrap gap-3">
+            <KPICard label={goldInfo?.stale ? "Last gold quote / g · 24K" : "Gold price / g · 24K"} value={goldRate === null ? "Unavailable" : php(goldRate)} sub="Live gold price" vc="text-primary-text" />
+            <KPICard label="Gold stock (physical)" value={`${goldStock.toFixed(2)} g`} vc="text-primary-text" />
 
           </div>}
         {tab === "DASHBOARD" && <DashboardView sales={visibleSales} jobCosts={visibleJobCosts} expenses={visibleExpenses} inquiries={visibleInquiries} rangeLabel={timelineLabel} isAdmin={isAdmin} onView={(title, record) => setViewRecord({ title, record })} />}
@@ -1698,6 +1666,7 @@ function AppContent() {
         {tab === "PROFIT_ANALYSIS" && <ProfitAnalysisView sales={sales.filter(isCompletedSale)} jobCosts={jobCosts} expenses={expenses} selectedYear={selectedYear} setSelectedYear={setSelectedYear} startMonth={startMonth} setStartMonth={setStartMonth} endMonth={endMonth} setEndMonth={setEndMonth} />}
         {tab === "APPROVALS" && isAdmin && <ApprovalQueueView onResolved={() => setReloadKey(k => k + 1)} />}
         {tab === "AUDIT_LOGS" && isAdmin && <AuditLogsView />}
+          </div>
         </main>
       </div>
       <RecordDetails title={viewRecord?.title ?? "Record details"} record={viewRecord?.record ?? null} onClose={() => setViewRecord(null)} />
@@ -1730,14 +1699,14 @@ function LoginScreen({ onLogin }: { onLogin: (user: any) => void }) {
   return <div className="min-h-screen bg-background flex items-center justify-center p-6">
     <form onSubmit={submit} className="w-full max-w-sm rounded-2xl border border-border bg-card p-8 shadow-2xl">
       <BrandLogo className="mx-auto mb-4 h-14 w-14 border border-border p-1" />
-      <h1 className="text-center text-2xl font-semibold text-foreground">Nilo&apos;s Goldsmith</h1>
+      <h1 className="text-center font-serif text-2xl font-semibold text-foreground">Nilo&apos;s Goldsmith</h1>
       <p className="text-center text-sm text-muted-foreground mt-1 mb-7">Goldsmith Accounting System</p>
       <label className="block text-sm text-foreground mb-1">Username</label>
       <input value={userName} onChange={e => setUserName(e.target.value)} className={`${ic} mb-4`} autoComplete="username" />
       <label className="block text-sm text-foreground mb-1">Password</label>
       <input type="password" value={password} onChange={e => setPassword(e.target.value)} className={`${ic} mb-5`} autoComplete="current-password" />
-      {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
-      <button disabled={busy} className="w-full rounded-lg bg-primary py-3 font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">{busy ? "Signing in…" : "Sign in"}</button>
+      {error && <p className="text-sm text-danger mb-4">{error}</p>}
+      <Button variant="primary" type="submit" disabled={busy} className="w-full">{busy ? "Signing in…" : "Sign in"}</Button>
     </form>
   </div>;
 }
