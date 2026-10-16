@@ -25,3 +25,22 @@ export function summarizeInventory(all: Movement[], visible: Movement[]) {
     quantities: [...quantities].sort(([a], [b]) => a.localeCompare(b)),
     goldGrams: Math.max(0, products.get("GOLD:grams")?.quantity ?? 0) };
 }
+
+// Match the API's stock pools, retaining individual movements for audit/editing.
+export function groupInventory<T extends Movement>(all: T[], visible: T[] = all) {
+  const visibleKeys = new Set(visible.map(stockKey));
+  const groups = new Map<string, { key: string; itemName: string; category: string; unit: string; quantityIn: number; quantityOut: number; quantityLoss: number; balance: number; movements: T[] }>();
+  for (const row of all) {
+    const key = stockKey(row);
+    if (!visibleKeys.has(key)) continue;
+    const group = groups.get(key) ?? { key, itemName: row.category === "GOLD" ? "Gold stock" : row.itemName, category: row.category, unit: row.category === "GOLD" ? "grams" : row.unit, quantityIn: 0, quantityOut: 0, quantityLoss: 0, balance: 0, movements: [] };
+    const factor = row.category === "GOLD" && row.unit === "troy oz" ? TROY_OUNCE_GRAMS : 1;
+    group.quantityIn += row.quantityIn * factor;
+    group.quantityOut += row.quantityOut * factor;
+    group.quantityLoss += row.quantityLoss * factor;
+    group.balance = group.quantityIn - group.quantityOut - group.quantityLoss;
+    group.movements.push(row);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
