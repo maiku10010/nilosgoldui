@@ -1,4 +1,5 @@
 import { JobsTable } from "./components/JobsTable";
+import { Dashboard } from "./components/Dashboard";
 import { Button } from "./components/ui/button";
 import { Badge, sentenceCase } from "./components/ui/badge";
 import { PageHeader } from "./components/PageHeader";
@@ -6,13 +7,13 @@ import { roundTwo } from "../rounding";
 import { Fragment, useState, useEffect, useMemo, useRef, createContext, useContext } from "react";
 import goldsmithLogo from "../assets/nilosgold_logo.jpg";
 import {
-  Search, Plus, X, Crown, TrendingUp, TrendingDown,
+  Search, Plus, X, Crown, TrendingDown,
   Package, BarChart3, DollarSign, Gem, Sun, Moon, PenSquare, Trash2,
   ArrowUpDown, ChevronUp, ChevronDown, LayoutDashboard, BriefcaseBusiness,
   Receipt, ShieldCheck, ScrollText, PanelLeftClose, PanelLeftOpen, UserRound, LogOut, MessageSquare,
 } from "lucide-react";
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
 } from "recharts";
 import { isValidEmail, isValidPHContact, normalizeContactInput } from "../validation";
@@ -97,6 +98,7 @@ const normalizeSale = (row: any): Sale => ({
   serviceType: row.serviceType ?? "Custom",
   price: numeric(row.price),
   payment: numeric(row.payment),
+  payments: Array.isArray(row.payments) ? row.payments.map((p: any) => ({ amount: numeric(p.amount), paidAt: p.paidAt ? String(p.paidAt).slice(0, 10) : null })) : undefined,
   balance: numeric(row.balance ?? (numeric(row.price) - numeric(row.payment))),
   receiptSentAt: row.receiptSentAt ? String(row.receiptSentAt) : null,
   status: statusLabel(row.status) as SaleStatus,
@@ -107,12 +109,17 @@ const normalizeJobCost = (row: any): JobCost => {
   const goldCost = roundTwo(row.goldCost ?? roundTwo(numeric(row.goldUsed)) * goldCostPerG);
   const totalCost = roundTwo(row.totalCost ?? goldCost + roundTwo(numeric(row.laborCost)) + roundTwo(numeric(row.stoneCost)));
   const sale = row.sales ?? row.sale;
-  return { jobCostId: String(row.jobCostId ?? ""), invoiceId: String(row.invoiceId ?? sale?.invoiceId ?? ""), clientName: String(row.clientName ?? sale?.client?.clientName ?? row.inquiry?.customerName ?? ""), itemName: row.itemName ?? "", deadline: row.deadline || row.deliveryDate ? String(row.deadline ?? row.deliveryDate).slice(0, 10) : "", empId: row.empId, inquiryId: row.inquiryId ?? row.inquiry?.inquiryId, status: statusLabel(row.status), sale: sale ? normalizeSale(sale) : undefined, goldUsed: roundTwo(numeric(row.goldUsed)), goldScrap: roundTwo(numeric(row.goldScrap)), goldCostPerG, goldCost, stoneCost: roundTwo(numeric(row.stoneCost)), laborCost: roundTwo(numeric(row.laborCost)), totalCost, sellingPrice, profit: roundTwo(row.profit ?? sellingPrice - totalCost), marginPct: roundTwo(row.marginPct ?? (sellingPrice ? ((sellingPrice - totalCost) / sellingPrice) * 100 : 0)) };
+  return { jobDate: row.jobDate ? String(row.jobDate) : undefined, jobCostId: String(row.jobCostId ?? ""), invoiceId: String(row.invoiceId ?? sale?.invoiceId ?? ""), clientName: String(row.clientName ?? sale?.client?.clientName ?? row.inquiry?.customerName ?? ""), itemName: row.itemName ?? "", deadline: row.deadline || row.deliveryDate ? String(row.deadline ?? row.deliveryDate).slice(0, 10) : "", empId: row.empId, inquiryId: row.inquiryId ?? row.inquiry?.inquiryId, status: statusLabel(row.status), sale: sale ? normalizeSale(sale) : undefined, goldUsed: roundTwo(numeric(row.goldUsed)), goldScrap: roundTwo(numeric(row.goldScrap)), goldCostPerG, goldCost, stoneCost: roundTwo(numeric(row.stoneCost)), laborCost: roundTwo(numeric(row.laborCost)), totalCost, sellingPrice, profit: roundTwo(row.profit ?? sellingPrice - totalCost), marginPct: roundTwo(row.marginPct ?? (sellingPrice ? ((sellingPrice - totalCost) / sellingPrice) * 100 : 0)) };
 };
 const normalizeInventory = (row: any): InvEntry => ({ id: row.referenceId, date: apiDate(row.updatedAt ?? row.date), referenceId: row.referenceId, itemName: row.itemName ?? row.referenceId, category: row.category ?? "GOLD", goldKarat: row.goldKarat == null ? null : numeric(row.goldKarat), quantityIn: numeric(row.quantityIn ?? row.goldIn), quantityOut: numeric(row.quantityOut ?? row.goldOut), quantityLoss: numeric(row.quantityLoss ?? row.scraps ?? row.scrap), balance: numeric(row.balance ?? row.totalGold), unit: row.unit ?? "grams", unitPrice: numeric(row.unitPrice) });
 const normalizeInquiry = (row: any): Inquiry => ({ inquiryId: String(row.inquiryId ?? ""), date: apiDate(row.inqDate ?? row.date), customerName: String(row.customerName ?? ""), contactInfo: normalizeContactInput(String(row.contactInfo ?? "")), email: String(row.email ?? ""), details: String(row.details ?? ""), category: String(row.category ?? ""), quotedPrice: numeric(row.quotedPrice), isFullyPaid: Boolean(row.isFullyPaid), status: statusLabel(row.status) as InqStatus });
 const normalizeExpense = (row: any): Expense => ({ expenseId: String(row.expenseId ?? ""), expDate: apiDate(row.expDate ?? row.date), category: String(row.category ?? ""), description: String(row.description ?? ""), amount: numeric(row.amount) });
 const asRows = (value: unknown): any[] => Array.isArray(value) ? value : [];
+const loadDashboardApprovals = async () => {
+  const response = await apiFetch(BASE_URL + "/approvals");
+  if (!response.ok) throw new Error("Approvals could not be loaded.");
+  return asRows(await response.json());
+};
 
 // ── types ──────────────────────────────────────────────────────────────────
 type ServiceType = "Custom" | "Repair" | "Resize" | "Cleaning";
@@ -120,11 +127,13 @@ type SaleStatus = "Ongoing" | "Paid" | "Released" | "Pending" | "Finished" | "Pa
 type InqStatus = "Yes" | "No" | "Pending" | "Approved" | "Rejected" | "Finished";
 
 interface Sale {
+  payments?: { amount: number; paidAt: string | null }[];
   id: string; invoiceId: string; date: string; clientId?: string; jobCostId?: string;
   clientName: string; contactNum: string; email?: string; serviceType: ServiceType;
   price: number; payment: number; balance: number; status: SaleStatus; receiptSentAt?: string | null;
 }
 interface JobCost {
+  jobDate?: string;
   jobCostId: string; invoiceId: string; clientName: string; itemName: string; deadline: string; empId?: string;
   inquiryId?: string; status: string; sale?: Sale;
   goldUsed: number; goldScrap: number; goldCostPerG: number; goldCost: number;
@@ -318,176 +327,6 @@ const ChartTip = ({ active, payload, label }: any) => {
 };
 
 // ── dashboard view ─────────────────────────────────────────────────────────
-function DashboardView({ sales, jobCosts, expenses, inquiries, rangeLabel, onView, isAdmin }: {
-  sales: Sale[]; jobCosts: JobCost[]; expenses: Expense[]; inquiries: Inquiry[];
-  isAdmin: boolean;
-  rangeLabel: string; onView: (title: string, record: Record<string, unknown>) => void;
-}) {
-  const [salesSort, setSalesSort] = useState<SortSpec>({ key: "date", direction: -1 });
-  const [jobSort, setJobSort] = useState<SortSpec>({ key: "invoiceId", direction: -1 });
-  const toggleSalesSort = (key: string) => setSalesSort(s => ({ key, direction: s.key === key ? (s.direction === 1 ? -1 : 1) : 1 }));
-  const toggleJobSort = (key: string) => setJobSort(s => ({ key, direction: s.key === key ? (s.direction === 1 ? -1 : 1) : 1 }));
-  const totalSales = useMemo(() => sales.reduce((a, s) => a + s.price, 0), [sales]);
-  const cashCollected = useMemo(() => sales.reduce((a, s) => a + s.payment, 0), [sales]);
-  const receivables = totalSales - cashCollected;
-
-  const totalRevenue = useMemo(() => sales.reduce((a, s) => a + s.price, 0), [sales]);
-  const totalJobCost = useMemo(() => jobCosts.reduce((a, j) => a + j.totalCost, 0), [jobCosts]);
-  const grossProfit = totalRevenue - totalJobCost;
-  const avgMargin = useMemo(() =>
-    jobCosts.length ? jobCosts.reduce((a, j) => a + j.marginPct, 0) / jobCosts.length : 0, [jobCosts]);
-
-  const totalExpenses = useMemo(() => expenses.reduce((a, e) => a + e.amount, 0), [expenses]);
-  const expByCat = useMemo(() => expenses.reduce((acc, e) => {
-    acc[e.category] = (acc[e.category] || 0) + e.amount; return acc;
-  }, {} as Record<string, number>), [expenses]);
-
-  const netProfit = grossProfit - totalExpenses;
-  const netMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
-  const profitTrend = useMemo(() => {
-    const daily = new Map<string, number>();
-    const saleDates = new Map(sales.map(sale => [sale.invoiceId, sale.date]));
-    const add = (date: string, amount: number) => daily.set(date, (daily.get(date) ?? 0) + amount);
-    sales.forEach(sale => add(sale.date, sale.price));
-    jobCosts.forEach(job => {
-      const date = saleDates.get(job.invoiceId);
-      if (date) add(date, -job.totalCost);
-    });
-    expenses.forEach(expense => add(expense.expDate, -expense.amount));
-    let cumulative = 0;
-    return [...daily].sort(([a], [b]) => a.localeCompare(b)).map(([date, amount]) => ({ date, profit: cumulative += amount }));
-  }, [sales, jobCosts, expenses]);
-
-  const totalInq = inquiries.length;
-  const closedInq = inquiries.filter(i => ["Approved", "Finished", "Yes"].includes(i.status)).length;
-  const convRate = totalInq > 0 ? (closedInq / totalInq) * 100 : 0;
-
-  const recentSales = sortRecords(useMemo(() => [...sales], [sales]), salesSort).slice(0, 7);
-  const recentJC = sortRecords(useMemo(() => [...jobCosts], [jobCosts]), jobSort).slice(0, 6);
-
-  const catColors: Record<string, string> = {
-    "Rent": "var(--primary)", "Staff Salary": "var(--chart-2)", "Utilities": "var(--chart-3)", "Supplies": "var(--foreground)", "Tax & Permits": "var(--chart-4)",
-  };
-
-  const cardCls = "bg-card border border-border rounded-xl p-5";
-
-  return (
-    <div className="space-y-5">
-      <section aria-label="Key performance indicators" className="grid w-full grid-cols-12">
-        <div className="col-span-12 grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4">
-          {[
-            { label: "Total sales", value: php(totalSales), detail: `${sales.length} transactions` },
-            { label: "Cash collected", value: php(cashCollected), detail: `${php(receivables)} outstanding` },
-            { label: "Expenses", value: php(totalExpenses), detail: `${expenses.length} expenses` },
-          ].map(metric => (
-            <div key={metric.label} className="min-w-0 rounded-xl border border-border bg-card p-5 xl:p-6">
-              <p className="text-xs font-sans section-label text-muted-foreground">{metric.label}</p>
-              <p className="mt-5 break-words hero-kpi">{metric.value}</p>
-              <p className="mt-3 text-xs text-muted-foreground">{metric.detail}</p>
-              <p className="mt-6 text-xs text-muted-foreground">{rangeLabel}</p>
-            </div>
-          ))}
-          {isAdmin ? <div className="relative min-w-0 overflow-hidden rounded-xl border border-border bg-card p-6">
-            <p className="text-xs font-sans section-label text-muted-foreground">Net profit</p>
-            <p className={`mt-4 break-words hero-kpi ${netProfit >= 0 ? "text-success " : "text-danger "}`}>{php(netProfit)}</p>
-            <Badge className="mt-4" variant={netProfit >= 0 ? "success" : "danger"}>{pct(netMargin)} margin</Badge>
-            <div className="mt-4 flex items-end gap-4">
-              <p className="flex-1 text-xs text-muted-foreground">{rangeLabel}</p>
-              <div className="h-12 w-36 shrink-0" role="img" aria-label={`Cumulative net profit trend for ${rangeLabel}`}>
-                {profitTrend.length > 1 ? <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={profitTrend} margin={{ top: 4, right: 2, bottom: 2, left: 2 }}>
-                    <Area type="linear" dataKey="profit" stroke={netProfit >= 0 ? "var(--success)" : "var(--danger)"} fill={netProfit >= 0 ? "var(--success)" : "var(--danger)"} fillOpacity={0.08} strokeWidth={2} isAnimationActive={false} />
-                  </AreaChart>
-                </ResponsiveContainer> : <span className="flex h-full items-center text-xs text-muted-foreground">{profitTrend.length ? "Trend needs more activity" : "No activity yet"}</span>}
-              </div>
-            </div>
-          </div> : <div className="min-w-0 rounded-xl border border-border bg-card p-6">
-            <p className="text-xs font-sans section-label text-muted-foreground">Inquiries</p>
-            <p className="mt-4 hero-kpi">{totalInq}</p>
-            <Badge className="mt-4">{pct(convRate)} conversion</Badge>
-            <p className="mt-4 text-xs text-muted-foreground">{closedInq} closed · {rangeLabel}</p>
-          </div>}
-        </div>
-      </section>
-
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-        <section>
-          <h2 className="mb-3 text-xs font-sans section-label text-muted-foreground">Daily sales log · Recent entries</h2>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {recentSales.map(s => <Button variant="secondary" key={s.id} type="button" onClick={() => onView("Sale details", s as unknown as Record<string, unknown>)} className="h-auto block whitespace-normal rounded-xl border border-border bg-card p-4 text-left hover:bg-muted/40">
-              <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold">{s.clientName}</p><p className="truncate text-xs text-primary-text">{s.invoiceId}</p></div><Badge status={s.status} /></div>
-              <div className="mt-3 flex justify-between gap-3"><div><p className="text-xs section-label text-muted-foreground">{s.serviceType} · {fmtDate(s.date)}</p><p className="mt-1 text-sm font-semibold tabular-nums">{php(s.price)}</p></div><span className="self-end text-xs text-muted-foreground">View</span></div>
-            </Button>)}
-            {!recentSales.length && <div className="rounded-xl border border-border bg-card p-6 text-center text-xs text-muted-foreground">No sales in this timeline</div>}
-          </div>
-        </section>
-        <section>
-          <h2 className="mb-3 text-xs font-sans section-label text-muted-foreground">Job costing · Recent entries</h2>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {recentJC.map(j => <Button variant="secondary" key={j.jobCostId} type="button" onClick={() => onView("Job cost details", j as unknown as Record<string, unknown>)} className="h-auto block whitespace-normal rounded-xl border border-border bg-card p-4 text-left hover:bg-muted/40">
-              <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold">{j.clientName}</p><p className="truncate text-xs text-primary-text">{j.invoiceId}</p></div><Badge status={j.status} /></div>
-              <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><span className="text-muted-foreground">Total cost</span><span className="text-right tabular-nums">{php(j.totalCost)}</span>{isAdmin && <><span className="text-muted-foreground">Profit</span><span className="text-right font-semibold tabular-nums text-success">{php(j.profit)}</span></>}</div>
-            </Button>)}
-            {!recentJC.length && <div className="rounded-xl border border-border bg-card p-6 text-center text-xs text-muted-foreground">No job costing in this timeline</div>}
-          </div>
-        </section>
-      </div>
-      <div className="hidden">
-        {/* Legacy table layout retained for existing sort wiring */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-          <div>
-            <p className="text-xs font-sans text-muted-foreground section-label mb-3">
-              Daily Sales Log <span className="text-primary-text/70">— Recent Entries</span>
-            </p>
-            <TableWrap>
-              <thead><tr>
-                {[["Date", "date"], ["Invoice #", "invoiceId"], ["Client", "clientName"], ["Type", "serviceType"], ["Total", "price"], ["Status", "status"]].map(([h, k]) => <SortableHeader key={h} label={h} sortKey={k} sort={salesSort} onSort={toggleSalesSort} />)}
-              </tr></thead>
-              <tbody>
-                {recentSales.map(s => (
-                  <TRow key={s.id} onClick={() => onView("Sale details", s as unknown as Record<string, unknown>)}>
-                    <td className={tdc}>{fmtDate(s.date)}</td>
-                    <td className={tdc + " text-primary-text/80 "}>{s.invoiceId}</td>
-                    <td className={tdc + " font-sans font-medium"}>{s.clientName}</td>
-                    <td className={tdc}>{s.serviceType}</td>
-                    <td className={tdr}>{php(s.price)}</td>
-                    <td className={tdc}><Badge status={s.status} /></td>
-                  </TRow>
-                ))}
-              </tbody>
-            </TableWrap>
-          </div>
-          <div>
-            <p className="dashboard-recent-title font-sans text-muted-foreground section-label mb-3">
-              Job Costing <span className="text-primary-text/70">— Recent Entries</span>
-            </p>
-            <TableWrap>
-              <thead><tr>
-                {[["Invoice #", "invoiceId"], ["Client", "clientName"], ["Gold (g)", "goldUsed"], ["Total Cost", "totalCost"], ["Selling", "sellingPrice"], ["Profit", "profit"], ["Margin", "marginPct"]].map(([h, k]) => <SortableHeader key={h} label={h} sortKey={k} sort={jobSort} onSort={toggleJobSort} />)}
-              </tr></thead>
-              <tbody>
-                {recentJC.map(j => (
-                  <TRow key={j.jobCostId} onClick={() => onView("Job cost details", j as unknown as Record<string, unknown>)}>
-                    <td className={tdc + " text-primary-text/80 "}>{j.invoiceId}</td>
-                    <td className={tdc + " font-sans font-medium"}>{j.clientName}</td>
-                    <td className={tdr}>{j.goldUsed.toFixed(2)}</td>
-                    <td className={tdr + " text-danger "}>{php(j.totalCost)}</td>
-                    <td className={tdr + " text-warning "}>{php(j.sellingPrice)}</td>
-                    <td className={tdr + " text-success font-semibold"}>{php(j.profit)}</td>
-                    <td className={tdc}>
-                      <Badge variant={marginVariant(j.marginPct)}>{pct(j.marginPct)}</Badge>
-                    </td>
-                  </TRow>
-                ))}
-              </tbody>
-            </TableWrap>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── daily sales ─────────────────────────────────────────────────────────────
 function DailySalesView({ sales, onUpdate, onDelete }: { sales: Sale[]; onUpdate: (s: Sale) => void; onDelete: (id: string) => void }) {
   const requestConfirmation = useConfirmation();
@@ -1287,22 +1126,6 @@ function ProfitAnalysisView({ sales, jobCosts, expenses, selectedYear, setSelect
 }
 
 // ── header kpi card ─────────────────────────────────────────────────────────
-function KPICard({ label, value, sub, badge, vc = "" }: {
-  label: string; value: string; sub?: string;
-  badge?: { text: string; cls: string }; vc?: string;
-}) {
-  return (
-    <div className="flex flex-col min-w-[148px] bg-sidebar-accent/60 border border-sidebar-border rounded-lg px-4 py-2.5 shrink-0">
-      <span className="text-xs font-sans text-muted-foreground section-label mb-1">{label}</span>
-      <span className={`text-sm font-semibold tabular-nums leading-tight text-foreground ${vc}`}>{value}</span>
-      {sub && <span className="text-xs text-muted-foreground mt-0.5 tabular-nums">{sub}</span>}
-      {badge && (
-        <Badge className="mt-1.5" status={badge.text} />
-      )}
-    </div>
-  );
-}
-
 function ApprovalQueueView({ onResolved }: { onResolved: () => void }) {
   const [rows, setRows] = useState<any[]>([]);
   const [error, setError] = useState("");
@@ -1384,6 +1207,9 @@ function AppContent() {
   const [inventory, setInventory] = useState<InvEntry[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [dataError, setDataError] = useState("");
+  const [goldLoading, setGoldLoading] = useState(true);
   const [goldRate, setGoldRate] = useState<number | null>(null);
   const [goldInfo, setGoldInfo] = useState<{ source: string; updatedAt: string; stale: boolean; warning?: string; fxUpdatedAt?: string } | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -1414,6 +1240,7 @@ function AppContent() {
       return;
     }
     let active = true;
+    setDataLoading(true); setDataError("");
     const load = async (path: string) => {
       const response = await apiFetch(BASE_URL + path);
       const data = await response.json();
@@ -1431,8 +1258,8 @@ function AppContent() {
       .catch(error => {
         if (!active) return;
         if ((error as { unauthorized?: boolean }).unauthorized) { setUser(null); setAuthReady(true); }
-        else console.error("Could not load application data:", error);
-      });
+        else setDataError("Dashboard data could not be loaded.");
+      }).finally(() => { if (active) setDataLoading(false); });
     return () => { active = false; };
   }, [user?.empId, reloadKey]);
 
@@ -1449,6 +1276,7 @@ function AppContent() {
           setGoldInfo({ source: data.source, updatedAt: data.updatedAt, stale: Boolean(data.stale), warning: data.warning, fxUpdatedAt: data.fxUpdatedAt });
         }
       } catch { if (active) { setGoldRate(null); setGoldInfo(null); } }
+      finally { if (active) setGoldLoading(false); }
     };
     void loadGoldRate();
     const timer = window.setInterval(loadGoldRate, 5 * 60 * 1000);
@@ -1585,15 +1413,10 @@ function AppContent() {
 
         <main className="dashboard-main" key={tab}>
           <div className="dashboard-content">
-          {tab === "DASHBOARD" && <PageHeader title="Dashboard" description="An overview of sales, workshop activity, and profit." action={<Button onClick={() => setTab("INQUIRIES")}>View inquiries</Button>} />}
+
           {tab === "DAILY_SALES" && <PageHeader title="Sales" description="Review completed sales, payments, and outstanding balances." action={<Button onClick={() => setTab("JOB_COSTING")}>View jobs</Button>} />}
           {tab === "PROFIT_ANALYSIS" && <PageHeader title="Reports" description="Understand revenue, costs, and profitability over time." action={<Button onClick={() => setReloadKey(k => k + 1)}>Refresh report</Button>} />}
-          {tab === "DASHBOARD" && <div className="mb-5 flex flex-wrap gap-3">
-            <KPICard label={goldInfo?.stale ? "Last gold quote / g · 24K" : "Gold price / g · 24K"} value={goldRate === null ? "Unavailable" : php(goldRate)} sub="Live gold price" vc="text-primary-text" />
-            <KPICard label="Gold stock (physical)" value={`${goldStock.toFixed(2)} g`} vc="text-primary-text" />
-
-          </div>}
-        {tab === "DASHBOARD" && <DashboardView sales={visibleSales} jobCosts={visibleJobCosts} expenses={visibleExpenses} inquiries={visibleInquiries} rangeLabel={timelineLabel} isAdmin={isAdmin} onView={(title, record) => setViewRecord({ title, record })} />}
+        {tab === "DASHBOARD" && <Dashboard sales={sales} jobCosts={jobCosts} expenses={expenses} loading={dataLoading} error={dataError} isAdmin={isAdmin} goldRate={goldRate} goldStock={goldStock} goldLoading={goldLoading} goldStale={goldInfo?.stale ?? true} loadApprovals={loadDashboardApprovals} onJobs={() => setTab("JOB_COSTING")} onApprovals={() => setTab("APPROVALS")} onRetry={() => setReloadKey(k => k + 1)} onView={(title, record) => setViewRecord({ title, record })} />}
         {tab === "DAILY_SALES" && <DailySalesView sales={sales.filter(isCompletedSale)} onUpdate={s => setSales(p => p.map(item => item.invoiceId === s.invoiceId ? s : s.clientId && item.clientId === s.clientId ? { ...item, email: s.email } : item))} onDelete={id => deleteFromApi("sales", id, () => { const removed = sales.find(item => item.invoiceId === id); const linkedJob = jobCosts.find(item => item.jobCostId === removed?.jobCostId); setSales(p => p.filter(item => item.invoiceId !== id)); if (removed?.jobCostId) setJobCosts(p => p.filter(item => item.jobCostId !== removed.jobCostId)); if (linkedJob?.inquiryId) setInquiries(p => p.map(i => i.inquiryId === linkedJob.inquiryId ? { ...i, status: "Pending" } : i)); })} />}
         {tab === "JOB_COSTING" && <JobCostingView jobCosts={jobCosts} inquiries={inquiries} inventory={inventory} selectedInquiryId={selectedInquiryForCosting} clearSelectedInquiry={() => setSelectedInquiryForCosting(null)} onAdd={j => { setJobCosts(p => [j, ...p]); if (j.sale) setSales(p => [j.sale!, ...p.filter(s => s.invoiceId !== j.sale!.invoiceId)]); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Approved" } : i)); }} onUpdate={j => { setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? j : item)); if (j.sale) setSales(p => p.map(s => s.invoiceId === j.sale!.invoiceId ? j.sale! : s)); }} onDelete={j => deleteFromApi("job-cost", j.jobCostId, () => { setJobCosts(p => p.filter(item => item.jobCostId !== j.jobCostId)); setSales(p => p.filter(s => s.invoiceId !== j.invoiceId)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Pending" } : i)); })} onApprove={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/approve`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Costing could not be approved."); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Costing could not be approved."); } }} onReady={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/ready`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Item could not be marked ready."); const reason = data.notification?.sent ? (data.notification.reason ?? "Customer notification sent.") : (data.notification?.reason ?? "Customer notification could not be sent."); alert(`Marked ready for pickup. ${reason}`); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Item could not be marked ready."); } }} onFinish={async (j, materials) => { try { const response = await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(j.invoiceId)}/finish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ invoiceId: j.invoiceId, clientName: j.clientName, materials }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Sale could not be finished."); const sale = normalizeSale(data); setSales(p => [sale, ...p.filter(item => item.invoiceId !== sale.invoiceId)]); setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? { ...item, status: "Finished", sale } : item)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Finished" } : i)); alert("Sale completed. Confirm receipt sending from Daily Sales when ready."); } catch (error) { alert(error instanceof Error ? error.message : "Sale could not be finished."); } }} />}
         {tab === "INVENTORY" && <GoldInventoryView inventory={inventory} goldRate={goldRate} onAdd={e => { setInventory(p => [...p, e]); setReloadKey(k => k + 1); }} onUpdate={e => { setInventory(p => p.map(item => item.id === e.id ? e : item)); setReloadKey(k => k + 1); }} onDelete={id => deleteFromApi("inventory", id, () => { setInventory(p => p.filter(item => item.id !== id)); setReloadKey(k => k + 1); })} />}
