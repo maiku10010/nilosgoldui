@@ -24,6 +24,7 @@
   --warning: #92400e;
   --danger: #b91c1c;
   --info: #0369a1;
+  --category-payroll: #6d28d9;
   --success-tint: color-mix(in srgb, var(--success) 10%, transparent);
   --warning-tint: color-mix(in srgb, var(--warning) 10%, transparent);
   --danger-tint: color-mix(in srgb, var(--danger) 10%, transparent);
@@ -70,6 +71,7 @@
 }
 
 .dark {
+  --category-payroll: #c4b5fd;
   color-scheme: dark;
   --primary-text: var(--info);
   --success: #6ee7b7;
@@ -275,3 +277,36 @@ small { font-size: 12px; }
 .inventory-child-header th { padding: 8px 12px; background: var(--muted); color: var(--muted-foreground); font-size: 12px; font-weight: 500; text-align: right; white-space: nowrap; }
 .inventory-child-header th:first-child { text-align: left; }
 @media (max-width: 900px) { .inventory-stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.expense-total-pill { border-radius: 999px; background: var(--muted); border: 1px solid var(--border); padding: 7px 12px; font-size: 14px; font-weight: 500; white-space: nowrap; }
+.expense-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.expense-search { display: flex; align-items: center; gap: 8px; min-width: 200px; flex: 1; height: 36px; padding: 0 12px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; color: var(--muted-foreground); }
+.expense-search input { width: 100%; min-width: 0; background: transparent; color: var(--foreground); outline: none; font-size: 14px; }
+.expense-search:focus-within { outline: 2px solid var(--ring); outline-offset: 2px; }
+.expense-date { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted-foreground); }
+.expense-date input, .expense-pagination select { height: 36px; border: 1px solid var(--border); border-radius: 6px; padding: 0 8px; background: var(--card); color: var(--foreground); font-size: 14px; }
+.expense-months { display: flex; align-items: center; gap: 24px; overflow-x: auto; padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+.expense-months > * { flex-shrink: 0; }
+.expense-months > div { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted-foreground); border-left: 1px solid var(--border); padding-left: 24px; }
+.expense-months strong { color: var(--foreground); font-size: 16px; font-weight: 600; white-space: nowrap; }
+.expense-table-scroll { max-height: 620px; overflow: auto; scrollbar-gutter: stable; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+.expense-table { width: 100%; min-width: 760px; border-collapse: separate; border-spacing: 0; font-size: 14px; }
+.expense-table thead th { position: sticky; top: 0; z-index: 3; background: var(--card); height: 44px; font-size: 12px; font-weight: 500; color: var(--muted-foreground); text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.expense-table td { padding: 10px 16px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.expense-table .expense-number { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--foreground); }
+.expense-day th { position: sticky; top: 44px; z-index: 2; padding: 10px 16px; background: var(--muted); border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 500; text-align: left; }
+.expense-day th > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.expense-day strong { margin-left: 12px; font-size: 14px; font-weight: 600; white-space: nowrap; }
+.expense-row:hover { background: var(--background); }
+.expense-actions { display: flex; gap: 4px; opacity: 0; }
+.expense-row:hover .expense-actions, .expense-row:focus-within .expense-actions { opacity: 1; }
+.expense-actions button:last-child:hover { color: var(--danger); background: var(--danger-tint); }
+.expense-category { --expense-color: var(--muted-foreground); color: var(--expense-color); background: color-mix(in srgb, var(--expense-color) 10%, transparent); }
+.expense-category-0 { --expense-color: var(--category-payroll); }
+.expense-category-1 { --expense-color: var(--warning); }
+.expense-category-2 { --expense-color: var(--info); }
+.expense-category-3 { --expense-color: var(--success); }
+.expense-category-4 { --expense-color: var(--primary-text); }
+.expense-table .expense-empty { padding: 48px 16px; text-align: center; color: var(--muted-foreground); }
+.expense-pagination { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; font-size: 12px; }
+.expense-pagination label { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+@media (hover: none) { .expense-actions { opacity: 1; } }

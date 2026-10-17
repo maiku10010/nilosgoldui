@@ -1,4 +1,6 @@
 import { JobsTable } from "./components/JobsTable";
+import { ExpensesLedger } from "./components/ExpensesLedger";
+import { expenseCategories } from "../expensesView";
 import { Dashboard } from "./components/Dashboard";
 import { Button } from "./components/ui/button";
 import { Badge, sentenceCase } from "./components/ui/badge";
@@ -745,20 +747,12 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
 }
 
 // ── expenses ────────────────────────────────────────────────────────────────
-function ExpensesView({ expenses, onAdd, onUpdate, onDelete, rangeLabel }: { expenses: Expense[]; onAdd: (e: Expense) => void; onUpdate: (e: Expense) => void; onDelete: (id: string) => void; rangeLabel: string }) {
-  const [q, setQ] = useState("");
-  const [sort, setSort] = useState<SortSpec>({ key: "expDate", direction: -1 });
-  const toggleSort = (key: string) => setSort(s => ({ key, direction: s.key === key ? (s.direction === 1 ? -1 : 1) : 1 }));
+function ExpensesView({ expenses, onAdd, onUpdate, onDelete }: { expenses: Expense[]; onAdd: (e: Expense) => void; onUpdate: (e: Expense) => void; onDelete: (id: string) => void }) {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const [form, setForm] = useState({ expDate: "", category: "Rent", description: "", amount: "" });
-  const filtered = sortRecords(useMemo(() => expenses.filter(e =>
-    [e.category, e.description, e.expenseId].some(v => v.toLowerCase().includes(q.toLowerCase()))
-  ), [expenses, q]), sort);
-  const total = useMemo(() => filtered.reduce((a, e) => a + e.amount, 0), [filtered]);
-
   const resetForm = () => setForm({ expDate: todayISO(), category: "Rent", description: "", amount: "" });
   const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
 
@@ -796,60 +790,14 @@ function ExpensesView({ expenses, onAdd, onUpdate, onDelete, rangeLabel }: { exp
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Expenses" description="Track operating costs and workshop spending." action={<AddBtn onClick={() => { resetForm(); setEditingId(null); setOpen(true); }} label="Add expense" />} />
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-4">
-          <SearchBar value={q} onChange={setQ} placeholder="Search category, description…" />
-          <div className="flex items-center gap-2 bg-danger-tint border border-danger/20 rounded-lg px-3 py-2">
-            <TrendingDown size={13} className="text-danger " />
-            <span className="text-xs font-sans text-muted-foreground section-label">Total:</span>
-            <span className="text-sm font-bold text-danger tabular-nums">{php(total)}</span>
-          </div>
-        </div>
-
-      </div>
-      <TableWrap>
-        <thead><tr>
-          {[["Date", "expDate"], ["Expense ID", "expenseId"], ["Category", "category"], ["Description", "description"], ["Amount", "amount"]].map(([h, k]) => <SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}<th className={thc}>Actions</th>
-        </tr></thead>
-        <tbody>
-          {filtered.map(e => (
-            <TRow key={e.expenseId} onClick={() => { setEditingId(e.expenseId); setForm({ expDate: e.expDate, category: e.category, description: e.description, amount: String(e.amount) }); setOpen(true); }}>
-              <td className={tdc}>{fmtDate(e.expDate)}</td>
-              <td className={tdc + " text-muted-foreground"}>{e.expenseId}</td>
-              <td className={tdc}>
-                <Badge>{e.category}</Badge>
-              </td>
-              <td className={tdc + " font-sans text-muted-foreground max-w-[300px]"}>{e.description}</td>
-              <td className={tdr + " text-danger font-semibold"}>{php(e.amount)}</td>
-              <td className={tdc}>
-                <div className="flex items-center gap-2">
-                  <Button variant="secondary" size="icon" aria-label="Edit" type="button" onClick={() => { setEditingId(e.expenseId); setForm({ expDate: e.expDate, category: e.category, description: e.description, amount: String(e.amount) }); setOpen(true); }} title="Edit">
-                    <PenSquare size={13} />
-                  </Button>
-                  <Button variant="danger" size="icon" aria-label="Delete" type="button" onClick={() => onDelete(e.expenseId)} title="Delete">
-                    <Trash2 size={13} />
-                  </Button>
-                </div>
-              </td>
-            </TRow>
-          ))}
-          {!filtered.length && <EmptyRow cols={6} />}
-        </tbody>
-        <tfoot>
-          <tr className="bg-muted/40 ">
-            <td colSpan={4} className="px-3 py-3 text-xs font-sans text-muted-foreground section-label text-right">Total</td>
-            <td className="px-3 py-3 text-right font-bold text-danger tabular-nums text-sm">{php(total)}</td>
-          </tr>
-        </tfoot>
-      </TableWrap>
+      <ExpensesLedger expenses={expenses} onAdd={() => { resetForm(); setEditingId(null); setOpen(true); }} onEdit={entry => { setEditingId(entry.expenseId); setForm({ expDate: entry.expDate, category: entry.category, description: entry.description, amount: String(entry.amount) }); setOpen(true); }} onDelete={onDelete} />
       {open && (
         <Modal title={editingId ? "Edit Expense Entry" : "Add Expense Entry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update Entry" : "Save Entry"} isSubmitting={isSubmitting}>
           <div className="grid grid-cols-2 gap-4">
             <FF label="Date"><input type="date" max={todayISO()} className={ic} value={form.expDate} onChange={e => setForm(f => ({ ...f, expDate: e.target.value }))} required /></FF>
             <FF label="Category">
               <select className={ic} value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
-                {["Rent", "Staff Salary", "Utilities", "Supplies", "Tax & Permits", "Other"].map(c => <option key={c}>{c}</option>)}
+                {[...new Set([...expenseCategories, "Rent", "Staff Salary", "Utilities", form.category])].map(c => <option key={c}>{c}</option>)}
               </select>
             </FF>
             <div className="col-span-2"><FF label="Description"><input className={ic} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Describe the expense" required /></FF></div>
@@ -1451,7 +1399,7 @@ function AppContent() {
         {tab === "JOB_COSTING" && <JobCostingView jobCosts={jobCosts} inquiries={inquiries} inventory={inventory} selectedInquiryId={selectedInquiryForCosting} clearSelectedInquiry={() => setSelectedInquiryForCosting(null)} onAdd={j => { setJobCosts(p => [j, ...p]); if (j.sale) setSales(p => [j.sale!, ...p.filter(s => s.invoiceId !== j.sale!.invoiceId)]); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Approved" } : i)); }} onUpdate={j => { setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? j : item)); if (j.sale) setSales(p => p.map(s => s.invoiceId === j.sale!.invoiceId ? j.sale! : s)); }} onDelete={j => deleteFromApi("job-cost", j.jobCostId, () => { setJobCosts(p => p.filter(item => item.jobCostId !== j.jobCostId)); setSales(p => p.filter(s => s.invoiceId !== j.invoiceId)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Pending" } : i)); })} onApprove={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/approve`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Costing could not be approved."); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Costing could not be approved."); } }} onReady={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/ready`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Item could not be marked ready."); const reason = data.notification?.sent ? (data.notification.reason ?? "Customer notification sent.") : (data.notification?.reason ?? "Customer notification could not be sent."); alert(`Marked ready for pickup. ${reason}`); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Item could not be marked ready."); } }} onFinish={async (j, materials) => { try { const response = await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(j.invoiceId)}/finish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ invoiceId: j.invoiceId, clientName: j.clientName, materials }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Sale could not be finished."); const sale = normalizeSale(data); setSales(p => [sale, ...p.filter(item => item.invoiceId !== sale.invoiceId)]); setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? { ...item, status: "Finished", sale } : item)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Finished" } : i)); alert("Sale completed. Confirm receipt sending from Daily Sales when ready."); } catch (error) { alert(error instanceof Error ? error.message : "Sale could not be finished."); } }} />}
         {tab === "INVENTORY" && <GoldInventoryView inventory={inventory} goldRate={goldRate} onAdd={e => { setInventory(p => [...p, e]); setReloadKey(k => k + 1); }} onUpdate={e => { setInventory(p => p.map(item => item.id === e.id ? e : item)); setReloadKey(k => k + 1); }} onDelete={id => deleteFromApi("inventory", id, () => { setInventory(p => p.filter(item => item.id !== id)); setReloadKey(k => k + 1); })} />}
         {tab === "INQUIRIES" && <InquiriesView inquiries={inquiries} onAdd={i => setInquiries(p => [i, ...p])} onUpdate={i => setInquiries(p => p.map(item => item.inquiryId === i.inquiryId ? i : item))} onDelete={id => deleteFromApi("inquiries", id, () => setInquiries(p => p.filter(item => item.inquiryId !== id)))} onStartCosting={id => { setSelectedInquiryForCosting(id); setTab("JOB_COSTING"); }} />}
-        {tab === "EXPENSES" && <ExpensesView expenses={visibleExpenses} rangeLabel={timelineLabel} onAdd={e => setExpenses(p => [e, ...p])} onUpdate={e => setExpenses(p => p.map(item => item.expenseId === e.expenseId ? e : item))} onDelete={id => deleteFromApi("expenses", id, () => setExpenses(p => p.filter(item => item.expenseId !== id)))} />}
+        {tab === "EXPENSES" && <ExpensesView expenses={expenses} onAdd={e => setExpenses(p => [e, ...p])} onUpdate={e => setExpenses(p => p.map(item => item.expenseId === e.expenseId ? e : item))} onDelete={id => deleteFromApi("expenses", id, () => setExpenses(p => p.filter(item => item.expenseId !== id)))} />}
         {tab === "PROFIT_ANALYSIS" && <ProfitAnalysisView sales={sales.filter(isCompletedSale)} jobCosts={jobCosts} expenses={expenses} selectedYear={selectedYear} setSelectedYear={setSelectedYear} startMonth={startMonth} setStartMonth={setStartMonth} endMonth={endMonth} setEndMonth={setEndMonth} />}
         {tab === "APPROVALS" && isAdmin && <ApprovalQueueView onResolved={() => setReloadKey(k => k + 1)} />}
         {tab === "AUDIT_LOGS" && isAdmin && <AuditLogsView />}
