@@ -1,3 +1,4 @@
+import { roundTwo } from "./rounding.ts";
 import { stripDisallowedFields } from "./lib/serviceRules.ts";
 import type { ServiceType } from "./lib/serviceRules.ts";
 
@@ -5,4 +6,9 @@ import type { ServiceType } from "./lib/serviceRules.ts";
 export function changeCostingService<T extends Record<string, unknown> & { serviceType: ServiceType }>(form: T, serviceType: ServiceType): T {
   const hidden = stripDisallowedFields(serviceType, {});
   return { ...form, ...Object.fromEntries(Object.keys(hidden).map(key => [key, ""])), serviceType } as T;
+}
+
+/** Blank optional amounts are unrecorded, rather than measured as zero. */
+export function optionalCostValue(value: string): number | null {
+  return value.trim() === "" ? null : roundTwo(value);
 }

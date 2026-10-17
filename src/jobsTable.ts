@@ -2,7 +2,7 @@ export type JobFilter = 'all' | 'inProgress' | 'finished';
 export type JobSortKey = 'jobId' | 'clientName' | 'type' | 'sellingPrice' | 'totalCost' | 'profit' | 'marginPct' | 'status';
 export interface JobTableRecord {
   jobCostId: string; invoiceId: string; clientName: string; status: string;
-  goldUsed: number; goldScrap?: number; goldCostPerG: number; goldCost: number; stoneCost: number; laborCost: number;
+  goldUsed: number; goldScrap?: number; goldCostPerG: number; goldCost: number; stoneCost: number | null; laborCost: number;
   sellingPrice: number; totalCost: number; profit: number; marginPct: number;
   sale?: { serviceType?: string };
 }

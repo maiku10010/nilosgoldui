@@ -15,8 +15,8 @@ const filters: { label: string; value: JobFilter }[] = [
   { label: "All", value: "all" }, { label: "In progress", value: "inProgress" }, { label: "Finished", value: "finished" },
 ];
 const typeFilters = ["Repair", "Custom", "Cleaning", "Resize"];
-function Cost({ value }: { value: number }) {
-  return value === 0 ? <span className="text-muted-foreground">—</span> : <>{currency(value)}</>;
+function Cost({ value }: { value: number | null }) {
+  return value == null || value === 0 ? <span className="text-muted-foreground">—</span> : <>{currency(value)}</>;
 }
 
 export function JobsTable<T extends JobTableRecord>({ jobs, onEdit, onDelete, onApprove, onReady, onFinish }: {
@@ -105,7 +105,7 @@ export function JobsTable<T extends JobTableRecord>({ jobs, onEdit, onDelete, on
                 <h2>Cost breakdown</h2>
                 <div className="jobs-breakdown-grid">
                   <section><h3>Materials</h3><dl><div><dt>Gold used</dt><dd>{job.goldUsed === 0 ? <span className="text-muted-foreground">—</span> : `${job.goldUsed.toFixed(2)} g`}</dd></div><div><dt>Gold scrap</dt><dd>{!job.goldScrap ? <span className="text-muted-foreground">—</span> : `${job.goldScrap.toFixed(2)} g`}</dd></div><div><dt>Gold price / g</dt><dd><Cost value={job.goldCostPerG} /></dd></div><div><dt>Gold cost</dt><dd><Cost value={job.goldCost} /></dd></div></dl></section>
-                  <section><h3>Labor &amp; stone</h3><dl><div><dt>Labor</dt><dd><Cost value={job.laborCost} /></dd></div><div><dt>Stone</dt><dd><Cost value={job.stoneCost} /></dd></div><div><dt>Labor &amp; stone total</dt><dd><Cost value={job.laborCost + job.stoneCost} /></dd></div></dl></section>
+                  <section><h3>Labor &amp; stone</h3><dl><div><dt>Labor</dt><dd><Cost value={job.laborCost} /></dd></div><div><dt>Stone</dt><dd><Cost value={job.stoneCost} /></dd></div><div><dt>Labor &amp; stone total</dt><dd><Cost value={job.laborCost + (job.stoneCost ?? 0)} /></dd></div></dl></section>
                   <section><h3>Pricing</h3><dl><div><dt>Selling price</dt><dd>{currency(job.sellingPrice)}</dd></div><div><dt>Total cost</dt><dd><Cost value={job.totalCost} /></dd></div><div><dt>Profit</dt><dd className={job.profit < 0 ? "text-danger" : "text-success"}>{currency(job.profit)}</dd></div><div><dt>Margin</dt><dd>{job.totalCost === 0 ? <span className="text-muted-foreground">—</span> : <Badge variant={job.marginPct >= 50 ? "success" : job.marginPct >= 25 ? "warning" : "danger"}>{job.marginPct.toFixed(2)}%</Badge>}</dd></div></dl></section>
                 </div>
                 {job.status === "Approved" && <Button variant="secondary" className="mt-4" onClick={() => onFinish(job)}>Finish sale</Button>}
