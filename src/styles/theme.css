@@ -259,6 +259,14 @@ small { font-size: 12px; }
 .chart-legend { gap: 16px; }
 .chart-legend i { width: 8px; height: 8px; border-radius: 2px; }
 .revenue-key { background: var(--navy); }.cost-key { background: var(--muted-foreground); }.expenses-key { background: var(--warning); }
+.profit-bridge { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.profit-bridge-step { display: flex; min-width: 0; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--background); }
+.profit-bridge-sign { min-height: 14px; color: var(--muted-foreground); font-size: 12px; font-weight: 600; }
+.profit-bridge-label { overflow: hidden; color: var(--muted-foreground); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.profit-bridge-step strong { overflow: hidden; color: var(--foreground); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.profit-bridge-track { height: 5px; overflow: hidden; border-radius: 999px; background: var(--muted); }
+.profit-bridge-track i { display: block; width: var(--bridge-width); height: 100%; border-radius: inherit; background: var(--bridge-color); }
+.profit-bridge-step:last-child strong { color: var(--bridge-color); }
 .dashboard-bottom { display: grid; grid-template-columns: minmax(0, 2.5fr) minmax(240px, 1fr); gap: 20px; align-items: start; }
 .dashboard-activity { width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap; }
 .dashboard-activity th { font-weight: 500; color: var(--muted-foreground); text-align: left; }
@@ -277,6 +285,7 @@ small { font-size: 12px; }
 .attention-age { color: var(--muted-foreground); font-size: 12px; font-variant-numeric: tabular-nums; }
 .attention-age-overdue { color: var(--warning); }
 .attention-approvals { margin-top: 16px; padding-top: 20px; border-top: 1px solid var(--border); }
+@media (max-width: 700px) { .profit-bridge { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (prefers-reduced-motion: reduce) { .dashboard-overview [data-slot="skeleton"] { animation: none; } }
 .approval-tab { border-bottom: 3px solid transparent; padding: 10px 12px; color: var(--muted-foreground); font-size: 14px; font-weight: 500; }
 .approval-tab:hover { color: var(--foreground); }

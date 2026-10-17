@@ -976,10 +976,10 @@ function ProfitAnalysisView({ sales, jobCosts, expenses }: { sales: Sale[]; jobC
   });
   const comparisonTotals = [
     { label: "Revenue", value: totalRevenue, color: "var(--primary)" },
-    { label: "Cost", value: totalCost, color: "var(--chart-2)" },
+    { label: "Job cost", value: totalCost, color: "var(--chart-2)" },
     { label: "Expenses", value: totalExp, color: "var(--chart-4)" },
   ];
-  const comparisonMax = Math.max(1, ...comparisonTotals.map(item => Math.abs(item.value)));
+  const bridgeMax = Math.max(1, totalRevenue);
   const rangeLabel = startDate || endDate ? `${startDate ? fmtDate(startDate) : "Beginning"} – ${endDate ? fmtDate(endDate) : "Present"}` : "All dates";
 
   const rankedCategories = Object.entries(selectedExpenses.reduce((totals, expense) => {
@@ -998,21 +998,28 @@ function ProfitAnalysisView({ sales, jobCosts, expenses }: { sales: Sale[]; jobC
   ];
   const expenseShare = (value: number) => totalExp > 0 ? value / totalExp * 100 : 0;
 
+  const costedJobCosts = selectedJobCosts.filter(job => job.totalCost > 0);
   const byService = (["Custom", "Repair", "Resize", "Cleaning"] as ServiceType[]).map(type => {
-    const jcs = selectedJobCosts.filter(j => salesByInvoice.get(j.invoiceId)?.serviceType === type);
+    const jcs = costedJobCosts.filter(j => salesByInvoice.get(j.invoiceId)?.serviceType === type);
     const margin = jcs.length ? jcs.reduce((a, j) => a + j.marginPct, 0) / jcs.length : 0;
     return { type, margin: parseFloat(margin.toFixed(1)), count: jcs.length };
   });
+  const marginAxisTick = ({ x, y, payload }: any) => {
+    const row = byService.find(item => item.type === payload.value);
+    return <g transform={`translate(${x},${y})`}><text y={0} dy={12} textAnchor="middle" fill="var(--muted-foreground)" fontSize={12} fontFamily="Inter">{payload.value}</text><text y={18} textAnchor="middle" fill="var(--muted-foreground)" fontSize={12} fontFamily="Inter">{row?.count ?? 0} jobs</text></g>;
+  };
 
   const cardCls = "bg-card border border-border rounded-xl p-5";
 
   return (
     <div className="space-y-5">
+      <PageHeader title="Reports" description={`Financial summary · ${rangeLabel}`} action={<DateRangePicker startDate={startDate} endDate={endDate} onChange={(start, end) => { setStartDate(start); setEndDate(end); }} label="Report date range" />} />
+      {invalidRange && <p role="alert" className="text-sm text-danger">The end date must be on or after the start date.</p>}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {[
-          { label: `Gross profit (${rangeLabel})`, val: php(grossProfit), sub: "Revenue minus job costs", cls: "text-success " },
-          { label: `Total expenses (${rangeLabel})`, val: php(totalExp), sub: "Operating overhead", cls: "text-danger " },
-          { label: `Net profit (${rangeLabel})`, val: php(netProfit), sub: `${pct(netMargin)} net margin`, cls: netProfit >= 0 ? "text-success " : "text-danger " },
+          { label: "Gross profit", val: php(grossProfit), sub: "Revenue minus job costs", cls: "text-success " },
+          { label: "Total expenses", val: php(totalExp), sub: "Operating overhead", cls: "text-danger " },
+          { label: "Net profit", val: php(netProfit), sub: `${pct(netMargin)} net margin`, cls: netProfit >= 0 ? "text-success " : "text-danger " },
         ].map(k => (
           <div key={k.label} className={cardCls}>
             <div className="text-xs font-sans text-muted-foreground section-label mb-2">{k.label}</div>
@@ -1023,15 +1030,8 @@ function ProfitAnalysisView({ sales, jobCosts, expenses }: { sales: Sale[]; jobC
       </div>
 
       <div className="grid grid-cols-12 gap-5">
-        <section aria-label="Monthly revenue and cost" className={cardCls + " col-span-12 min-w-0 xl:col-span-7"}>
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-            <div><h2 className="text-sm font-medium">Monthly revenue vs. cost</h2><p className="mt-1 text-xs text-muted-foreground">{rangeLabel}</p></div>
-            <div className="expense-filters">
-              <DateRangePicker startDate={startDate} endDate={endDate} onChange={(start, end) => { setStartDate(start); setEndDate(end); }} label="Report date range" />
-              {(startDate || endDate) && <Button variant="ghost" onClick={() => { setStartDate(""); setEndDate(""); }}>Clear filters</Button>}
-              {invalidRange && <p role="alert" className="text-sm text-danger">The end date must be on or after the start date.</p>}
-            </div>
-          </div>
+        <section aria-label="Monthly revenue and job cost" className={cardCls + " col-span-12 min-w-0 xl:col-span-7"}>
+          <div className="mb-4"><h2 className="text-sm font-medium">Monthly revenue vs. job cost</h2><p className="mt-1 text-xs text-muted-foreground">{rangeLabel}</p></div>
           <div className="mb-5 flex items-center gap-5 text-xs text-muted-foreground" aria-label="Chart legend">
             {comparisonTotals.slice(0, 2).map(item => <span key={item.label} className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: item.color }} aria-hidden="true" />{item.label}</span>)}
           </div>
@@ -1042,26 +1042,19 @@ function ProfitAnalysisView({ sales, jobCosts, expenses }: { sales: Sale[]; jobC
               <YAxis width={64} tick={{ fill: "var(--muted-foreground)", fontSize: 12, fontFamily: "Inter" }} axisLine={false} tickLine={false} tickFormatter={v => "₱" + new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(v)} />
               <Tooltip content={<ChartTip />} cursor={{ fill: "var(--muted)", opacity: 0.5 }} />
               <Bar dataKey="revenue" name="Revenue" fill="var(--primary)" radius={[3, 3, 0, 0]} maxBarSize={32} />
-              <Bar dataKey="cost" name="Cost" fill="var(--chart-2)" radius={[3, 3, 0, 0]} maxBarSize={32} />
+              <Bar dataKey="cost" name="Job cost" fill="var(--chart-2)" radius={[3, 3, 0, 0]} maxBarSize={32} />
             </BarChart>
           </ResponsiveContainer>
         </section>
 
-        <section aria-labelledby="period-comparison-title" className={cardCls + " col-span-12 min-w-0 xl:col-span-5"}>
-          <h2 id="period-comparison-title" className="text-sm font-medium">Period totals</h2>
-          <p className="mt-1 text-xs text-muted-foreground">{rangeLabel}</p>
-          <div className="mt-8 space-y-7">
-            {comparisonTotals.map(item => <div key={item.label}>
-              <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                <span className="text-xs font-sans section-label text-muted-foreground">{item.label}</span>
-                <span className="break-words font-sans text-2xl font-medium tabular-nums">{php(item.value)}</span>
-              </div>
-              <div className="h-3 overflow-hidden rounded-full bg-muted" aria-hidden="true">
-                <div className="h-full rounded-full" style={{ width: `${Math.abs(item.value) / comparisonMax * 100}%`, backgroundColor: item.color }} />
-              </div>
+        <section aria-labelledby="profit-bridge-title" className={cardCls + " col-span-12 min-w-0 xl:col-span-5"}>
+          <h2 id="profit-bridge-title" className="text-sm font-medium">Profit bridge</h2>
+          <p className="mt-1 text-xs text-muted-foreground">Revenue − Job cost − Expenses = Net · {rangeLabel}</p>
+          <div className="profit-bridge mt-6" aria-label={`Revenue ${php(totalRevenue)} minus job cost ${php(totalCost)} minus expenses ${php(totalExp)} equals net ${php(netProfit)}`}>
+            {[{ label: "Revenue", value: totalRevenue, color: "var(--primary)", sign: "" }, { label: "Job cost", value: totalCost, color: "var(--chart-2)", sign: "−" }, { label: "Expenses", value: totalExp, color: "var(--chart-4)", sign: "−" }, { label: "Net", value: netProfit, color: netProfit < 0 ? "var(--danger)" : "var(--success)", sign: "=" }].map((item, index) => <div key={item.label} className="profit-bridge-step" style={{ "--bridge-color": item.color, "--bridge-width": `${Math.min(100, Math.abs(item.value) / bridgeMax * 100)}%` } as React.CSSProperties}>
+              <span className="profit-bridge-sign" aria-hidden="true">{index === 0 ? "" : item.sign}</span><span className="profit-bridge-label">{item.label}</span><strong>{index === 3 && netProfit < 0 ? "− " : ""}{php(Math.abs(item.value))}</strong><span className="profit-bridge-track" aria-hidden="true"><i /></span>
             </div>)}
           </div>
-          <p className="mt-7 text-xs text-muted-foreground">Shared scale across all three totals.</p>
         </section>
       </div>
 
@@ -1134,11 +1127,12 @@ function ProfitAnalysisView({ sales, jobCosts, expenses }: { sales: Sale[]; jobC
       </section>
 
       <div className={cardCls}>
-        <p className="text-xs font-sans text-muted-foreground section-label mb-4">Average margin % by service type</p>
-        <ResponsiveContainer width="100%" height={180}>
+        <p className="text-xs font-sans text-muted-foreground section-label mb-1">Average margin by service type</p>
+        <p className="mb-4 text-xs text-muted-foreground">Costed jobs only · job counts appear below each type.</p>
+        <ResponsiveContainer width="100%" height={210}>
           <BarChart data={byService} margin={{ top: 4, right: 4, bottom: 0, left: 10 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-            <XAxis dataKey="type" tick={{ fill: "var(--muted-foreground)", fontSize: 12, fontFamily: "Inter" }} axisLine={false} tickLine={false} />
+            <XAxis dataKey="type" tick={marginAxisTick} height={42} interval={0} axisLine={false} tickLine={false} />
             <YAxis tick={{ fill: "var(--muted-foreground)", fontSize: 12, fontFamily: "Inter" }} axisLine={false} tickLine={false} tickFormatter={v => v + "%"} />
             <Tooltip
               formatter={(v: any) => [v + "%", "Avg Margin"]}
@@ -1146,9 +1140,7 @@ function ProfitAnalysisView({ sales, jobCosts, expenses }: { sales: Sale[]; jobC
               labelStyle={{ color: "var(--muted-foreground)" }}
               itemStyle={{ color: "var(--foreground)" }}
             />
-            <Bar dataKey="margin" name="Margin %" radius={[4, 4, 0, 0]}>
-              {byService.map((_, i) => <Cell key={i} fill={["var(--primary)", "var(--chart-2)", "var(--chart-3)", "var(--foreground)"][i]} />)}
-            </Bar>
+            <Bar dataKey="margin" name="Margin %" fill="var(--chart-4)" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>
