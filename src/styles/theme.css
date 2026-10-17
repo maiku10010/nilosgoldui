@@ -326,4 +326,35 @@ tr:hover .table-row-actions, tr:focus-within .table-row-actions { opacity: 1; }
 .expense-pagination label { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .expense-pagination select { height: 32px; }
 .jobs-pagination, .jobs-pagination * { font-size: 13px !important; }
+
+/* Job costing modal keeps the inputs and live estimate visible together. */
+.job-costing-modal { width: min(1120px, calc(100vw - 32px)); }
+.job-costing-form { display: flex; flex-direction: column; gap: 20px; }
+.job-costing-layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; align-items: start; gap: 24px; }
+.job-costing-fields { display: grid; gap: 20px; }
+.job-costing-group { padding-bottom: 18px; border-bottom: 1px solid var(--border); }
+.job-costing-group:last-child { padding-bottom: 0; border-bottom: 0; }
+.job-costing-group-heading { margin-bottom: 14px; }
+.job-costing-group-heading h2 { font-size: 16px; font-weight: 600; }
+.job-costing-group-heading p { margin-top: 3px; color: var(--muted-foreground); font-size: 12px; }
+.job-costing-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.job-costing-summary { position: sticky; top: 0; padding: 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--muted); }
+.job-costing-summary h2 { margin-top: 4px; font-size: 20px; font-weight: 600; }
+.job-costing-summary dl { margin-top: 18px; display: grid; gap: 14px; }
+.job-costing-summary dl > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.job-costing-summary dt { color: var(--muted-foreground); font-size: 14px; }
+.job-costing-summary dd { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.job-costing-summary-note { margin-top: 16px; color: var(--muted-foreground); font-size: 12px; line-height: 1.5; }
+.required-marker { color: var(--danger); }
+.field-error { margin-top: 5px; color: var(--danger); font-size: 12px; line-height: 1.4; }
+.form-field:has(.field-error) input:not([readonly]), .form-field:has(.field-error) select, .form-field:has(.field-error) textarea { border-color: var(--danger); }
+.read-only-field, input:read-only, textarea:read-only { background: var(--muted) !important; cursor: not-allowed !important; color: var(--muted-foreground); }
+.money-input { position: relative; }
+.money-input > span { position: absolute; left: 12px; top: 50%; z-index: 1; transform: translateY(-50%); color: var(--muted-foreground); font-size: 14px; }
+.money-input input { padding-left: 2rem; font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) {
+  .job-costing-layout { grid-template-columns: minmax(0, 1fr); }
+  .job-costing-summary { position: static; grid-row: 1; }
+}
+@media (max-width: 520px) { .job-costing-field-grid { grid-template-columns: minmax(0, 1fr); } }
 @media (hover: none) { .expense-actions, .table-row-actions { opacity: 1; } }

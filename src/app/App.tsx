@@ -165,21 +165,28 @@ type Tab = (typeof TABS)[number];
 
 // ── shared ui primitives ────────────────────────────────────────────────────
 
-function Modal({ title, onClose, onSubmit, children, submitLabel = "Save Entry", isSubmitting = false, submitDisabled = false }: {
+function Modal({ title, onClose, onSubmit, children, submitLabel = "Save entry", isSubmitting = false, submitDisabled = false, className = "", formClassName = "" }: {
   title: string; onClose: () => void; onSubmit: (e: React.FormEvent) => void; children: React.ReactNode;
-  submitLabel?: string; isSubmitting?: boolean; submitDisabled?: boolean;
+  submitLabel?: string; isSubmitting?: boolean; submitDisabled?: boolean; className?: string; formClassName?: string;
 }) {
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay backdrop-blur-sm">
-      <div className="bg-card border border-border rounded-xl w-full max-w-lg mx-4 shadow-2xl shadow-ink/30 max-h-[90vh] flex flex-col">
+      <div className={`bg-card border border-border rounded-xl w-full max-w-lg mx-4 shadow-2xl shadow-ink/30 max-h-[90vh] flex flex-col ${className}`}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
           <span className="text-xl font-semibold">{title}</span>
           <Button variant="ghost" size="icon" aria-label="Close dialog" onClick={onClose} >
             <X size={16} />
           </Button>
         </div>
-        <form onSubmit={onSubmit} className="p-6 space-y-4 overflow-y-auto">
-          {children}
+        <form onSubmit={onSubmit} onInvalidCapture={event => {
+          const field = (event.target as HTMLElement).closest<HTMLElement>(".form-field");
+          if (field?.dataset.field) setFieldErrors(current => ({ ...current, [field.dataset.field!]: (event.target as HTMLInputElement).validationMessage }));
+        }} onChangeCapture={event => {
+          const field = (event.target as HTMLElement).closest<HTMLElement>(".form-field");
+          if (field?.dataset.field) setFieldErrors(current => { const next = { ...current }; delete next[field.dataset.field!]; return next; });
+        }} className={`p-6 space-y-4 overflow-y-auto ${formClassName}`}>
+          <FieldErrorsContext.Provider value={fieldErrors}>{children}</FieldErrorsContext.Provider>
           <div className="flex gap-3 pt-2">
             <Button variant="secondary" type="button" onClick={onClose}
               className="flex-1 text-sm">
@@ -196,11 +203,21 @@ function Modal({ title, onClose, onSubmit, children, submitLabel = "Save Entry",
   );
 }
 
-function FF({ label, children }: { label: string; children: React.ReactNode }) {
+const FieldErrorsContext = createContext<Record<string, string>>({});
+function requiresValue(node: React.ReactNode): boolean {
+  return React.Children.toArray(node).some(child => React.isValidElement<{ required?: boolean; children?: React.ReactNode }>(child) && (child.props.required || requiresValue(child.props.children)));
+}
+function FF({ label, children, helper }: { label: string; children: React.ReactNode; helper?: string }) {
+  const fieldErrors = useContext(FieldErrorsContext);
+  const fieldKey = sentenceCase(label);
+  const error = fieldErrors[fieldKey];
+  const required = requiresValue(children);
   return (
-    <div>
-      <label className="block text-xs font-sans text-muted-foreground section-label mb-1">{sentenceCase(label)}</label>
+    <div className="form-field" data-field={fieldKey}>
+      <label className="block text-xs font-sans text-muted-foreground section-label mb-1">{fieldKey}{required && <span className="required-marker" aria-hidden="true"> *</span>}</label>
       {children}
+      {helper && <p className="mt-1 text-xs text-muted-foreground">{helper}</p>}
+      {error && <p className="field-error" role="alert">{error}</p>}
     </div>
   );
 }
@@ -481,6 +498,11 @@ function JobCostingView({ jobCosts, inquiries, inventory, selectedInquiryId, cle
   }, [selectedInquiryId]);
 
   const resetForm = () => setForm(blankForm());
+  const liveGoldCost = roundTwo(Math.max(0, Number(form.goldUsed) || 0) * Math.max(0, Number(form.goldCostPerG) || 0));
+  const liveTotalCost = roundTwo(liveGoldCost + Math.max(0, Number(form.stoneCost) || 0) + Math.max(0, Number(form.laborCost) || 0));
+  const liveSellingPrice = Math.max(0, Number(form.sellingPrice) || 0);
+  const liveProfit = roundTwo(liveSellingPrice - liveTotalCost);
+  const liveMargin = liveSellingPrice > 0 ? roundTwo(liveProfit / liveSellingPrice * 100) : null;
   const editJob = (j: JobCost) => {
     setEditingId(j.jobCostId);
     setForm({ inquiryId: j.inquiryId ?? "", invoiceId: j.invoiceId, clientName: j.clientName, itemName: j.itemName, deadline: j.deadline, contactNum: j.sale?.contactNum ?? "", empId: j.empId ?? "", serviceType: j.sale?.serviceType ?? "Custom", goldUsed: String(j.goldUsed), goldScrap: String(j.goldScrap), goldCostPerG: String(j.goldCostPerG), stoneCost: String(j.stoneCost), laborCost: String(j.laborCost), sellingPrice: String(j.sellingPrice) });
@@ -536,22 +558,35 @@ function JobCostingView({ jobCosts, inquiries, inventory, selectedInquiryId, cle
       <JobsTable jobs={jobCosts} onEdit={editJob} onDelete={onDelete} onApprove={onApprove} onReady={onReady} onFinish={finishJob} />
 
       {finishTarget && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-overlay p-4" role="dialog" aria-modal="true"><div className="w-full max-w-lg rounded-xl border border-border bg-card p-5"><h2 className="font-semibold">Materials used for {finishTarget.invoiceId}</h2><p className="mt-1 text-xs text-muted-foreground">Select packaging or optional materials and enter the quantities used.</p><select aria-label="Extra inventory material" className={ic + " mt-4"} value={finishMaterialId} onChange={e => setFinishMaterialId(e.target.value)}><option value="">Select an inventory item</option>{inventory.filter(item => item.balance > 0 && item.category !== "GOLD" && item.category !== "TOOLS").map(item => <option key={item.referenceId} value={item.referenceId}>{item.itemName} · {item.category} · {item.balance} {item.unit} available</option>)}</select><div className="mt-3 max-h-64 space-y-2 overflow-auto">{inventory.filter(item => item.balance > 0 && item.category !== "GOLD" && item.category !== "TOOLS" && (!finishMaterialId || item.referenceId === finishMaterialId)).map(item => <label key={item.referenceId} className="grid grid-cols-[1fr_6rem] items-center gap-3 rounded border border-border p-2 text-sm"><span>{item.itemName} <small className="text-muted-foreground">({item.category}, {item.balance} {item.unit} available)</small></span><input aria-label={`Quantity of ${item.itemName}`} type="number" min="0" max={item.balance} step="0.01" className={ic} value={finishQuantities[item.referenceId] ?? ""} onChange={e => setFinishQuantities(v => ({ ...v, [item.referenceId]: e.target.value }))} /></label>)}{!inventory.some(item => item.balance > 0 && item.category !== "GOLD" && item.category !== "TOOLS") && <p className="text-sm text-muted-foreground">No packaging or optional material stock is available.</p>}</div><div className="mt-5 flex justify-end gap-2"><Button variant="secondary" className="text-sm" onClick={() => setFinishTarget(null)}>Cancel</Button><Button variant="primary" className="text-sm" onClick={() => { const materials = Object.entries(finishQuantities).filter(([, q]) => Number(q) > 0).map(([referenceId, q]) => ({ referenceId, quantity: Number(q) })); onFinish(finishTarget, materials); setFinishTarget(null) }}>Finish Sale</Button></div></div></div>}
-      {open && <Modal title={editingId ? "Edit job costing" : "Cost a pending inquiry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update costing" : "Save pending costing"} isSubmitting={isSubmitting}>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {!editingId && <FF label="Pending Inquiry"><select className={ic} value={form.inquiryId} onChange={e => selectInquiry(e.target.value)} required><option value="">Select an inquiry</option>{pendingInquiries.map(i => <option key={i.inquiryId} value={i.inquiryId}>{i.customerName} · {i.category} · {i.inquiryId}</option>)}</select></FF>}
-          {editingId && <FF label="Invoice #"><input className={ic} value={form.invoiceId} readOnly /></FF>}
-          <FF label="Client Name"><input className={ic} value={form.clientName} readOnly placeholder="Select a pending inquiry" required /></FF>
-          {!editingId && <FF label="Service Type"><select className={ic} value={form.serviceType} onChange={e => setForm(f => ({ ...f, serviceType: e.target.value as ServiceType }))}>{(["Custom", "Repair", "Resize", "Cleaning"] as ServiceType[]).map(t => <option key={t}>{t}</option>)}</select></FF>}
-          <FF label="Employee ID (optional)"><input className={ic} value={form.empId} onChange={e => setForm(f => ({ ...f, empId: e.target.value }))} placeholder="Leave blank to assign available staff" /></FF>
-          <FF label="Gold Used (g)"><input type="number" min="0" step="0.001" className={ic} value={form.goldUsed} onChange={e => setForm(f => ({ ...f, goldUsed: e.target.value }))} required /></FF><FF label="Gold Scrap (g)"><input type="number" min="0" step="0.001" className={ic} value={form.goldScrap} onChange={e => setForm(f => ({ ...f, goldScrap: e.target.value }))} /></FF>
-          <FF label="Gold Cost / Price per g (₱)"><input type="number" min="0.01" step="0.01" className={ic} value={form.goldCostPerG} onChange={e => setForm(f => ({ ...f, goldCostPerG: e.target.value }))} required /></FF>
-          <FF label="Stone Cost (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.stoneCost} onChange={e => setForm(f => ({ ...f, stoneCost: e.target.value }))} required /></FF>
-          <FF label="Labor Cost (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.laborCost} onChange={e => setForm(f => ({ ...f, laborCost: e.target.value }))} required /></FF>
-          <FF label="Item Name (optional)"><input className={ic} value={form.itemName} onChange={e => setForm(f => ({ ...f, itemName: e.target.value }))} placeholder="e.g. Gold ring" maxLength={120} /></FF>
-          <FF label="Delivery Date / Deadline (optional)"><input type="date" min={todayISO()} className={ic} value={form.deadline} onChange={e => setForm(f => ({ ...f, deadline: e.target.value }))} /></FF>
-          <FF label="Selling Price (₱)"><input type="number" min="0.01" step="0.01" className={ic} value={form.sellingPrice} onChange={e => setForm(f => ({ ...f, sellingPrice: e.target.value }))} required /></FF>
+      {open && <Modal title={editingId ? "Edit job costing" : "Cost a pending inquiry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update costing" : "Save pending costing"} isSubmitting={isSubmitting} className="job-costing-modal max-w-6xl" formClassName="job-costing-form">
+        <div className="job-costing-layout">
+          <div className="job-costing-fields">
+            <section className="job-costing-group"><div className="job-costing-group-heading"><h2>Client &amp; service</h2><p>Choose the inquiry and add workshop details.</p></div><div className="job-costing-field-grid">
+              {!editingId && <FF label="Pending inquiry"><select className={ic} value={form.inquiryId} onChange={e => selectInquiry(e.target.value)} required><option value="">Select an inquiry</option>{pendingInquiries.map(i => <option key={i.inquiryId} value={i.inquiryId}>{i.customerName} · {i.category} · {i.inquiryId}</option>)}</select></FF>}
+              {editingId && <FF label="Reference"><input className={`${ic} read-only-field`} value={form.invoiceId} readOnly /></FF>}
+              <FF label="Client name"><input className={`${ic} read-only-field`} value={form.clientName} readOnly placeholder="Select a pending inquiry" required /></FF>
+              {!editingId && <FF label="Service type"><select className={ic} value={form.serviceType} onChange={e => setForm(f => ({ ...f, serviceType: e.target.value as ServiceType }))}>{(["Custom", "Repair", "Resize", "Cleaning"] as ServiceType[]).map(t => <option key={t}>{t}</option>)}</select></FF>}
+              <FF label="Employee ID (optional)" helper="Leave blank to assign available staff."><input className={ic} value={form.empId} onChange={e => setForm(f => ({ ...f, empId: e.target.value }))} placeholder="Optional" /></FF>
+              <FF label="Item name (optional)"><input className={ic} value={form.itemName} onChange={e => setForm(f => ({ ...f, itemName: e.target.value }))} placeholder="e.g. Gold ring" maxLength={120} /></FF>
+              <FF label="Delivery date / deadline (optional)"><input type="date" min={todayISO()} className={ic} value={form.deadline} onChange={e => setForm(f => ({ ...f, deadline: e.target.value }))} /></FF>
+            </div></section>
+            <section className="job-costing-group"><div className="job-costing-group-heading"><h2>Materials</h2><p>Enter material use and workshop costs.</p></div><div className="job-costing-field-grid">
+              <FF label="Gold used (g)"><input type="number" min="0" step="0.001" className={ic} value={form.goldUsed} onChange={e => setForm(f => ({ ...f, goldUsed: e.target.value }))} required /></FF>
+              <FF label="Gold scrap (g, optional)"><input type="number" min="0" step="0.001" className={ic} value={form.goldScrap} onChange={e => setForm(f => ({ ...f, goldScrap: e.target.value }))} /></FF>
+              <FF label="Gold price per g (₱)"><input type="number" min="0.01" step="0.01" className={ic} value={form.goldCostPerG} onChange={e => setForm(f => ({ ...f, goldCostPerG: e.target.value }))} required /></FF>
+              <FF label="Stone cost (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.stoneCost} onChange={e => setForm(f => ({ ...f, stoneCost: e.target.value }))} required /></FF>
+              <FF label="Labor cost (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.laborCost} onChange={e => setForm(f => ({ ...f, laborCost: e.target.value }))} required /></FF>
+            </div></section>
+            <section className="job-costing-group"><div className="job-costing-group-heading"><h2>Pricing</h2><p>Set the quoted selling price for this job.</p></div><div className="job-costing-field-grid">
+              <FF label="Selling price (₱)"><input type="number" min="0.01" step="0.01" className={ic} value={form.sellingPrice} onChange={e => setForm(f => ({ ...f, sellingPrice: e.target.value }))} required /></FF>
+            </div><p className="mt-3 text-xs text-muted-foreground">Invoice number and job costing ID are assigned automatically.</p></section>
+          </div>
+          <aside className="job-costing-summary" aria-live="polite" aria-label="Live job costing summary"><p className="section-label">Live summary</p><h2>Job estimate</h2><dl>
+            <div><dt>Total cost</dt><dd>{php(liveTotalCost)}</dd></div>
+            <div><dt>Profit</dt><dd className={liveProfit < 0 ? "text-danger" : "text-success"}>{php(liveProfit)}</dd></div>
+            <div><dt>Margin</dt><dd>{liveMargin === null ? <span className="text-muted-foreground">—</span> : <Badge variant={marginVariant(liveMargin)}>{pct(liveMargin)}</Badge>}</dd></div>
+          </dl><p className="job-costing-summary-note">Updates as you enter materials, costs, and selling price.</p></aside>
         </div>
-        <p className="text-xs text-muted-foreground">Invoice number and job costing ID are assigned automatically. Profit and margin are calculated from these costs.</p>
       </Modal>}
     </div>
   );
@@ -634,7 +669,7 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
   {
     open && <Modal title={editingId ? "Edit inventory entry" : "Add stock change"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update entry" : "Save entry"} isSubmitting={isSubmitting}>
       {!editingId && <FF label="Product"><select className={ic+" mb-4"} aria-label="Inventory product" value={selectedProduct} onChange={e => selectProduct(e.target.value)}><option value="">Create a new product</option>{products.map(product => <option key={product.key} value={product.key}>{product.itemName} · {product.category} · {product.unit}</option>)}</select></FF>}
-      <div className="grid grid-cols-2 gap-4"><FF label="Date"><input type="date" max={todayISO()} className={ic} value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required /></FF><FF label="Reference"><input className={ic} value={form.referenceId} readOnly placeholder="Assigned when saved" /></FF>
+      <div className="grid grid-cols-2 gap-4"><FF label="Date"><input type="date" max={todayISO()} className={ic} value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required /></FF><FF label="Reference"><input className={`${ic} read-only-field`} value={form.referenceId} readOnly placeholder="Assigned when saved" /></FF>
         <FF label="Category"><select disabled={!!selectedProduct} className={ic} value={form.category} onChange={e => { const category = e.target.value; setForm(f => ({ ...f, category, goldKarat: category === "GOLD" ? f.goldKarat : "", unit: INVENTORY_UNITS[category][0] })); }}>{INVENTORY_CATEGORIES.map(c => <option key={c} value={c}>{c[0] + c.slice(1).toLowerCase()}</option>)}</select></FF>{form.category === "GOLD" && <FF label="Karat"><select disabled={!!selectedProduct} className={ic} value={form.goldKarat} onChange={e => setForm(f => ({ ...f, goldKarat: e.target.value }))} required><option value="">Select karat</option>{Array.from({ length: 15 }, (_, i) => i + 10).map(karat => <option key={karat} value={karat}>{karat}K</option>)}</select></FF>}<FF label="Unit"><select disabled={!!selectedProduct} className={ic} value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}>{units.map(u => <option key={u}>{u}</option>)}</select></FF>
         <div className="col-span-2"><FF label="Item Description"><input readOnly={!!selectedProduct} className={ic} value={form.itemName} onChange={e => setForm(f => ({ ...f, itemName: e.target.value }))} placeholder="e.g. 18k chain, gemstone, ring box" required /></FF></div>
         <FF label={`Quantity In (${form.unit})`}><input type="number" min="0" step="0.01" className={ic} value={form.quantityIn} onChange={e => setForm(f => ({ ...f, quantityIn: e.target.value }))} /></FF><FF label={`Unit Price (₱ / ${form.unit})`}><input type="number" required min="0.01" step="0.01" className={ic} value={form.unitPrice} onChange={e => setForm(f => ({ ...f, unitPrice: e.target.value }))} /></FF><FF label={`Quantity Out (${form.unit})`}><input type="number" min="0" step="0.01" className={ic} value={form.quantityOut} onChange={e => setForm(f => ({ ...f, quantityOut: e.target.value }))} /></FF><FF label={`Loss / Scrap (${form.unit})`}><input type="number" min="0" step="0.01" className={ic} value={form.quantityLoss} onChange={e => setForm(f => ({ ...f, quantityLoss: e.target.value }))} /></FF>
@@ -792,8 +827,8 @@ function ExpensesView({ expenses, onAdd, onUpdate, onDelete }: { expenses: Expen
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
-  const [form, setForm] = useState({ expDate: "", category: "Rent", description: "", amount: "" });
-  const resetForm = () => setForm({ expDate: todayISO(), category: "Rent", description: "", amount: "" });
+  const [form, setForm] = useState({ expDate: "", category: "", description: "", amount: "" });
+  const resetForm = () => setForm({ expDate: todayISO(), category: "", description: "", amount: "" });
   const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
 
   const submit = async (e: React.FormEvent) => {
@@ -832,16 +867,16 @@ function ExpensesView({ expenses, onAdd, onUpdate, onDelete }: { expenses: Expen
     <div className="space-y-4">
       <ExpensesLedger expenses={expenses} onAdd={() => { resetForm(); setEditingId(null); setOpen(true); }} onEdit={entry => { setEditingId(entry.expenseId); setForm({ expDate: entry.expDate, category: entry.category, description: entry.description, amount: String(entry.amount) }); setOpen(true); }} onDelete={onDelete} />
       {open && (
-        <Modal title={editingId ? "Edit Expense Entry" : "Add Expense Entry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update Entry" : "Save Entry"} isSubmitting={isSubmitting}>
+        <Modal title={editingId ? "Edit expense entry" : "Add expense entry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update entry" : "Save entry"} isSubmitting={isSubmitting}>
           <div className="grid grid-cols-2 gap-4">
             <FF label="Date"><input type="date" max={todayISO()} className={ic} value={form.expDate} onChange={e => setForm(f => ({ ...f, expDate: e.target.value }))} required /></FF>
             <FF label="Category">
-              <select className={ic} value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
-                {[...new Set([...expenseCategories, "Rent", "Staff Salary", "Utilities", form.category])].map(c => <option key={c}>{c}</option>)}
+              <select className={ic} value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} required>
+                <option value="">Select category</option>{[...new Set([...expenseCategories, "Rent", "Staff Salary", "Utilities", ...(form.category ? [form.category] : [])])].map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </FF>
             <div className="col-span-2"><FF label="Description"><input className={ic} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Describe the expense" required /></FF></div>
-            <FF label="Amount (₱)"><input type="number" min="0.01" step="0.01" className={ic} value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" required /></FF>
+            <FF label="Amount"><div className="money-input"><span aria-hidden="true">₱</span><input type="number" min="0.01" step="0.01" className={`${ic} pl-8`} value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" required /></div></FF>
           </div>
         </Modal>
       )}
