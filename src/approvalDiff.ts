@@ -9,6 +9,8 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 const valuesMatch = (left: unknown, right: unknown): boolean => {
+  const isEmpty = (value: unknown) => value === null || value === undefined || value === "" || value === "Not set";
+  if (isEmpty(left) && isEmpty(right)) return true;
   if (Object.is(left, right)) return true;
   if (Array.isArray(left) && Array.isArray(right)) {
     return left.length === right.length && left.every((value, index) => valuesMatch(value, right[index]));
@@ -50,9 +52,12 @@ const moneyFields = /(?:price|cost|amount|payment|charge)$/i;
 const dateFields = /(?:date|deadline|updatedAt)$/i;
 
 export const approvalValue = (value: unknown, key = ""): string => {
-  if (value === null || value === undefined || value === "") return "Not set";
+  if (value === null || value === undefined || value === "" || value === "Not set") return "—";
   if (typeof value === "string") {
     if (dateFields.test(key) && !Number.isNaN(Date.parse(value))) return new Date(value).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
+    if (moneyFields.test(key) && /^-?\d+(?:\.\d+)?$/.test(value.trim())) {
+      return new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value));
+    }
     return value;
   }
   if (typeof value === "number" && moneyFields.test(key)) return new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);

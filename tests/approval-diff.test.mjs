@@ -21,11 +21,17 @@ test("returns only requested fields whose values changed", () => {
   );
 });
 
+test("treats empty and not-set values as unchanged", () => {
+  assert.deepEqual(approvalChanges({ email: null }, { email: "Not set", contact: null }), []);
+});
+
 test("formats approval values for people instead of dumping JSON", () => {
   assert.equal(approvalValue("Test"), "Test");
   assert.equal(approvalValue(false), "No");
-  assert.equal(approvalValue(null), "Not set");
+  assert.equal(approvalValue(null), "—");
+  assert.equal(approvalValue(undefined), "—");
   assert.equal(approvalValue(["Gold", "Silver"]), "Gold, Silver");
   assert.equal(approvalValue(6105, "quotedPrice"), "₱6,105.00");
+  assert.equal(approvalValue("6100", "quotedPrice"), "₱6,100.00");
   assert.equal(approvalValue("2026-10-10T00:00:00.000Z", "expDate"), "Oct 10, 2026");
 });
