@@ -9,7 +9,7 @@ import { roundTwo } from "../rounding";
 import { Fragment, useState, useEffect, useMemo, useRef, createContext, useContext } from "react";
 import goldsmithLogo from "../assets/nilosgold_logo.jpg";
 import {
-  Search, Plus, X, Crown, TrendingDown,
+  Search, Plus, X, Crown, TrendingDown, Download,
   Package, BarChart3, DollarSign, Gem, Sun, Moon, PenSquare, Trash2,
   ArrowUpDown, ChevronUp, ChevronDown, LayoutDashboard, BriefcaseBusiness,
   Receipt, ShieldCheck, ScrollText, PanelLeftClose, PanelLeftOpen, UserRound, LogOut, MessageSquare,
@@ -278,12 +278,12 @@ function sortRecords<T extends object>(rows: T[], sort: SortSpec): T[] {
   });
 }
 
-function SortableHeader({ label, sortKey, sort, onSort }: {
-  label: string; sortKey: string; sort: SortSpec; onSort: (key: string) => void;
+function SortableHeader({ label, sortKey, sort, onSort, align = "left" }: {
+  label: string; sortKey: string; sort: SortSpec; onSort: (key: string) => void; align?: "left" | "right";
 }) {
   const active = sort.key === sortKey;
-  return <th className={thc} aria-sort={active ? (sort.direction === 1 ? "ascending" : "descending") : "none"}>
-    <Button variant="ghost" type="button" onClick={() => onSort(sortKey)} className="h-auto justify-start gap-1.5 px-0 text-xs">
+  return <th className={thc + (align === "right" ? " text-right" : "")} aria-sort={active ? (sort.direction === 1 ? "ascending" : "descending") : "none"}>
+    <Button variant="ghost" type="button" onClick={() => onSort(sortKey)} className={`h-auto gap-1.5 px-0 text-xs ${align === "right" ? "ml-auto justify-end" : "justify-start"}`}>
       {sentenceCase(label)}{active ? (sort.direction === 1 ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ArrowUpDown size={12} className="opacity-40" />}
     </Button>
   </th>;
@@ -333,9 +333,14 @@ const ChartTip = ({ active, payload, label }: any) => {
 // ── dashboard view ─────────────────────────────────────────────────────────
 // ── daily sales ─────────────────────────────────────────────────────────────
 function DailySalesView({ sales, onUpdate, onDelete }: { sales: Sale[]; onUpdate: (s: Sale) => void; onDelete: (id: string) => void }) {
-  const requestConfirmation = useConfirmation();
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortSpec>({ key: "date", direction: -1 });
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [typeFilter, setTypeFilter] = useState("All");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const toggleSort = (key: string) => setSort(s => ({ key, direction: s.key === key ? (s.direction === 1 ? -1 : 1) : 1 }));
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -343,9 +348,24 @@ function DailySalesView({ sales, onUpdate, onDelete }: { sales: Sale[]; onUpdate
   const submittingRef = useRef(false);
   const [form, setForm] = useState({ invoiceId: "", date: "", clientName: "", contactNum: "", email: "", serviceType: "Custom" as ServiceType, price: "", payment: "" });
 
+  const invalidRange = !!startDate && !!endDate && startDate > endDate;
   const filtered = sortRecords(useMemo(() => sales.filter(s =>
+    (!startDate || s.date >= startDate) && (!endDate || s.date <= endDate) && (typeFilter === "All" || s.serviceType === typeFilter) &&
     [s.clientName, s.invoiceId, s.serviceType, s.status].some(v => v.toLowerCase().includes(q.toLowerCase()))
-  ), [sales, q]), sort);
+  ), [sales, q, startDate, endDate, typeFilter]), sort);
+  const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, pages);
+  const visibleSales = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const totalSales = filtered.reduce((sum, sale) => sum + sale.price, 0);
+  const collected = filtered.reduce((sum, sale) => sum + sale.payment, 0);
+  const outstanding = filtered.reduce((sum, sale) => sum + sale.balance, 0);
+  const formatContact = (value: string) => { const digits = value.replace(/\D/g, ""); return digits.length === 11 && digits.startsWith("09") ? `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}` : value || "—"; };
+  const downloadCsv = () => {
+    const cell = (value: string | number) => { const raw = String(value); const safe = /^[=+@\-]/.test(raw) ? `'${raw}` : raw; return `"${safe.replaceAll('"', '""')}"`; };
+    const rows = [["Date", "Invoice", "Client", "Contact", "Type", "Total", "Collected", "Balance", "Status"], ...filtered.map(s => [s.date, s.invoiceId, s.clientName, s.contactNum, s.serviceType, s.price.toFixed(2), s.payment.toFixed(2), s.balance.toFixed(2), s.status])];
+    const url = URL.createObjectURL(new Blob([rows.map(row => row.map(cell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8;" }));
+    const link = document.createElement("a"); link.href = url; link.download = `sales-${startDate || "all"}-${endDate || "dates"}.csv`; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
 
   const resetForm = () => setForm({ invoiceId: "", date: todayISO(), clientName: "", contactNum: "", email: "", serviceType: "Custom", price: "", payment: "" });
   const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
@@ -378,43 +398,38 @@ function DailySalesView({ sales, onUpdate, onDelete }: { sales: Sale[]; onUpdate
     submittingRef.current = false;
   };
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <SearchBar value={q} onChange={setQ} placeholder="Search client, invoice, type…" />
-        <p className="text-xs text-muted-foreground">Sales appear here after an approved job costing is finished.</p>
-      </div>
-      <TableWrap>
-        <thead><tr>
-          {[["Date", "date"], ["Invoice #", "invoiceId"], ["Client Name", "clientName"], ["Contact", "contactNum"], ["Type", "serviceType"], ["Total Price", "price"], ["Payment", "payment"], ["Balance", "balance"], ["Status", "status"]].map(([h, k]) => <SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}<th className={thc}>Actions</th>
+  return <div className="space-y-4">
+      <PageHeader title="Sales" description="Sales appear here after an approved job costing is finished" action={<div className="expense-filters">
+        <label className="expense-date">From<input type="date" aria-label="Sales from date" value={startDate} max={endDate || undefined} onChange={event => { setStartDate(event.target.value); setPage(1); }} /></label>
+        <label className="expense-date">To<input type="date" aria-label="Sales to date" value={endDate} min={startDate || undefined} onChange={event => { setEndDate(event.target.value); setPage(1); }} /></label>
+        <Button variant="secondary" onClick={downloadCsv} disabled={!filtered.length || invalidRange}><Download size={16} />Export CSV</Button>
+      </div>} />
+      {invalidRange && <p role="alert" className="text-sm text-danger">The end date must be on or after the start date.</p>}
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Sales summary for current filters">
+        {[{ label: "Total sales", value: totalSales }, { label: "Collected", value: collected }, { label: "Outstanding balance", value: outstanding }].map(item => <div key={item.label} className="rounded-xl border border-border bg-card p-4"><div className="text-xs text-muted-foreground">{item.label}</div><div className="mt-1 text-xl font-semibold tabular-nums">{php(item.value)}</div></div>)}
+        <div className="rounded-xl border border-border bg-card p-4"><div className="text-xs text-muted-foreground">Number of invoices</div><div className="mt-1 text-xl font-semibold tabular-nums">{filtered.length.toLocaleString()}</div></div>
+      </section>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap gap-2" role="group" aria-label="Filter sales by type">{["All", "Repair", "Custom", "Cleaning", "Resize"].map(type => <Button key={type} variant={typeFilter === type ? "secondary" : "ghost"} aria-pressed={typeFilter === type} onClick={() => { setTypeFilter(type); setPage(1); }} className="text-sm">{type}</Button>)}</div><SearchBar value={q} onChange={value => { setQ(value); setPage(1); }} placeholder="Search client, invoice, type…" /></div>
+      <div className="max-h-[calc(100vh-25rem)] overflow-auto rounded-xl border border-border"><table className="w-full min-w-[960px] text-xs font-sans">
+        <thead className="sticky top-0 z-10"><tr>
+          {[["Date", "date"], ["Invoice #", "invoiceId"], ["Client", "clientName"], ["Contact", "contactNum"], ["Type", "serviceType"]].map(([h, k]) => <SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}
+          {[["Total price", "price"], ["Collected", "payment"], ["Balance", "balance"]].map(([h, k]) => <SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} align="right" />)}
+          <SortableHeader label="Status" sortKey="status" sort={sort} onSort={toggleSort} /><th className={thc}>Actions</th>
         </tr></thead>
-        <tbody>
-          {filtered.map(s => (
-            <TRow key={s.id} onClick={() => { setEditingId(s.invoiceId); setForm({ invoiceId: s.invoiceId, date: s.date, clientName: s.clientName, contactNum: s.contactNum, email: s.email ?? "", serviceType: s.serviceType, price: String(s.price), payment: String(s.payment) }); setOpen(true); }}>
-              <td className={tdc}>{fmtDate(s.date)}</td>
-              <td className={tdc + " text-primary-text/80 "}>{s.invoiceId}</td>
-              <td className={tdc + " font-sans font-medium"}>{s.clientName}</td>
-              <td className={tdc + " text-muted-foreground"}>{s.contactNum}</td>
-              <td className={tdc}>{s.serviceType}</td>
-              <td className={tdr}>{php(s.price)}</td>
-              <td className={tdr + " text-success "}>{php(s.payment)}</td>
-              <td className={tdr + " text-warning "}>{php(s.balance)}</td>
-              <td className={tdc}><Badge status={s.status} /></td>
-              <td className={tdc}>
-                <div className="flex items-center gap-2">
-                  <Button variant="secondary" size="icon" aria-label="Edit" type="button" onClick={() => { setEditingId(s.invoiceId); setForm({ invoiceId: s.invoiceId, date: s.date, clientName: s.clientName, contactNum: s.contactNum, email: s.email ?? "", serviceType: s.serviceType, price: String(s.price), payment: String(s.payment) }); setOpen(true); }} title="Edit">
-                    <PenSquare size={13} />
-                  </Button>
-                  <Button variant="danger" size="icon" aria-label="Delete" type="button" onClick={() => onDelete(s.id)} title="Delete">
-                    <Trash2 size={13} />
-                  </Button>
-                </div>
-              </td>
-            </TRow>
-          ))}
-          {!filtered.length && <EmptyRow cols={10} />}
-        </tbody>
-      </TableWrap>
+        <tbody>{visibleSales.map(s => <TRow key={s.id} onClick={() => setSelectedSale(s)}>
+          <td className={tdc + " h-11 !py-1"}>{fmtDate(s.date)}</td><td className={tdc + " h-11 !py-1 text-muted-foreground"}>{s.invoiceId}</td><td className={tdc + " h-11 !py-1 font-medium"}>{s.clientName}</td><td className={tdc + " h-11 !py-1 text-muted-foreground"}>{formatContact(s.contactNum)}</td>
+          <td className={tdc + " h-11 !py-1"}><Badge variant="neutral">{sentenceCase(s.serviceType)}</Badge></td><td className={tdr + " h-11 !py-1"}>{php(s.price)}</td><td className={tdr + " h-11 !py-1"}>{php(s.payment)}</td><td className={tdr + " h-11 !py-1"}>{php(s.balance)}</td><td className={tdc + " h-11 !py-1"}><Badge status={s.status} /></td>
+          <td className={tdc + " h-11 !py-1"}><div className="flex items-center gap-2"><Button variant="secondary" size="icon" aria-label="Edit sale" type="button" onClick={event => { event.stopPropagation(); setEditingId(s.invoiceId); setForm({ invoiceId: s.invoiceId, date: s.date, clientName: s.clientName, contactNum: s.contactNum, email: s.email ?? "", serviceType: s.serviceType, price: String(s.price), payment: String(s.payment) }); setOpen(true); }} title="Edit"><PenSquare size={13} /></Button><Button variant="danger" size="icon" aria-label="Delete sale" type="button" onClick={event => { event.stopPropagation(); onDelete(s.id); }} title="Delete"><Trash2 size={13} /></Button></div></td>
+        </TRow>)}{!visibleSales.length && <EmptyRow cols={10} />}</tbody>
+      </table></div>
+      <div className="expense-pagination"><p>{filtered.length ? `${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, filtered.length)} of ${filtered.length} invoices` : "0 invoices"}</p><label>Rows per page <select aria-label="Rows per page" value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1); }}>{[10, 20, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}</select></label><Button variant="secondary" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Previous</Button><span>Page {currentPage} of {pages}</span><Button variant="secondary" disabled={currentPage >= pages} onClick={() => setPage(currentPage + 1)}>Next</Button></div>
+      <Sheet open={!!selectedSale} onOpenChange={open => { if (!open) setSelectedSale(null); }}><SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
+        {selectedSale && <><SheetHeader className="border-b border-border pb-4 pr-10"><SheetTitle>Invoice {selectedSale.invoiceId}</SheetTitle><SheetDescription>{fmtDate(selectedSale.date)} · {sentenceCase(selectedSale.serviceType)}</SheetDescription></SheetHeader><div className="space-y-6 px-1">
+          <section><h3 className="text-sm font-semibold">Client information</h3><dl className="mt-3 space-y-3 text-sm"><div><dt className="text-xs text-muted-foreground">Client</dt><dd>{selectedSale.clientName || "—"}</dd></div><div><dt className="text-xs text-muted-foreground">Contact</dt><dd>{formatContact(selectedSale.contactNum)}</dd></div><div><dt className="text-xs text-muted-foreground">Email</dt><dd className="break-all">{selectedSale.email || "—"}</dd></div></dl></section>
+          <section><h3 className="text-sm font-semibold">Invoice summary</h3><dl className="mt-3 space-y-3 text-sm"><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Total</dt><dd className="tabular-nums">{php(selectedSale.price)}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Collected</dt><dd className="tabular-nums">{php(selectedSale.payment)}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Balance</dt><dd className="tabular-nums">{php(selectedSale.balance)}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Status</dt><dd><Badge status={selectedSale.status} /></dd></div></dl></section>
+          <section><h3 className="text-sm font-semibold">Payment history</h3>{(selectedSale.payments?.length ? selectedSale.payments : selectedSale.payment > 0 ? [{ amount: selectedSale.payment, paidAt: selectedSale.date }] : []).length ? <ul className="mt-3 divide-y divide-border">{(selectedSale.payments?.length ? selectedSale.payments : selectedSale.payment > 0 ? [{ amount: selectedSale.payment, paidAt: selectedSale.date }] : []).map((payment, index) => <li key={`${payment.paidAt ?? "undated"}-${index}`} className="flex justify-between gap-3 py-3 text-sm"><span>{payment.paidAt ? fmtDate(payment.paidAt) : "Date unavailable"}</span><span className="font-medium tabular-nums">{php(payment.amount)}</span></li>)}</ul> : <p className="mt-3 text-sm text-muted-foreground">No payments recorded yet.</p>}</section>
+        </div></>}
+      </SheetContent></Sheet>
       {open && (
         <Modal title="Edit Finished Sale" onClose={closeModal} onSubmit={submit} submitLabel="Update Sale" isSubmitting={isSubmitting}>
           <div className="grid grid-cols-2 gap-4">
@@ -432,8 +447,7 @@ function DailySalesView({ sales, onUpdate, onDelete }: { sales: Sale[]; onUpdate
           </div>
         </Modal>
       )}
-    </div>
-  );
+  </div>;
 }
 
 // ── job costing ─────────────────────────────────────────────────────────────
@@ -1398,7 +1412,6 @@ function AppContent() {
         <main className="dashboard-main" key={tab}>
           <div className="dashboard-content">
 
-          {tab === "DAILY_SALES" && <PageHeader title="Sales" description="Review completed sales, payments, and outstanding balances." action={<Button onClick={() => setTab("JOB_COSTING")}>View jobs</Button>} />}
           {tab === "PROFIT_ANALYSIS" && <PageHeader title="Reports" description="Understand revenue, costs, and profitability over time." action={<Button onClick={() => setReloadKey(k => k + 1)}>Refresh report</Button>} />}
         {tab === "DASHBOARD" && <Dashboard sales={sales} jobCosts={jobCosts} expenses={expenses} loading={dataLoading} error={dataError} isAdmin={isAdmin} goldRate={goldRate} goldStock={goldStock} goldLoading={goldLoading} goldStale={goldInfo?.stale ?? true} loadApprovals={loadDashboardApprovals} onJobs={() => setTab("JOB_COSTING")} onApprovals={() => setTab("APPROVALS")} onRetry={() => setReloadKey(k => k + 1)} onView={(title, record) => setViewRecord({ title, record })} />}
         {tab === "DAILY_SALES" && <DailySalesView sales={sales.filter(isCompletedSale)} onUpdate={s => setSales(p => p.map(item => item.invoiceId === s.invoiceId ? s : s.clientId && item.clientId === s.clientId ? { ...item, email: s.email } : item))} onDelete={id => deleteFromApi("sales", id, () => { const removed = sales.find(item => item.invoiceId === id); const linkedJob = jobCosts.find(item => item.jobCostId === removed?.jobCostId); setSales(p => p.filter(item => item.invoiceId !== id)); if (removed?.jobCostId) setJobCosts(p => p.filter(item => item.jobCostId !== removed.jobCostId)); if (linkedJob?.inquiryId) setInquiries(p => p.map(i => i.inquiryId === linkedJob.inquiryId ? { ...i, status: "Pending" } : i)); })} />}
