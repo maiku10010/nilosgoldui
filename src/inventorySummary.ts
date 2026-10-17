@@ -1,6 +1,6 @@
 type Movement = { category: string; unit: string; itemName: string; goldKarat?: number | null; quantityIn: number; quantityOut: number; quantityLoss: number };
 const TROY_OUNCE_GRAMS = 31.1034768;
-const stockKey = (row: Movement) => row.category === "GOLD" ? `GOLD:${row.goldKarat ?? "unknown"}:grams` : JSON.stringify([row.category, row.unit, row.itemName.trim().toLowerCase()]);
+const stockKey = (row: Movement) => ["GOLD", "SCRAP"].includes(row.category) ? `${row.category}:${row.goldKarat ?? "unknown"}:grams` : JSON.stringify([row.category, row.unit, row.itemName.trim().toLowerCase()]);
 
 export const isPieceUnit = (unit: string) => /^(?:pc|pcs|piece|pieces)$/i.test(unit.trim());
 
@@ -48,7 +48,7 @@ export function groupInventory<T extends Movement>(all: T[], visible: T[] = all)
   for (const row of all) {
     const key = stockKey(row);
     if (!visibleKeys.has(key)) continue;
-    const group = groups.get(key) ?? { key, itemName: row.category === "GOLD" ? `Gold${row.goldKarat == null ? " (karat unspecified)" : ` · ${row.goldKarat}K`}` : row.itemName, category: row.category, goldKarat: row.category === "GOLD" ? row.goldKarat : null, unit: row.category === "GOLD" ? "grams" : row.unit, quantityIn: 0, quantityOut: 0, quantityLoss: 0, balance: 0, movements: [] };
+    const group = groups.get(key) ?? { key, itemName: row.category === "GOLD" ? `Gold${row.goldKarat == null ? " (karat unspecified)" : ` · ${row.goldKarat}K`}` : row.category === "SCRAP" ? `Scrap gold${row.goldKarat == null ? "" : ` � ${row.goldKarat}K`}` : row.itemName, category: row.category, goldKarat: ["GOLD", "SCRAP"].includes(row.category) ? row.goldKarat : null, unit: row.category === "GOLD" ? "grams" : row.unit, quantityIn: 0, quantityOut: 0, quantityLoss: 0, balance: 0, movements: [] };
     const factor = row.category === "GOLD" && row.unit === "troy oz" ? TROY_OUNCE_GRAMS : 1;
     group.quantityIn += row.quantityIn * factor;
     group.quantityOut += row.quantityOut * factor;
@@ -62,7 +62,7 @@ export function groupInventory<T extends Movement>(all: T[], visible: T[] = all)
 
 export function finishSaleMaterials<T extends Movement & { referenceId: string }>(inventory: T[]) {
   return groupInventory(inventory)
-    .filter(product => product.category !== "GOLD" && product.category !== "TOOLS" && product.balance > 0)
+    .filter(product => product.category !== "GOLD" && product.category !== "SCRAP" && product.category !== "TOOLS" && product.balance > 0)
     .map(product => ({
       key: product.key,
       referenceId: product.movements[0].referenceId,
@@ -83,7 +83,7 @@ export function materialQuantityError(value: string, available: number, unit: st
 
 export function sortInventoryStock<T extends Movement>(products: T[]) {
   const karatOrder = [24, 22, 21, 18, 14, 10];
-  const materialOrder: Record<string, number> = { GOLD: 0, SILVER: 1, GEMSTONES: 2 };
+  const materialOrder: Record<string, number> = { GOLD: 0, SILVER: 1, GEMSTONES: 2, SCRAP: 3 };
   return products.filter(product => product.category in materialOrder).sort((a, b) => {
     const materialDelta = materialOrder[a.category] - materialOrder[b.category];
     if (materialDelta) return materialDelta;

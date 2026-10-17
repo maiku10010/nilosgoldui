@@ -1,3 +1,4 @@
+import { serviceRules } from "./lib/serviceRules.ts";
 type GoldMovement = {
   referenceId: string; category: string; goldKarat?: number | null; jobCostId?: string | null; itemName: string; unit: string;
   quantityIn: number | string; quantityOut: number | string; quantityLoss: number | string;
@@ -54,7 +55,12 @@ export function goldStockError(used: string, scrap: string, source: ReturnType<t
   return "";
 }
 
-export function costingSummary(used: string, scrap: string, rate: string, stone: string, labor: string, price: string) {
+export function costingSummary(used: string, scrap: string, rate: string, stone: string, labor: string, price: string, serviceType: string = "Custom") {
+  const rules = serviceRules(serviceType);
+  if (!rules.gold) { used = "0"; rate = "0"; }
+  if (!rules.scrap) scrap = "0";
+  if (!rules.stone) stone = "0";
+  if (!rules.labor) labor = "0";
   // Imported weights can have more precision than the milligram form inputs.
   // Keep those exact using the same integer scale as stock aggregation.
   const weight = (value: string) => /^(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(value) ? scaled(value, 10) : 0n;

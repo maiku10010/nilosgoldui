@@ -1,3 +1,4 @@
+import { SERVICE_RULES } from "../lib/serviceRules";
 import { JobsTable } from "./components/JobsTable";
 import { FinishSaleModal } from "./components/FinishSaleModal";
 import { ExpensesLedger } from "./components/ExpensesLedger";
@@ -118,11 +119,14 @@ const normalizeSale = (row: any): Sale => ({
 const selectedStatus = (sale: Sale, jobCosts: JobCost[]) => jobCosts.find(job => job.jobCostId === sale.jobCostId || job.invoiceId === sale.invoiceId)?.status ?? "Finished";
 const normalizeJobCost = (row: any): JobCost => {
   const sellingPrice = roundTwo(row.sellingPrice ?? row.sales?.price ?? row.sale?.price);
-  const goldCostPerG = roundTwo(numeric(row.goldCostPerG));
-  const goldCost = roundTwo(row.goldCost ?? costingSummary(String(row.goldUsed ?? 0), String(row.goldScrap ?? 0), String(goldCostPerG), "0", "0", "0").goldCost);
-  const totalCost = roundTwo(row.totalCost ?? goldCost + roundTwo(numeric(row.laborCost)) + roundTwo(numeric(row.stoneCost)));
   const sale = row.sales ?? row.sale;
-  return { jobDate: row.jobDate ? String(row.jobDate) : undefined, jobCostId: String(row.jobCostId ?? ""), invoiceId: String(row.invoiceId ?? sale?.invoiceId ?? ""), clientName: String(row.clientName ?? sale?.client?.clientName ?? row.inquiry?.customerName ?? ""), itemName: row.itemName ?? "", deadline: row.deadline || row.deliveryDate ? String(row.deadline ?? row.deliveryDate).slice(0, 10) : "", empId: row.empId, inquiryId: row.inquiryId ?? row.inquiry?.inquiryId, status: statusLabel(row.status), sale: sale ? normalizeSale(sale) : undefined, goldUsed: numeric(row.goldUsed), goldScrap: numeric(row.goldScrap), goldKarat: row.goldKarat == null ? null : numeric(row.goldKarat), goldCostPerG, goldCost, stoneCost: roundTwo(numeric(row.stoneCost)), laborCost: roundTwo(numeric(row.laborCost)), totalCost, sellingPrice, profit: roundTwo(row.profit ?? sellingPrice - totalCost), marginPct: roundTwo(row.marginPct ?? (sellingPrice ? ((sellingPrice - totalCost) / sellingPrice) * 100 : 0)) };
+  const serviceType = Object.hasOwn(SERVICE_RULES, sale?.serviceType) ? sale.serviceType as ServiceType : "Custom";
+  const rules = SERVICE_RULES[serviceType as ServiceType] ?? SERVICE_RULES.Custom;
+  const goldCostPerG = rules.gold ? roundTwo(numeric(row.goldCostPerG)) : 0;
+  const summary = costingSummary(String(row.goldUsed ?? 0), String(row.goldScrap ?? 0), String(goldCostPerG), String(row.stoneCost ?? 0), String(row.laborCost ?? 0), String(sellingPrice), serviceType);
+  const goldCost = summary.goldCost;
+  const totalCost = roundTwo(summary.total + numeric(row.otherCost));
+  return { jobDate: row.jobDate ? String(row.jobDate) : undefined, jobCostId: String(row.jobCostId ?? ""), invoiceId: String(row.invoiceId ?? sale?.invoiceId ?? ""), clientName: String(row.clientName ?? sale?.client?.clientName ?? row.inquiry?.customerName ?? ""), itemName: row.itemName ?? "", deadline: row.deadline || row.deliveryDate ? String(row.deadline ?? row.deliveryDate).slice(0, 10) : "", empId: row.empId, inquiryId: row.inquiryId ?? row.inquiry?.inquiryId, status: statusLabel(row.status), sale: sale ? normalizeSale(sale) : undefined, goldUsed: rules.gold ? numeric(row.goldUsed) : 0, goldScrap: rules.scrap ? numeric(row.goldScrap) : 0, goldKarat: row.goldKarat == null ? null : numeric(row.goldKarat), goldCostPerG, goldCost, stoneCost: rules.stone ? roundTwo(numeric(row.stoneCost)) : 0, laborCost: roundTwo(numeric(row.laborCost)), totalCost, sellingPrice, profit: roundTwo(sellingPrice - totalCost), marginPct: roundTwo(sellingPrice ? ((sellingPrice - totalCost) / sellingPrice) * 100 : 0) };
 };
 const normalizeInventory = (row: any): InvEntry => ({ id: row.referenceId, jobCostId: row.jobCostId ?? null, date: apiDate(row.updatedAt ?? row.date), referenceId: row.referenceId, itemName: row.itemName ?? row.referenceId, category: row.category ?? "GOLD", goldKarat: row.goldKarat == null ? null : numeric(row.goldKarat), quantityIn: numeric(row.quantityIn ?? row.goldIn), quantityOut: numeric(row.quantityOut ?? row.goldOut), quantityLoss: numeric(row.quantityLoss ?? row.scraps ?? row.scrap), balance: numeric(row.balance ?? row.totalGold), unit: row.unit ?? "grams", unitPrice: numeric(row.unitPrice) });
 const normalizeInquiry = (row: any): Inquiry => ({ inquiryId: String(row.inquiryId ?? ""), date: apiDate(row.inqDate ?? row.date), customerName: String(row.customerName ?? ""), contactInfo: normalizeContactInput(String(row.contactInfo ?? "")), email: String(row.email ?? ""), details: String(row.details ?? ""), category: String(row.category ?? ""), quotedPrice: numeric(row.quotedPrice), isFullyPaid: Boolean(row.isFullyPaid), status: statusLabel(row.status) as InqStatus });
@@ -516,8 +520,8 @@ function DailySalesView({ sales, jobCosts, onUpdate, onDelete, onJobs, isAdmin }
           </fieldset>
           <fieldset className="sale-edit-group" disabled={isSubmitting}><legend>Payment</legend>
             <div className="grid grid-cols-2 gap-4">
-              <FF label="Service type"><select aria-label="Service type" className={ic} value={form.serviceType} onChange={e => setForm(f => ({ ...f, serviceType: e.target.value as ServiceType }))}>
-                {(["Custom", "Repair", "Resize", "Cleaning"] as ServiceType[]).map(t => <option key={t}>{t}</option>)}
+              <FF label="Service type"><select aria-label="Service type" className={ic} value={form.serviceType} onChange={e => { setStockServerError(""); setCostFormError(""); setForm(f => ({ ...f, serviceType: e.target.value as ServiceType })); }}>
+                {(Object.keys(SERVICE_RULES) as ServiceType[]).map(t => <option key={t}>{t}</option>)}
               </select></FF>
               <FF label="Date"><DatePicker value={form.date} max={todayISO()} onChange={date => setForm(f => ({ ...f, date }))} label="Sale date" disabled={isSubmitting} /></FF>
               <FF label="Total price"><CurrencyInput aria-label="Total price" className={ic} value={form.price} onChange={price => setForm(f => ({ ...f, price }))} placeholder="0.00" required />{form.price && Number(form.price) <= 0 && <p className="field-error" role="alert">Total price must be greater than zero.</p>}</FF>
@@ -565,8 +569,9 @@ function JobCostingView({ jobCosts, inquiries, inventory, goldRate, selectedInqu
   const resetForm = () => { setStockServerError(""); setCostFormError(""); setForm(blankForm()); };
   const goldSources = useMemo(() => goldStockSources(inventory, editingId), [inventory, editingId]);
   const selectedGoldSource = goldSources.find(source => source.referenceId === form.goldSourceId);
-  const stockError = goldStockError(form.goldUsed, form.goldScrap, selectedGoldSource);
-  const live = costingSummary(form.goldUsed, form.goldScrap, form.goldCostPerG, form.stoneCost, form.laborCost, form.sellingPrice);
+  const rules = SERVICE_RULES[form.serviceType];
+  const stockError = rules.gold ? goldStockError(form.goldUsed, rules.scrap ? form.goldScrap : "0", selectedGoldSource) : "";
+  const live = costingSummary(form.goldUsed, form.goldScrap, form.goldCostPerG, form.stoneCost, form.laborCost, form.sellingPrice, form.serviceType);
   const liveMargin = live.margin;
   const updateGold = (changes: Partial<typeof form>) => { setStockServerError(""); setCostFormError(""); setForm(current => ({ ...current, ...changes })); };
   const editJob = (j: JobCost) => {
@@ -584,11 +589,11 @@ function JobCostingView({ jobCosts, inquiries, inventory, goldRate, selectedInqu
     setIsSubmitting(true);
     const goldUsed = form.goldUsed || "0";
     const goldScrap = form.goldScrap || "0";
-    const goldCostPerG = roundTwo(form.goldCostPerG);
-    const stoneCost = roundTwo(form.stoneCost || 0);
+    const goldCostPerG = rules.gold ? roundTwo(form.goldCostPerG) : 0;
+    const stoneCost = rules.stone ? roundTwo(form.stoneCost || 0) : 0;
     const laborCost = roundTwo(form.laborCost);
     const sellingPrice = roundTwo(form.sellingPrice);
-    if (![stoneCost, laborCost].every(Number.isFinite) || stoneCost < 0 || laborCost < 0 || !Number.isFinite(goldCostPerG) || goldCostPerG <= 0 || !Number.isFinite(sellingPrice) || sellingPrice <= 0) {
+    if (![stoneCost, laborCost].every(Number.isFinite) || stoneCost < 0 || laborCost < 0 || !Number.isFinite(goldCostPerG) || (rules.gold && goldCostPerG <= 0) || !Number.isFinite(sellingPrice) || sellingPrice <= 0) {
       setCostFormError("Enter valid costs and a selling price greater than zero.");
       setIsSubmitting(false); submittingRef.current = false; return;
     }
@@ -598,8 +603,8 @@ function JobCostingView({ jobCosts, inquiries, inventory, goldRate, selectedInqu
     }
     try {
       const payload = editingId
-        ? { invoiceId: form.invoiceId, clientName: form.clientName, itemName: form.itemName, deadline: form.deadline || undefined, empId: form.empId || undefined, goldSourceId: form.goldSourceId, goldUsed, goldScrap, goldCostPerG, stoneCost, laborCost, sellingPrice }
-        : { inquiryId: form.inquiryId, clientName: form.clientName, itemName: form.itemName, deadline: form.deadline || undefined, contactNum: form.contactNum, empId: form.empId || undefined, serviceType: form.serviceType, goldSourceId: form.goldSourceId, goldUsed, goldScrap, goldCostPerG, stoneCost, laborCost, sellingPrice };
+        ? { invoiceId: form.invoiceId, clientName: form.clientName, itemName: form.itemName, deadline: form.deadline || undefined, empId: form.empId || undefined, ...(rules.gold ? { goldSourceId: form.goldSourceId, goldUsed, goldCostPerG } : {}), ...(rules.scrap ? { goldScrap } : {}), ...(rules.stone ? { stoneCost } : {}), ...(rules.labor ? { laborCost } : {}), sellingPrice }
+        : { inquiryId: form.inquiryId, clientName: form.clientName, itemName: form.itemName, deadline: form.deadline || undefined, contactNum: form.contactNum, empId: form.empId || undefined, serviceType: form.serviceType, ...(rules.gold ? { goldSourceId: form.goldSourceId, goldUsed, goldCostPerG } : {}), ...(rules.scrap ? { goldScrap } : {}), ...(rules.stone ? { stoneCost } : {}), ...(rules.labor ? { laborCost } : {}), sellingPrice };
       if (!editingId && !form.inquiryId) throw new Error("Choose a pending inquiry before creating job costing.");
       const response = await apiFetch(`${BASE_URL}/job-cost${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method: editingId ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await response.json();
@@ -625,7 +630,7 @@ function JobCostingView({ jobCosts, inquiries, inventory, goldRate, selectedInqu
       <JobsTable jobs={jobCosts} onEdit={editJob} onDelete={onDelete} onApprove={onApprove} onReady={onReady} onFinish={finishJob} />
 
       {finishTarget && <FinishSaleModal key={finishTarget.jobCostId} job={finishTarget} inventory={inventory} onClose={() => setFinishTarget(null)} onFinish={materials => onFinish(finishTarget, materials)} />}
-      {open && <Modal title={editingId ? "Edit job costing" : "Cost a pending inquiry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Save changes" : "Save costing"} isSubmitting={isSubmitting} submitDisabled={!form.goldUsed.trim() || !!stockError || !!stockServerError} stickyLayout className="job-costing-modal max-w-6xl" formClassName="job-costing-form">
+      {open && <Modal title={editingId ? "Edit job costing" : "Cost a pending inquiry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Save changes" : "Save costing"} isSubmitting={isSubmitting} submitDisabled={(rules.gold && !form.goldUsed.trim()) || !!stockError || !!stockServerError} stickyLayout className="job-costing-modal max-w-6xl" formClassName="job-costing-form">
         {costFormError && <p className="cost-form-error" role="alert">{costFormError}</p>}
         <div className="job-costing-layout">
           <div className="job-costing-fields">
@@ -633,32 +638,32 @@ function JobCostingView({ jobCosts, inquiries, inventory, goldRate, selectedInqu
               {!editingId && <FF label="Pending inquiry"><select className={ic} value={form.inquiryId} onChange={e => selectInquiry(e.target.value)} required><option value="">Select an inquiry</option>{pendingInquiries.map(i => <option key={i.inquiryId} value={i.inquiryId}>{i.customerName} · {i.category} · {i.inquiryId}</option>)}</select></FF>}
               {editingId && <FF label="Reference"><input className={`${ic} read-only-field`} value={form.invoiceId} readOnly /></FF>}
               <FF label="Client name"><input className={`${ic} read-only-field`} value={form.clientName} readOnly placeholder="Select a pending inquiry" required /></FF>
-              {!editingId && <FF label="Service type"><select className={ic} value={form.serviceType} onChange={e => setForm(f => ({ ...f, serviceType: e.target.value as ServiceType }))}>{(["Custom", "Repair", "Resize", "Cleaning"] as ServiceType[]).map(t => <option key={t}>{t}</option>)}</select></FF>}
+              {!editingId && <FF label="Service type"><select className={ic} value={form.serviceType} onChange={e => { setStockServerError(""); setCostFormError(""); setForm(f => ({ ...f, serviceType: e.target.value as ServiceType })); }}>{(Object.keys(SERVICE_RULES) as ServiceType[]).map(t => <option key={t}>{t}</option>)}</select></FF>}
               <FF label="Employee ID (optional)" helper="Leave blank to assign available staff."><input className={ic} value={form.empId} onChange={e => setForm(f => ({ ...f, empId: e.target.value }))} placeholder="Optional" /></FF>
               <FF label="Item name (optional)"><input className={ic} value={form.itemName} onChange={e => setForm(f => ({ ...f, itemName: e.target.value }))} placeholder="e.g. Gold ring" maxLength={120} /></FF>
               <FF label="Delivery date / deadline (optional)"><DatePicker min={todayISO()} label="Delivery date" value={form.deadline} onChange={deadline => setForm(f => ({ ...f, deadline }))} disabled={isSubmitting} /></FF>
             </div></section>
             <section className="job-costing-group"><div className="job-costing-group-heading"><h2>Materials</h2><p>Enter material use and workshop costs.</p></div><div className="job-costing-field-grid">
-              <div className="col-span-2"><FF label="Gold source"><select aria-label="Gold source" className={ic} value={form.goldSourceId} onChange={e => updateGold({ goldSourceId: e.target.value })} required><option value="">Select a gold source</option>{goldSources.map(source => <option key={source.referenceId} value={source.referenceId}>{source.itemName} · {milligramsToGrams(source.availableMg)} g available</option>)}</select>{!goldSources.length && <p className="mt-1 text-xs text-warning">Add gold stock with a recorded karat before costing.</p>}</FF></div>
-              <FF label="Gold used (g)">
+              {rules.gold && <div className="col-span-2"><FF label="Gold source"><select aria-label="Gold source" className={ic} value={form.goldSourceId} onChange={e => updateGold({ goldSourceId: e.target.value })} required><option value="">Select a gold source</option>{goldSources.map(source => <option key={source.referenceId} value={source.referenceId}>{source.itemName} · {milligramsToGrams(source.availableMg)} g available</option>)}</select>{!goldSources.length && <p className="mt-1 text-xs text-warning">Add gold stock with a recorded karat before costing.</p>}</FF></div>}
+              {rules.gold && <FF label="Gold used (g)">
                 <input aria-label="Gold used in grams" aria-invalid={!!stockServerError || (!!form.goldUsed && !!stockError)} aria-describedby={stockServerError || stockError ? "cost-gold-available cost-gold-error" : "cost-gold-available"} type="text" inputMode="decimal" className={ic} value={form.goldUsed} onChange={e => updateGold({ goldUsed: e.target.value })} required />
                 <p id="cost-gold-available" className="mt-1 text-xs text-muted-foreground">{selectedGoldSource ? `Available: ${milligramsToGrams(selectedGoldSource.availableMg)} g` : "Select a gold source to see available stock."}</p>
                 {(stockServerError || (form.goldSourceId && stockError)) && <p id="cost-gold-error" className="field-error" role="alert">{stockServerError || stockError}</p>}
-              </FF>
-              <FF label="Gold scrap (g, optional)"><input aria-label="Gold scrap in grams" type="text" inputMode="decimal" className={ic} value={form.goldScrap} onChange={e => updateGold({ goldScrap: e.target.value })} /></FF>
-              <FF label="Gold price per g" helper={goldRate === null ? "Today's 24K: rate unavailable" : `Today's 24K: ₱${goldRate.toLocaleString("en-PH", { maximumFractionDigits: 0 })}/g`}><CurrencyInput aria-label="Gold price per gram" className={ic} value={form.goldCostPerG} onChange={goldCostPerG => setForm(f => ({ ...f, goldCostPerG }))} required /></FF>
-              <FF label="Stone cost"><CurrencyInput aria-label="Stone cost" className={ic} value={form.stoneCost} onChange={stoneCost => setForm(f => ({ ...f, stoneCost }))} required /></FF>
-              <FF label="Labor cost"><CurrencyInput aria-label="Labor cost" className={ic} value={form.laborCost} onChange={laborCost => setForm(f => ({ ...f, laborCost }))} required /></FF>
+              </FF>}
+              {rules.scrap && <FF label="Gold scrap (g, optional)"><input aria-label="Gold scrap in grams" type="text" inputMode="decimal" className={ic} value={form.goldScrap} onChange={e => updateGold({ goldScrap: e.target.value })} /></FF>}
+              {rules.gold && <FF label="Gold price per g" helper={goldRate === null ? "Today's 24K: rate unavailable" : `Today's 24K: ₱${goldRate.toLocaleString("en-PH", { maximumFractionDigits: 0 })}/g`}><CurrencyInput aria-label="Gold price per gram" className={ic} value={form.goldCostPerG} onChange={goldCostPerG => setForm(f => ({ ...f, goldCostPerG }))} required /></FF>}
+              {rules.stone && <FF label="Stone cost"><CurrencyInput aria-label="Stone cost" className={ic} value={form.stoneCost} onChange={stoneCost => setForm(f => ({ ...f, stoneCost }))} required /></FF>}
+              {rules.labor && <FF label="Labor cost"><CurrencyInput aria-label="Labor cost" className={ic} value={form.laborCost} onChange={laborCost => setForm(f => ({ ...f, laborCost }))} required /></FF>}
             </div></section>
             <section className="job-costing-group"><div className="job-costing-group-heading"><h2>Pricing</h2><p>Set the quoted selling price for this job.</p></div><div className="job-costing-field-grid">
               <FF label="Selling price"><CurrencyInput aria-label="Selling price" className={ic} value={form.sellingPrice} onChange={sellingPrice => setForm(f => ({ ...f, sellingPrice }))} required /></FF>
             </div><p className="mt-3 text-xs text-muted-foreground">Invoice number and job costing ID are assigned automatically.</p></section>
           </div>
           <aside className="job-costing-summary" aria-live="polite" aria-label="Live job costing summary"><p className="section-label">Live summary</p><h2>Job estimate</h2><dl>
-            <div><dt>Gold <small>{milligramsToGrams(gramsToMilligrams(form.goldUsed || "0") ?? 0)} g × {php(Number(form.goldCostPerG) || 0)}</small></dt><dd>{php(live.gold)}</dd></div>
-            <div><dt>Scrap <small>{milligramsToGrams(gramsToMilligrams(form.goldScrap || "0") ?? 0)} g</small></dt><dd>{php(live.scrap)}</dd></div>
-            <div><dt>Stone</dt><dd>{php(Number(form.stoneCost) || 0)}</dd></div>
-            <div><dt>Labor</dt><dd>{php(Number(form.laborCost) || 0)}</dd></div>
+            {rules.gold && <div><dt>Gold <small>{milligramsToGrams(gramsToMilligrams(form.goldUsed || "0") ?? 0)} g × {php(Number(form.goldCostPerG) || 0)}</small></dt><dd>{php(live.gold)}</dd></div>}
+            {rules.scrap && <div><dt>Scrap <small>{milligramsToGrams(gramsToMilligrams(form.goldScrap || "0") ?? 0)} g</small></dt><dd>{php(live.scrap)}</dd></div>}
+            {rules.stone && <div><dt>Stone</dt><dd>{php(Number(form.stoneCost) || 0)}</dd></div>}
+            {rules.labor && <div><dt>Labor</dt><dd>{php(Number(form.laborCost) || 0)}</dd></div>}
             <div className="cost-summary-total"><dt>Total cost</dt><dd>{php(live.total)}</dd></div>
             <div><dt>Profit</dt><dd className={live.profit < 0 ? "text-danger" : "text-success"}>{php(live.profit)}</dd></div>
             <div><dt>Margin</dt><dd>{liveMargin === null ? <span className="text-muted-foreground">—</span> : <Badge variant={marginVariant(liveMargin)}>{pct(liveMargin)}</Badge>}</dd></div>
@@ -670,8 +675,8 @@ function JobCostingView({ jobCosts, inquiries, inventory, goldRate, selectedInqu
 }
 
 // ── multi-category inventory ────────────────────────────────────────────────
-const INVENTORY_CATEGORIES = ["GOLD", "SILVER", "GEMSTONES", "BOXES", "PACKAGING", "FINDINGS", "TOOLS"];
-const INVENTORY_UNITS: Record<string, string[]> = { GOLD: ["grams", "troy oz"], SILVER: ["grams"], GEMSTONES: ["carats", "pieces"], BOXES: ["boxes", "pieces"], PACKAGING: ["pieces", "boxes"], FINDINGS: ["pieces", "grams"], TOOLS: ["pieces"] };
+const INVENTORY_CATEGORIES = ["GOLD", "SCRAP", "SILVER", "GEMSTONES", "BOXES", "PACKAGING", "FINDINGS", "TOOLS"];
+const INVENTORY_UNITS: Record<string, string[]> = { SCRAP: ["grams"], GOLD: ["grams", "troy oz"], SILVER: ["grams"], GEMSTONES: ["carats", "pieces"], BOXES: ["boxes", "pieces"], PACKAGING: ["pieces", "boxes"], FINDINGS: ["pieces", "grams"], TOOLS: ["pieces"] };
 function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: { inventory: InvEntry[]; goldRate: number | null; onAdd: (e: InvEntry) => void; onUpdate: (e: InvEntry) => void; onDelete: (id: string) => void }) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortSpec>({ key: "date", direction: -1 });
@@ -690,7 +695,7 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
   const reorderLevel = (product: { category: string; unit: string }) => product.category === "GOLD" ? 10 : product.category === "SILVER" ? 100 : product.category === "GEMSTONES" ? 20 : 10;
   const stockProducts = useMemo(() => products.filter(product => (categoryFilter === "ALL" || product.category === categoryFilter) && [product.itemName, product.category, product.goldKarat == null ? "" : `${product.goldKarat}k`].some(value => value.toLowerCase().includes(q.toLowerCase())) && (!showLowStock || product.balance < reorderLevel(product))), [products, categoryFilter, q, showLowStock]);
   const stockCards = useMemo(() => sortInventoryStock(stockProducts), [stockProducts]);
-  const filtered = useMemo(() => inventory.filter(e => stockProducts.some(product => product.key === (e.category === "GOLD" ? `GOLD:${e.goldKarat ?? "unknown"}:grams` : JSON.stringify([e.category, e.unit, e.itemName.trim().toLowerCase()])))), [inventory, stockProducts]);
+  const filtered = useMemo(() => inventory.filter(e => stockProducts.some(product => product.key === (["GOLD", "SCRAP"].includes(e.category) ? `${e.category}:${e.goldKarat ?? "unknown"}:grams` : JSON.stringify([e.category, e.unit, e.itemName.trim().toLowerCase()])))), [inventory, stockProducts]);
   const visibleProducts = groupInventory(sortRecords(inventory, sort), filtered);
   const totalGold = products.filter(product => product.category === "GOLD").reduce((sum, product) => sum + Math.max(0, product.balance), 0);
   const totalSilver = products.filter(product => product.category === "SILVER").reduce((sum, product) => sum + Math.max(0, product.balance), 0);
@@ -716,7 +721,7 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
     event.preventDefault(); if (submittingRef.current) return;
     submittingRef.current = true; setIsSubmitting(true);
     const movedQuantity = Number(quantity) || 0;
-    const entry: InvEntry = { id: editingId ?? "", date: form.date, referenceId: form.referenceId, itemName: form.itemName, category: form.category, goldKarat: form.category === "GOLD" && form.goldKarat ? Number(form.goldKarat) : null, quantityIn: movementType === "in" ? movedQuantity : 0, quantityOut: movementType === "out" ? movedQuantity : 0, quantityLoss: movementType === "loss" ? movedQuantity : 0, balance: 0, unit: form.unit, unitPrice: Number(form.unitPrice) || 0 };
+    const entry: InvEntry = { id: editingId ?? "", date: form.date, referenceId: form.referenceId, itemName: form.itemName, category: form.category, goldKarat: ["GOLD", "SCRAP"].includes(form.category) && form.goldKarat ? Number(form.goldKarat) : null, quantityIn: movementType === "in" ? movedQuantity : 0, quantityOut: movementType === "out" ? movedQuantity : 0, quantityLoss: movementType === "loss" ? movedQuantity : 0, balance: 0, unit: form.unit, unitPrice: Number(form.unitPrice) || 0 };
     if (entry.category === "GOLD" && !entry.goldKarat) { alert("Choose a gold karat from 10K to 24K."); setIsSubmitting(false); submittingRef.current = false; return; }
     if (movementType === "in" && (!Number.isFinite(entry.unitPrice) || entry.unitPrice <= 0)) { alert("Unit price must be greater than zero for stock in."); setIsSubmitting(false); submittingRef.current = false; return; }
     if (movedQuantity <= 0) { alert("Enter a positive quantity for this stock movement."); setIsSubmitting(false); submittingRef.current = false; return; }
@@ -762,14 +767,14 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
           <td className={tdc}><AddStockChangeButton compact onClick={() => addMovement(product.key)} /></td>
         </tr>
         {expanded.has(product.key) && <tr className="inventory-child-header"><th colSpan={3}>Movement</th><th>In ({product.unit === "grams" ? "g" : product.unit})</th><th>Out ({product.unit === "grams" ? "g" : product.unit})</th><th>Loss ({product.unit === "grams" ? "g" : product.unit})</th><th>Balance ({product.unit === "grams" ? "g" : product.unit})</th><th>Actions</th></tr>}
-        {expanded.has(product.key) && product.movements.map(e => <TRow key={e.id} onClick={()=>edit(e)}><td className={tdc} colSpan={3}>{fmtDate(e.date)} · <span className="text-primary-text/80">{e.referenceId}</span></td><td className={tdr}>{e.quantityIn ? `+${e.quantityIn}` : "—"}</td><td className={tdr}>{e.quantityOut ? `-${e.quantityOut}` : "—"}</td><td className={tdr}>{e.quantityLoss || "—"}</td><td className={tdr+" text-primary-text font-semibold"}>{e.balance}</td><td className={tdc}><div className="table-row-actions"><Button variant="ghost" size="icon" aria-label="Edit inventory entry" type="button" onClick={event=>{event.stopPropagation();edit(e);}} title="Edit"><PenSquare size={16}/></Button><Button variant="ghost" size="icon" className="row-action-delete" aria-label="Delete inventory entry" type="button" onClick={event=>{event.stopPropagation();onDelete(e.id);}} title="Delete"><Trash2 size={16}/></Button></div></td></TRow>)}
+        {expanded.has(product.key) && product.movements.map(e => <TRow key={e.id} onClick={e.jobCostId && ["GOLD", "SCRAP"].includes(e.category) ? undefined : ()=>edit(e)}><td className={tdc} colSpan={3}>{fmtDate(e.date)} · <span className="text-primary-text/80">{e.category === "SCRAP" && e.jobCostId ? e.jobCostId : e.referenceId}</span></td><td className={tdr}>{e.quantityIn ? `+${e.quantityIn}` : "—"}</td><td className={tdr}>{e.quantityOut ? `-${e.quantityOut}` : "—"}</td><td className={tdr}>{e.quantityLoss || "—"}</td><td className={tdr+" text-primary-text font-semibold"}>{e.balance}</td><td className={tdc}>{e.jobCostId && ["GOLD", "SCRAP"].includes(e.category) ? <span className="text-xs text-muted-foreground" title="Edit the linked job costing to adjust this movement">From job costing</span> : <div className="table-row-actions"><Button variant="ghost" size="icon" aria-label="Edit inventory entry" type="button" onClick={event=>{event.stopPropagation();edit(e);}} title="Edit"><PenSquare size={16}/></Button><Button variant="ghost" size="icon" className="row-action-delete" aria-label="Delete inventory entry" type="button" onClick={event=>{event.stopPropagation();onDelete(e.id);}} title="Delete"><Trash2 size={16}/></Button></div>}</td></TRow>)}
       </Fragment>)}{!visibleProducts.length && <EmptyRow cols={10}/>}</tbody>
   </TableWrap></section>
   {
     open && <Modal title={editingId ? "Edit inventory entry" : "Add stock change"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update entry" : "Save entry"} isSubmitting={isSubmitting}>
       {!editingId && <FF label="Product"><select className={ic+" mb-4"} aria-label="Inventory product" value={selectedProduct} onChange={e => selectProduct(e.target.value)}><option value="">Create a new product</option>{products.map(product => <option key={product.key} value={product.key}>{product.itemName} · {product.category} · {product.unit}</option>)}</select></FF>}
       <div className="grid grid-cols-2 gap-4"><FF label="Date"><input type="date" max={todayISO()} className={ic} value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required /></FF><FF label="Reference"><input className={`${ic} read-only-field`} value={form.referenceId} readOnly placeholder="Assigned when saved" /></FF>
-        <FF label="Category"><select disabled={!!selectedProduct} className={ic} value={form.category} onChange={e => { const category = e.target.value; setForm(f => ({ ...f, category, goldKarat: category === "GOLD" ? f.goldKarat : "", unit: INVENTORY_UNITS[category][0] })); }}>{INVENTORY_CATEGORIES.map(c => <option key={c} value={c}>{c[0] + c.slice(1).toLowerCase()}</option>)}</select></FF>{form.category === "GOLD" && <FF label="Karat"><select disabled={!!selectedProduct} className={ic} value={form.goldKarat} onChange={e => setForm(f => ({ ...f, goldKarat: e.target.value }))} required><option value="">Select karat</option>{Array.from({ length: 15 }, (_, i) => i + 10).map(karat => <option key={karat} value={karat}>{karat}K</option>)}</select></FF>}<FF label="Unit"><select disabled={!!selectedProduct} className={ic} value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}>{units.map(u => <option key={u}>{u}</option>)}</select></FF>
+        <FF label="Category"><select disabled={!!selectedProduct} className={ic} value={form.category} onChange={e => { const category = e.target.value; setForm(f => ({ ...f, category, goldKarat: ["GOLD", "SCRAP"].includes(category) ? f.goldKarat : "", unit: INVENTORY_UNITS[category][0] })); }}>{INVENTORY_CATEGORIES.map(c => <option key={c} value={c}>{c[0] + c.slice(1).toLowerCase()}</option>)}</select></FF>{["GOLD", "SCRAP"].includes(form.category) && <FF label="Karat"><select disabled={!!selectedProduct} className={ic} value={form.goldKarat} onChange={e => setForm(f => ({ ...f, goldKarat: e.target.value }))} required><option value="">Select karat</option>{Array.from({ length: 15 }, (_, i) => i + 10).map(karat => <option key={karat} value={karat}>{karat}K</option>)}</select></FF>}<FF label="Unit"><select disabled={!!selectedProduct} className={ic} value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}>{units.map(u => <option key={u}>{u}</option>)}</select></FF>
         <div className="col-span-2"><FF label="Item Description"><input readOnly={!!selectedProduct} className={ic} value={form.itemName} onChange={e => setForm(f => ({ ...f, itemName: e.target.value }))} placeholder="e.g. 18k chain, gemstone, ring box" required /></FF></div>
         <div className="col-span-2 inventory-movement-toggle" role="group" aria-label="Stock movement type">{([{ value: "in", label: "Stock in" }, { value: "out", label: "Stock out" }, { value: "loss", label: "Loss/scrap" }] as const).map(option => <Button key={option.value} type="button" variant={movementType === option.value ? "secondary" : "ghost"} aria-pressed={movementType === option.value} onClick={() => setMovementType(option.value)}>{option.label}</Button>)}</div>
         <FF label={`Quantity (${form.unit})`}><input type="number" min="0.01" step="0.01" className={ic} value={quantity} onChange={e => setQuantity(e.target.value)} required /></FF>{movementType === "in" && <FF label={`Unit Price (₱ / ${form.unit})`}><input type="number" required min="0.01" step="0.01" className={ic} value={form.unitPrice} onChange={e => setForm(f => ({ ...f, unitPrice: e.target.value }))} /></FF>}
