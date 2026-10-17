@@ -62,3 +62,13 @@ test("selecting an inquiry inherits its type, clears hidden fields and replaces 
   assert.equal(next.inquiryId, "INQ-2");
   assert.equal(custom.serviceType, "Custom");
 });
+
+test("changing the populated Custom form directly to Cleaning clears every gold field", () => {
+  const changed = changeCostingService(custom, "Cleaning");
+  assert.equal(changed.serviceType, "Cleaning");
+  for (const field of ["goldSourceId", "goldUsed", "goldScrap", "goldCostPerG", "stoneCost"]) assert.equal(changed[field], "");
+  assert.equal(changed.laborCost, custom.laborCost);
+  assert.equal(changed.sellingPrice, custom.sellingPrice);
+  const payload = stripDisallowedFields(changed.serviceType, changed);
+  for (const field of ["goldSourceId", "goldUsed", "goldScrap", "goldCostPerG", "stoneCost"]) assert.equal(payload[field], null);
+});
