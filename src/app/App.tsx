@@ -21,7 +21,7 @@ import {
 import { isValidEmail, isValidPHContact, normalizeContactInput } from "../validation";
 import { ContactInput } from "./components/ContactInput";
 import { summarizeInventory, groupInventory } from "../inventorySummary";
-import { approvalChanges, approvalValue } from "../approvalDiff";
+import { approvalChanges, approvalFieldLabel, approvalValue } from "../approvalDiff";
 import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "./components/ui/sheet";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuItem } from "./components/ui/dropdown-menu";
 
@@ -1169,19 +1169,95 @@ function ApprovalQueueView({ onResolved }: { onResolved: () => void }) {
 function AuditLogsView() {
   const [rows, setRows] = useState<any[]>([]);
   const [error, setError] = useState("");
-  const load = () => apiFetch(BASE_URL + "/audit-logs?limit=150").then(async response => {
+  const [userFilter, setUserFilter] = useState("All");
+  const [roleFilter, setRoleFilter] = useState("All");
+  const [actionFilter, setActionFilter] = useState("All");
+  const [recordFilter, setRecordFilter] = useState("All");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [showAuthEvents, setShowAuthEvents] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const load = () => apiFetch(BASE_URL + "/audit-logs?limit=200").then(async response => {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error ?? "Audit logs could not be loaded.");
     setRows(asRows(data)); setError("");
   }).catch(err => setError(err instanceof Error ? err.message : "Audit logs could not be loaded."));
   useEffect(() => { void load(); }, []);
+  const actionLabel = (action: string) => ({ POST: "Created", PUT: "Updated", PATCH: "Updated", DELETE: "Deleted", LOGIN: "Logged in", LOGOUT: "Logged out", LOGIN_FAILED: "Login failed", POST_REQUESTED: "Creation requested", PUT_REQUESTED: "Update requested", DELETE_REQUESTED: "Deletion requested", APPROVAL_APPROVED: "Request approved", APPROVAL_REJECTED: "Request rejected", APPROVAL_UNDONE: "Approval undone" } as Record<string, string>)[action] ?? sentenceCase(action);
+  const actionVariant = (action: string) => ["POST", "LOGIN", "APPROVAL_APPROVED"].includes(action) ? "success" as const : ["DELETE", "DELETE_REQUESTED", "LOGIN_FAILED", "APPROVAL_REJECTED"].includes(action) ? "danger" as const : ["POST_REQUESTED", "PUT_REQUESTED", "PATCH", "PUT"].includes(action) ? "warning" as const : "neutral" as const;
+  const authEvent = (action: string) => ["LOGIN", "LOGOUT", "LOGIN_FAILED"].includes(action);
+  const recordNames: Record<string, string> = { SALE: "Sale", JOB_COST: "Job", EXPENSE: "Expense", INVENTORY: "Inventory item", INQUIRY: "Inquiry", CLIENT: "Client", EMPLOYEE: "Employee", APPROVAL: "Approval" };
+  const recordIcon = (type: string) => ({ SALE: Receipt, JOB_COST: BriefcaseBusiness, EXPENSE: DollarSign, INVENTORY: Package, INQUIRY: MessageSquare, CLIENT: UserRound, EMPLOYEE: UserRound, APPROVAL: ShieldCheck } as Record<string, typeof Receipt>)[type] ?? ScrollText;
+  const findRecordId = (value: any, type: string, depth = 0): string | null => {
+    if (!value || typeof value !== "object" || depth > 5) return null;
+    const keys: Record<string, string[]> = { SALE: ["invoiceId"], JOB_COST: ["jobCostId"], EXPENSE: ["expenseId"], INVENTORY: ["referenceId"], INQUIRY: ["inquiryId"], CLIENT: ["clientId"], EMPLOYEE: ["empId"] };
+    for (const key of keys[type] ?? []) if (typeof value[key] === "string" && value[key]) return value[key];
+    for (const child of Object.values(value)) { const found = findRecordId(child, type, depth + 1); if (found) return found; }
+    return null;
+  };
+  const relativeTime = (value: string) => {
+    const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000));
+    if (!Number.isFinite(seconds)) return "—";
+    if (seconds < 60) return "Just now";
+    if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)} hr ago`;
+    if (seconds < 604800) return `${Math.floor(seconds / 86400)} days ago`;
+    return fmtDate(value.slice(0, 10));
+  };
+  const users = [...new Set(rows.map(row => String(row.actorName ?? "Unknown user")))].sort();
+  const roles = [...new Set(rows.map(row => String(row.actorRole ?? "Unknown")))].sort();
+  const actions = [...new Set(rows.map(row => actionLabel(String(row.action ?? ""))))].sort();
+  const recordTypes = [...new Set(rows.map(row => String(row.entityType ?? "Other")))].sort();
+  const filtered = rows.filter(row => {
+    const action = String(row.action ?? "");
+    const date = String(row.createdAt ?? "").slice(0, 10);
+    return (showAuthEvents || !authEvent(action)) && (userFilter === "All" || row.actorName === userFilter) && (roleFilter === "All" || row.actorRole === roleFilter) && (actionFilter === "All" || actionLabel(action) === actionFilter) && (recordFilter === "All" || (row.entityType ?? "Other") === recordFilter) && (!startDate || date >= startDate) && (!endDate || date <= endDate);
+  });
+  const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, pages);
+  const visible = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const toggleExpanded = (id: string) => setExpanded(previous => { const next = new Set(previous); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  const renderDiff = (row: any) => {
+    const details = row.details && typeof row.details === "object" ? row.details : {};
+    const before = details.before && typeof details.before === "object" ? details.before : {};
+    const after = details.after && typeof details.after === "object" ? details.after : details.body && typeof details.body === "object" ? details.body : {};
+    const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter(key => JSON.stringify(before[key]) !== JSON.stringify(after[key]) && !["id", "createdAt", "updatedAt", "deletedAt"].includes(key));
+    return <div className="mt-2 overflow-x-auto rounded-lg border border-border"><table className="w-full text-xs"><thead><tr><th className={thc}>Field</th><th className={thc}>Before</th><th className={thc}>After</th></tr></thead><tbody>
+      {keys.map(key => <tr key={key} className="border-t border-border"><th scope="row" className="px-3 py-2 text-left font-medium">{approvalFieldLabel(key)}</th><td className="px-3 py-2 text-danger">{approvalValue(before[key], key)}</td><td className="px-3 py-2 text-success">{approvalValue(after[key], key)}</td></tr>)}
+      {!keys.length && <tr><td colSpan={3} className="px-3 py-4 text-muted-foreground">{details.before === undefined ? "No previous values were recorded for this event." : "No field changes were recorded."}</td></tr>}
+    </tbody></table></div>;
+  };
   return <div className="space-y-4">
-    <PageHeader title="Audit logs" description="Recent sign-ins, changes, archive requests, and Admin decisions." action={<Button onClick={load}>Refresh</Button>} />
+    <PageHeader title="Audit logs" description="Recent sign-ins, changes, archive requests, and Admin decisions." action={<Button variant="secondary" onClick={load}>Refresh</Button>} />
     {error && <p className="rounded-lg bg-danger-tint p-3 text-sm text-danger">{error}</p>}
-    <TableWrap><thead><tr>{["When", "User", "Role", "Action", "Record"].map(label => <th key={label} className={thc}>{label}</th>)}</tr></thead><tbody>
-      {rows.map(row => <tr key={row.logId} className="border-b border-border align-top"><td className={tdc}>{new Date(row.createdAt).toLocaleString("en-PH")}</td><td className={tdc}>{row.actorName}</td><td className={tdc}><Badge status={row.actorRole} /></td><td className={tdc}><Badge status={row.action} /></td><td className={tdc}>{row.entityType ? row.entityType + " · " + (row.entityId ?? "—") : "—"}</td></tr>)}
-      {!rows.length && !error && <EmptyRow cols={5} />}
-    </tbody></TableWrap>
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-3">
+      <select className={ic + " w-auto"} aria-label="Filter by user" value={userFilter} onChange={event => { setUserFilter(event.target.value); setPage(1); }}><option>All</option>{users.map(user => <option key={user}>{user}</option>)}</select>
+      <select className={ic + " w-auto"} aria-label="Filter by role" value={roleFilter} onChange={event => { setRoleFilter(event.target.value); setPage(1); }}><option>All</option>{roles.map(role => <option key={role}>{role}</option>)}</select>
+      <select className={ic + " w-auto"} aria-label="Filter by action type" value={actionFilter} onChange={event => { setActionFilter(event.target.value); setPage(1); }}><option>All</option>{actions.map(action => <option key={action}>{action}</option>)}</select>
+      <select className={ic + " w-auto"} aria-label="Filter by record type" value={recordFilter} onChange={event => { setRecordFilter(event.target.value); setPage(1); }}><option>All</option>{recordTypes.map(type => <option key={type} value={type}>{recordNames[type] ?? sentenceCase(type)}</option>)}</select>
+      <label className="expense-date">From<input type="date" aria-label="Audit from date" value={startDate} max={endDate || undefined} onChange={event => { setStartDate(event.target.value); setPage(1); }} /></label>
+      <label className="expense-date">To<input type="date" aria-label="Audit to date" value={endDate} min={startDate || undefined} onChange={event => { setEndDate(event.target.value); setPage(1); }} /></label>
+      <label className="ml-auto inline-flex items-center gap-2 text-sm text-muted-foreground"><input type="checkbox" checked={showAuthEvents} onChange={event => { setShowAuthEvents(event.target.checked); setPage(1); }} />Show auth events</label>
+    </div>
+    <div className="overflow-x-auto rounded-xl border border-border"><table className="w-full min-w-[850px] text-xs font-sans"><thead className="sticky top-0 z-10"><tr>{["When", "User", "Role", "Action", "Record"].map(label => <th key={label} className={thc}>{label}</th>)}</tr></thead><tbody>
+      {visible.map(row => {
+        const action = String(row.action ?? "");
+        const type = String(row.entityType ?? "");
+        const Icon = recordIcon(type);
+        const recordId = row.entityId ?? findRecordId(row.details?.after, type) ?? findRecordId(row.details?.body, type);
+        const expandedRow = expanded.has(row.logId);
+        return <Fragment key={row.logId}><TRow onClick={() => toggleExpanded(row.logId)}>
+          <td className={tdc} title={new Date(row.createdAt).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "medium" })}>{relativeTime(row.createdAt)}<span className="ml-2 text-muted-foreground">{fmtDate(String(row.createdAt).slice(0, 10))}</span></td>
+          <td className={tdc + " font-medium"}>{row.actorName || "Unknown user"}</td><td className={tdc}><Badge variant="neutral" status={sentenceCase(String(row.actorRole ?? "Unknown"))} /></td>
+          <td className={tdc}><Badge variant={actionVariant(action)} status={actionLabel(action)} /></td>
+          <td className={tdc}><button type="button" aria-expanded={expandedRow} onClick={event => { event.stopPropagation(); toggleExpanded(row.logId); }} className="inline-flex items-center gap-2 text-primary hover:underline"><Icon size={14} aria-hidden="true" />{recordNames[type] ?? (type ? sentenceCase(type) : "System event")} {recordId ?? "—"}</button></td>
+        </TRow>{expandedRow && <tr className="bg-muted/20"><td colSpan={5} className="px-4 pb-4"><div className="text-xs text-muted-foreground">{row.details?.path ?? "System event"}{row.details?.statusCode ? ` · HTTP ${row.details.statusCode}` : ""}</div>{renderDiff(row)}</td></tr>}</Fragment>;
+      })}
+      {!visible.length && !error && <EmptyRow cols={5} />}
+    </tbody></table></div>
+    <div className="expense-pagination"><p>{filtered.length ? `${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, filtered.length)} of ${filtered.length} events` : "0 events"}</p><label>Rows per page <select aria-label="Audit rows per page" value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1); }}>{[10, 20, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}</select></label><Button variant="secondary" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Previous</Button><span>Page {currentPage} of {pages}</span><Button variant="secondary" disabled={currentPage >= pages} onClick={() => setPage(currentPage + 1)}>Next</Button></div>
   </div>;
 }
 
