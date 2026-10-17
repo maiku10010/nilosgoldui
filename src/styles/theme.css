@@ -292,6 +292,12 @@ small { font-size: 12px; }
 .approval-before { color: var(--danger); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--danger) 70%, transparent); }
 .approval-after { color: var(--success); font-weight: 500; }
 .inventory-stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.inventory-filter-row { display: grid; grid-template-columns: minmax(220px, 1fr) auto auto auto; align-items: center; gap: 12px; }
+.inventory-filter-row .relative { min-width: 0; }
+.inventory-filter-row .relative input { width: 100%; }
+.inventory-category-select { width: max-content; min-width: 160px; }
+.inventory-movement-toggle { display: flex; width: fit-content; max-width: 100%; gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: 8px; background: var(--muted); }
+.inventory-movement-toggle button { min-height: 32px; padding: 4px 12px; white-space: nowrap; }
 .inventory-stat { min-width: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--card); padding: 16px; }
 .inventory-stat-value { margin-top: 10px; font-size: 24px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .inventory-stat-note { margin-top: 6px; min-height: 30px; font-size: 12px; color: var(--muted-foreground); line-height: 1.45; }
@@ -299,8 +305,12 @@ small { font-size: 12px; }
 .inventory-stock-card { border: 1px solid var(--border); border-radius: 10px; background: var(--card); padding: 16px; }
 .inventory-stock-value { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .inventory-stock-value span { font-size: 14px; font-weight: 400; color: var(--muted-foreground); }
-.inventory-progress { height: 6px; margin-top: 14px; overflow: hidden; border-radius: 999px; background: var(--muted); }
-.inventory-progress span { display: block; height: 100%; border-radius: inherit; background: var(--success); }
+.inventory-progress { position: relative; height: 6px; margin-top: 14px; border-radius: 999px; background: var(--muted); }
+.inventory-progress span { display: block; height: 100%; border-radius: inherit; }
+.inventory-progress-fill-success { background: var(--success); }
+.inventory-progress-fill-warning { background: var(--warning); }
+.inventory-progress-fill-danger { background: var(--danger); }
+.inventory-progress i { position: absolute; top: -3px; left: 66.666%; width: 2px; height: 12px; transform: translateX(-1px); border-radius: 2px; background: var(--foreground); opacity: .65; }
 .inventory-child-header th { padding: 8px 12px; background: var(--muted); color: var(--muted-foreground); font-size: 12px; font-weight: 500; text-align: right; white-space: nowrap; }
 .inventory-child-header th:first-child { text-align: left; }
 @media (max-width: 900px) { .inventory-stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

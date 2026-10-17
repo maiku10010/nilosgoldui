@@ -65,3 +65,14 @@ test('grouped gold inventory keeps each karat in its own stock pool', async () =
   assert.equal(groups.length, 2);
   assert.deepEqual(groups.map(group => group.itemName), ['Gold · 10K', 'Gold · 24K']);
 });
+test('stock cards sort preferred gold karats before unspecified gold, silver and gems', async () => {
+  const { sortInventoryStock } = await import('../src/inventorySummary.ts');
+  const products = [
+    row({ category: 'GEMSTONES', itemName: 'Ruby', unit: 'pieces' }),
+    row({ category: 'GOLD', goldKarat: null, itemName: 'Gold (karat unspecified)' }),
+    row({ category: 'GOLD', goldKarat: 18, itemName: 'Gold · 18K' }),
+    row({ category: 'SILVER', itemName: 'Silver' }),
+    row({ category: 'GOLD', goldKarat: 24, itemName: 'Gold · 24K' }),
+  ];
+  assert.deepEqual(sortInventoryStock(products).map(product => product.itemName), ['Gold · 24K', 'Gold · 18K', 'Gold (karat unspecified)', 'Silver', 'Ruby']);
+});

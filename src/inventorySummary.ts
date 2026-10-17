@@ -44,3 +44,17 @@ export function groupInventory<T extends Movement>(all: T[], visible: T[] = all)
   }
   return [...groups.values()];
 }
+
+export function sortInventoryStock<T extends Movement>(products: T[]) {
+  const karatOrder = [24, 22, 21, 18, 14, 10];
+  const materialOrder: Record<string, number> = { GOLD: 0, SILVER: 1, GEMSTONES: 2 };
+  return products.filter(product => product.category in materialOrder).sort((a, b) => {
+    const materialDelta = materialOrder[a.category] - materialOrder[b.category];
+    if (materialDelta) return materialDelta;
+    if (a.category === "GOLD" && b.category === "GOLD") {
+      const karatRank = (karat: number | null | undefined) => karat == null ? 6 : karatOrder.indexOf(karat) < 0 ? 7 : karatOrder.indexOf(karat);
+      return karatRank(a.goldKarat) - karatRank(b.goldKarat) || (b.goldKarat ?? 0) - (a.goldKarat ?? 0);
+    }
+    return a.itemName.localeCompare(b.itemName);
+  });
+}
