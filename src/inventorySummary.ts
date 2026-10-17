@@ -60,6 +60,27 @@ export function groupInventory<T extends Movement>(all: T[], visible: T[] = all)
   return [...groups.values()];
 }
 
+export function finishSaleMaterials<T extends Movement & { referenceId: string }>(inventory: T[]) {
+  return groupInventory(inventory)
+    .filter(product => product.category !== "GOLD" && product.category !== "TOOLS" && product.balance > 0)
+    .map(product => ({
+      key: product.key,
+      referenceId: product.movements[0].referenceId,
+      itemName: product.itemName,
+      unit: product.unit === "grams" ? "g" : isPieceUnit(product.unit) ? "pcs" : product.unit,
+      available: product.balance,
+      category: product.category,
+    }))
+    .sort((a, b) => a.itemName.localeCompare(b.itemName) || a.unit.localeCompare(b.unit));
+}
+
+export function materialQuantityError(value: string, available: number, unit: string) {
+  const quantity = Number(value);
+  if (!value.trim() || !Number.isFinite(quantity) || quantity <= 0) return "Enter a quantity greater than zero.";
+  if (quantity > available) return `Only ${available.toLocaleString("en-PH", { maximumFractionDigits: 6 })} ${unit} available.`;
+  return "";
+}
+
 export function sortInventoryStock<T extends Movement>(products: T[]) {
   const karatOrder = [24, 22, 21, 18, 14, 10];
   const materialOrder: Record<string, number> = { GOLD: 0, SILVER: 1, GEMSTONES: 2 };
