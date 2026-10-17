@@ -7,7 +7,7 @@ import { Badge, sentenceCase } from "./components/ui/badge";
 import { PageHeader } from "./components/PageHeader";
 import { DateRangePicker } from "./components/DateRangePicker";
 import { roundTwo } from "../rounding";
-import { Fragment, useState, useEffect, useMemo, useRef, createContext, useContext } from "react";
+import { Children, Fragment, isValidElement, useState, useEffect, useMemo, useRef, createContext, useContext } from "react";
 import goldsmithLogo from "../assets/nilosgold_logo.jpg";
 import {
   Search, Plus, X, Crown, TrendingDown, Download,
@@ -227,7 +227,7 @@ function Modal({ title, onClose, onSubmit, children, submitLabel = "Save entry",
 
 const FieldErrorsContext = createContext<Record<string, string>>({});
 function requiresValue(node: React.ReactNode): boolean {
-  return React.Children.toArray(node).some(child => React.isValidElement<{ required?: boolean; children?: React.ReactNode }>(child) && (child.props.required || requiresValue(child.props.children)));
+  return Children.toArray(node).some(child => isValidElement<{ required?: boolean; children?: React.ReactNode }>(child) && (child.props.required || requiresValue(child.props.children)));
 }
 function FF({ label, children, helper }: { label: string; children: React.ReactNode; helper?: string }) {
   const fieldErrors = useContext(FieldErrorsContext);
