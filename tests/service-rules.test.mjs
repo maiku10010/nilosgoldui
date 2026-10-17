@@ -42,3 +42,8 @@ test('helpers reject unknown services instead of silently allowing fields', () =
     assert.throws(() => stripDisallowedFields(type, {}), error => error.statusCode === 400);
   }
 });
+
+test('disallowed fields accept null or omission, but reject zero and every other supplied value', () => {
+  for (const value of [0, "0", "", false, 100]) assert.throws(() => validateServiceFields("Cleaning", { stoneCost: value }), error => error.statusCode === 400);
+  assert.doesNotThrow(() => validateServiceFields("Cleaning", { stoneCost: null, goldUsed: null, goldScrap: null, goldCostPerG: null, goldSourceId: null }));
+});

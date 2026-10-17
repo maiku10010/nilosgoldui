@@ -1,4 +1,5 @@
-import { SERVICE_RULES } from "../lib/serviceRules";
+import { changeCostingService } from "../costingForm";
+import { SERVICE_RULES, stripDisallowedFields } from "../lib/serviceRules";
 import { JobsTable } from "./components/JobsTable";
 import { FinishSaleModal } from "./components/FinishSaleModal";
 import { ExpensesLedger } from "./components/ExpensesLedger";
@@ -520,7 +521,7 @@ function DailySalesView({ sales, jobCosts, onUpdate, onDelete, onJobs, isAdmin }
           </fieldset>
           <fieldset className="sale-edit-group" disabled={isSubmitting}><legend>Payment</legend>
             <div className="grid grid-cols-2 gap-4">
-              <FF label="Service type"><select aria-label="Service type" className={ic} value={form.serviceType} onChange={e => { setStockServerError(""); setCostFormError(""); setForm(f => ({ ...f, serviceType: e.target.value as ServiceType })); }}>
+              <FF label="Service type"><select aria-label="Service type" className={ic} value={form.serviceType} onChange={e => setForm(f => ({ ...f, serviceType: e.target.value as ServiceType }))}>
                 {(Object.keys(SERVICE_RULES) as ServiceType[]).map(t => <option key={t}>{t}</option>)}
               </select></FF>
               <FF label="Date"><DatePicker value={form.date} max={todayISO()} onChange={date => setForm(f => ({ ...f, date }))} label="Sale date" disabled={isSubmitting} /></FF>
@@ -602,9 +603,10 @@ function JobCostingView({ jobCosts, inquiries, inventory, goldRate, selectedInqu
       setIsSubmitting(false); submittingRef.current = false; return;
     }
     try {
-      const payload = editingId
+      const applicablePayload = editingId
         ? { invoiceId: form.invoiceId, clientName: form.clientName, itemName: form.itemName, deadline: form.deadline || undefined, empId: form.empId || undefined, ...(rules.gold ? { goldSourceId: form.goldSourceId, goldUsed, goldCostPerG } : {}), ...(rules.scrap ? { goldScrap } : {}), ...(rules.stone ? { stoneCost } : {}), ...(rules.labor ? { laborCost } : {}), sellingPrice }
         : { inquiryId: form.inquiryId, clientName: form.clientName, itemName: form.itemName, deadline: form.deadline || undefined, contactNum: form.contactNum, empId: form.empId || undefined, serviceType: form.serviceType, ...(rules.gold ? { goldSourceId: form.goldSourceId, goldUsed, goldCostPerG } : {}), ...(rules.scrap ? { goldScrap } : {}), ...(rules.stone ? { stoneCost } : {}), ...(rules.labor ? { laborCost } : {}), sellingPrice };
+      const payload = stripDisallowedFields(form.serviceType, applicablePayload);
       if (!editingId && !form.inquiryId) throw new Error("Choose a pending inquiry before creating job costing.");
       const response = await apiFetch(`${BASE_URL}/job-cost${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method: editingId ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await response.json();
@@ -638,7 +640,7 @@ function JobCostingView({ jobCosts, inquiries, inventory, goldRate, selectedInqu
               {!editingId && <FF label="Pending inquiry"><select className={ic} value={form.inquiryId} onChange={e => selectInquiry(e.target.value)} required><option value="">Select an inquiry</option>{pendingInquiries.map(i => <option key={i.inquiryId} value={i.inquiryId}>{i.customerName} · {i.category} · {i.inquiryId}</option>)}</select></FF>}
               {editingId && <FF label="Reference"><input className={`${ic} read-only-field`} value={form.invoiceId} readOnly /></FF>}
               <FF label="Client name"><input className={`${ic} read-only-field`} value={form.clientName} readOnly placeholder="Select a pending inquiry" required /></FF>
-              {!editingId && <FF label="Service type"><select className={ic} value={form.serviceType} onChange={e => { setStockServerError(""); setCostFormError(""); setForm(f => ({ ...f, serviceType: e.target.value as ServiceType })); }}>{(Object.keys(SERVICE_RULES) as ServiceType[]).map(t => <option key={t}>{t}</option>)}</select></FF>}
+              {!editingId && <FF label="Service type"><select className={ic} value={form.serviceType} onChange={e => { setStockServerError(""); setCostFormError(""); const serviceType = e.target.value as ServiceType; setForm(f => changeCostingService(f, serviceType)); }}>{(Object.keys(SERVICE_RULES) as ServiceType[]).map(t => <option key={t}>{t}</option>)}</select></FF>}
               <FF label="Employee ID (optional)" helper="Leave blank to assign available staff."><input className={ic} value={form.empId} onChange={e => setForm(f => ({ ...f, empId: e.target.value }))} placeholder="Optional" /></FF>
               <FF label="Item name (optional)"><input className={ic} value={form.itemName} onChange={e => setForm(f => ({ ...f, itemName: e.target.value }))} placeholder="e.g. Gold ring" maxLength={120} /></FF>
               <FF label="Delivery date / deadline (optional)"><DatePicker min={todayISO()} label="Delivery date" value={form.deadline} onChange={deadline => setForm(f => ({ ...f, deadline }))} disabled={isSubmitting} /></FF>
@@ -654,7 +656,7 @@ function JobCostingView({ jobCosts, inquiries, inventory, goldRate, selectedInqu
               {rules.gold && <FF label="Gold price per g" helper={goldRate === null ? "Today's 24K: rate unavailable" : `Today's 24K: ₱${goldRate.toLocaleString("en-PH", { maximumFractionDigits: 0 })}/g`}><CurrencyInput aria-label="Gold price per gram" className={ic} value={form.goldCostPerG} onChange={goldCostPerG => setForm(f => ({ ...f, goldCostPerG }))} required /></FF>}
               {rules.stone && <FF label="Stone cost"><CurrencyInput aria-label="Stone cost" className={ic} value={form.stoneCost} onChange={stoneCost => setForm(f => ({ ...f, stoneCost }))} required /></FF>}
               {rules.labor && <FF label="Labor cost"><CurrencyInput aria-label="Labor cost" className={ic} value={form.laborCost} onChange={laborCost => setForm(f => ({ ...f, laborCost }))} required /></FF>}
-            </div></section>
+            </div>{!rules.gold && !rules.scrap && !rules.stone && <p className="mt-3 text-xs text-muted-foreground">Cleaning doesn't use gold or stones.</p>}</section>
             <section className="job-costing-group"><div className="job-costing-group-heading"><h2>Pricing</h2><p>Set the quoted selling price for this job.</p></div><div className="job-costing-field-grid">
               <FF label="Selling price"><CurrencyInput aria-label="Selling price" className={ic} value={form.sellingPrice} onChange={sellingPrice => setForm(f => ({ ...f, sellingPrice }))} required /></FF>
             </div><p className="mt-3 text-xs text-muted-foreground">Invoice number and job costing ID are assigned automatically.</p></section>
