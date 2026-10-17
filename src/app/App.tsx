@@ -459,7 +459,7 @@ function DailySalesView({ sales, jobCosts, onUpdate, onDelete, onJobs }: { sales
         <div className="rounded-xl border border-border bg-card p-4"><div className="text-xs text-muted-foreground">Number of invoices</div><div className="mt-1 text-xl font-semibold tabular-nums">{filtered.length.toLocaleString()}</div></div>
       </section>
       <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap gap-2" role="group" aria-label="Filter sales by type">{["All", "Repair", "Custom", "Cleaning", "Resize"].map(type => <Button key={type} variant={typeFilter === type ? "secondary" : "ghost"} aria-pressed={typeFilter === type} onClick={() => { setTypeFilter(type); setPage(1); }} className="text-sm">{type}<span className="ml-1 rounded bg-muted px-1.5 text-xs tabular-nums">{typeCounts[type] ?? 0}</span></Button>)}</div><SearchBar value={q} onChange={value => { setQ(value); setPage(1); }} placeholder="Search client, invoice, type…" /></div>
-      <div className="max-h-[calc(100vh-25rem)] overflow-auto rounded-xl border border-border"><table className="w-full min-w-[1080px] text-xs font-sans">
+      <div className="sales-table-scroll rounded-xl border border-border"><table className="w-full min-w-[1080px] text-xs font-sans">
         <thead className="sticky top-0 z-10"><tr>
           {[["Date", "date"], ["Invoice #", "invoiceId"], ["Client", "clientName"], ["Contact", "contactNum"], ["Type", "serviceType"]].map(([h, k]) => <SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}
           {[["Total price", "price"], ["Collected", "payment"], ["Balance", "balance"]].map(([h, k]) => <SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} align="right" />)}
