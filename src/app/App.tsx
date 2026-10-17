@@ -630,18 +630,29 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
 }
 
       // ── inquiries ───────────────────────────────────────────────────────────────
-      function InquiriesView({inquiries, onAdd, onUpdate, onDelete, onStartCosting}: {inquiries: Inquiry[]; onAdd: (i: Inquiry) => void; onUpdate: (i: Inquiry) => void; onDelete: (id: string) => void; onStartCosting: (id: string) => void }) {
+function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }: { inquiries: Inquiry[]; onAdd: (i: Inquiry) => void; onUpdate: (i: Inquiry) => void; onDelete: (id: string) => void; onStartCosting: (id: string) => void }) {
   const [q, setQ] = useState("");
-      const [sort, setSort] = useState<SortSpec>({key: "date", direction: -1 });
-  const toggleSort = (key: string) => setSort(s => ({key, direction: s.key === key ? (s.direction === 1 ? -1 : 1) : 1 }));
-        const [open, setOpen] = useState(false);
-        const [editingId, setEditingId] = useState<string | null>(null);
-        const [isSubmitting, setIsSubmitting] = useState(false);
-        const submittingRef = useRef(false);
-        const [form, setForm] = useState({customerName: "", contactInfo: "", email: "", details: "", category: "", quotedPrice: "", isFullyPaid: false, status: "Pending" as InqStatus });
+  const [sort, setSort] = useState<SortSpec>({ key: "date", direction: -1 });
+  const [activeStatus, setActiveStatus] = useState("All");
+  const [selectedInquiry, setSelectedInquiry] = useState<Inquiry | null>(null);
+  const toggleSort = (key: string) => setSort(s => ({ key, direction: s.key === key ? (s.direction === 1 ? -1 : 1) : 1 }));
+  const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const [form, setForm] = useState({ customerName: "", contactInfo: "", email: "", details: "", category: "", quotedPrice: "", isFullyPaid: false, status: "Pending" as InqStatus });
+  const statusForTab = (inquiry: Inquiry, tab: string) => {
+    if (tab === "All") return true;
+    if (tab === "Pending") return inquiry.status === "Pending" && inquiry.quotedPrice <= 0;
+    if (tab === "Quoted") return inquiry.status === "Pending" && inquiry.quotedPrice > 0;
+    if (tab === "Converted to job") return ["Approved", "Finished"].includes(inquiry.status);
+    return ["Rejected", "Cancelled"].includes(inquiry.status);
+  };
+  const tabs = ["All", "Pending", "Quoted", "Converted to job", "Closed"];
+  const counts = Object.fromEntries(tabs.map(tab => [tab, inquiries.filter(inquiry => statusForTab(inquiry, tab)).length]));
   const filtered = sortRecords(useMemo(() => inquiries.filter(i =>
-    [i.customerName, i.category, i.details, i.email, i.inquiryId].some(v => v.toLowerCase().includes(q.toLowerCase()))
-        ), [inquiries, q]), sort);
+    statusForTab(i, activeStatus) && [i.customerName, i.category, i.details, i.email, i.inquiryId].some(v => v.toLowerCase().includes(q.toLowerCase()))
+  ), [inquiries, q, activeStatus]), sort);
 
   const resetForm = () => setForm({customerName: "", contactInfo: "", email: "", details: "", category: "", quotedPrice: "", isFullyPaid: false, status: "Pending" });
   const closeModal = () => {setOpen(false); setEditingId(null); resetForm(); };
@@ -683,45 +694,63 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
         submittingRef.current = false;
   };
 
-        return (
-        <div className="space-y-4">
-          <PageHeader title="Inquiries" description="Manage customer requests and prepare new jobs." action={<AddBtn onClick={() => { resetForm(); setEditingId(null); setOpen(true); }} label="Add inquiry" />} />
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <SearchBar value={q} onChange={setQ} placeholder="Search client, service type…" />
-
+  return <div className="space-y-4">
+    <PageHeader title="Inquiries" description="Manage customer requests and prepare new jobs." action={<AddBtn onClick={() => { resetForm(); setEditingId(null); setOpen(true); }} label="Add inquiry" />} />
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div role="tablist" aria-label="Inquiry status" className="flex flex-wrap gap-2">
+        {tabs.map(tab => <Button key={tab} role="tab" aria-selected={activeStatus === tab} variant={activeStatus === tab ? "secondary" : "ghost"} onClick={() => setActiveStatus(tab)} className="gap-2 text-sm">{tab}<span className="text-xs tabular-nums text-muted-foreground">{counts[tab]}</span></Button>)}
+      </div>
+      <SearchBar value={q} onChange={setQ} placeholder="Search client, service type…" />
+    </div>
+    {inquiries.length === 0 ? <div className="flex min-h-72 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card px-6 py-10 text-center">
+      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground"><MessageSquare size={22} /></div>
+      <h2 className="text-xl font-semibold">No inquiries yet</h2>
+      <p className="mt-2 max-w-sm text-sm text-muted-foreground">Customer requests will appear here so you can review and prepare jobs.</p>
+      <Button variant="primary" className="mt-5" onClick={() => { resetForm(); setEditingId(null); setOpen(true); }}>Add Inquiry</Button>
+    </div> : !filtered.length ? <div className="rounded-xl border border-border bg-card px-6 py-12 text-center text-sm text-muted-foreground">No inquiries match these filters.</div> : <div className="overflow-x-auto rounded-xl border border-border">
+      <table className="w-full table-fixed text-xs font-sans">
+        <thead><tr>
+          <SortableHeader label="Date" sortKey="date" sort={sort} onSort={toggleSort} />
+          <SortableHeader label="Client" sortKey="customerName" sort={sort} onSort={toggleSort} />
+          <SortableHeader label="Category" sortKey="category" sort={sort} onSort={toggleSort} />
+          <SortableHeader label="Quoted price" sortKey="quotedPrice" sort={sort} onSort={toggleSort} />
+          <th className={thc}>Paid</th><SortableHeader label="Status" sortKey="status" sort={sort} onSort={toggleSort} /><th className={thc + " w-56 text-right"}>Actions</th>
+        </tr></thead>
+        <tbody>{filtered.map(i => <TRow key={i.inquiryId} onClick={() => setSelectedInquiry(i)}>
+          <td className={tdc}>{fmtDate(i.date)}</td>
+          <td className={tdc + " truncate font-medium"} title={i.customerName}>{i.customerName}</td>
+          <td className={tdc + " truncate"} title={i.category}>{i.category}</td>
+          <td className={tdr}>{php(i.quotedPrice)}</td>
+          <td className={tdc}><Badge variant={i.isFullyPaid ? "success" : "neutral"} status={i.isFullyPaid ? "Fully Paid" : "Unpaid"} /></td>
+          <td className={tdc}><Badge status={i.status} /></td>
+          <td className={tdc + " text-right"}><div className="flex items-center justify-end gap-1">
+            {i.status === "Pending" && <Button variant="secondary" type="button" onClick={event => { event.stopPropagation(); onStartCosting(i.inquiryId); }} className="whitespace-nowrap text-xs">Convert to job</Button>}
+            {i.status === "Pending" && <Button variant="ghost" size="icon" aria-label="Edit inquiry" type="button" onClick={event => { event.stopPropagation(); setEditingId(i.inquiryId); setForm({ customerName: i.customerName, contactInfo: i.contactInfo, email: i.email, details: i.details, category: i.category, quotedPrice: String(i.quotedPrice), isFullyPaid: i.isFullyPaid, status: i.status }); setOpen(true); }} title="Edit"><PenSquare size={14} /></Button>}
+            {i.status === "Pending" && <Button variant="ghost" size="icon" aria-label="Delete inquiry" type="button" onClick={event => { event.stopPropagation(); onDelete(i.inquiryId); }} title="Delete"><Trash2 size={14} /></Button>}
+          </div></td>
+        </TRow>)}</tbody>
+      </table>
+    </div>}
+    <Sheet open={!!selectedInquiry} onOpenChange={open => { if (!open) setSelectedInquiry(null); }}>
+      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
+        {selectedInquiry && <>
+          <SheetHeader className="border-b border-border pb-4 pr-10">
+            <SheetTitle>{selectedInquiry.customerName}</SheetTitle>
+            <SheetDescription>{selectedInquiry.category} · {fmtDate(selectedInquiry.date)}</SheetDescription>
+          </SheetHeader>
+          <div className="space-y-5 px-1">
+            <div className="flex flex-wrap gap-2"><Badge variant={selectedInquiry.isFullyPaid ? "success" : "neutral"} status={selectedInquiry.isFullyPaid ? "Fully Paid" : "Unpaid"} /><Badge status={selectedInquiry.status} /></div>
+            <dl className="space-y-4">
+              <div><dt className="text-xs text-muted-foreground">Contact</dt><dd className="mt-1 text-sm font-medium">{selectedInquiry.contactInfo || "—"}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Email</dt><dd className="mt-1 break-all text-sm font-medium">{selectedInquiry.email || "—"}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Details</dt><dd className="mt-1 whitespace-pre-wrap text-sm">{selectedInquiry.details || "No details provided."}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Quoted price</dt><dd className="mt-1 text-lg font-semibold tabular-nums">{php(selectedInquiry.quotedPrice)}</dd></div>
+            </dl>
+            {selectedInquiry.status === "Pending" && <Button variant="secondary" className="w-full" onClick={() => { const id = selectedInquiry.inquiryId; setSelectedInquiry(null); onStartCosting(id); }}>Convert to job</Button>}
           </div>
-          <TableWrap>
-            <thead><tr>
-    { [["Date", "date"], ["Inquiry ID", "inquiryId"], ["Client Name", "customerName"], ["Contact", "contactInfo"], ["Email", "email"], ["Category", "category"], ["Details", "details"], ["Quoted Price", "quotedPrice"], ["Fully Paid", "isFullyPaid"], ["Status", "status"]].map(([h, k]) => <SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}<th className={thc}>Actions</th>
-        </tr ></thead >
-      <tbody>
-        {filtered.map(i => (
-          <TRow key={i.inquiryId} onClick={() => { if (i.status === "Pending") { setEditingId(i.inquiryId); setForm({ customerName: i.customerName, contactInfo: i.contactInfo, email: i.email, details: i.details, category: i.category, quotedPrice: String(i.quotedPrice), isFullyPaid: i.isFullyPaid, status: i.status }); setOpen(true); } }}>
-            <td className={tdc}>{fmtDate(i.date)}</td>
-            <td className={tdc + " text-muted-foreground"}>{i.inquiryId}</td>
-            <td className={tdc + " font-sans font-medium"}>{i.customerName}</td>
-            <td className={tdc + " text-muted-foreground"}>{i.contactInfo}</td>
-            <td className={tdc + " text-muted-foreground"}>{i.email}</td>
-            <td className={tdc}>{i.category}</td>
-            <td className={tdc + " font-sans max-w-[200px] truncate text-muted-foreground"}>{i.details}</td>
-            <td className={tdr + " text-warning "}>{php(i.quotedPrice)}</td>
-            <td className={tdc}><Badge status={i.isFullyPaid ? "Paid" : "Pending"} /></td><td className={tdc}><Badge status={i.status} /></td>
-            <td className={tdc}>
-              <div className="flex items-center gap-2">
-                {i.status === "Pending" && <Button variant="ghost" type="button" onClick={() => onStartCosting(i.inquiryId)} className="text-xs">Start Costing</Button>}
-                {i.status === "Pending" && <Button variant="secondary" size="icon" aria-label="Edit" type="button" onClick={e => { e.stopPropagation(); setEditingId(i.inquiryId); setForm({ customerName: i.customerName, contactInfo: i.contactInfo, email: i.email, details: i.details, category: i.category, quotedPrice: String(i.quotedPrice), isFullyPaid: i.isFullyPaid, status: i.status }); setOpen(true); }} title="Edit">
-                  <PenSquare size={13} />
-                </Button>}
-                {i.status === "Pending" && <Button variant="danger" size="icon" aria-label="Delete" type="button" onClick={() => onDelete(i.inquiryId)} title="Delete">
-                  <Trash2 size={13} />
-                </Button>}
-              </div>
-            </td>
-          </TRow>
-        ))}
-        {!filtered.length && <EmptyRow cols={11} />}
-      </tbody>
-      </TableWrap >
+        </>}
+      </SheetContent>
+    </Sheet>
       { open && (
         <Modal title={editingId ? "Edit Inquiry" : "Add New Inquiry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update Entry" : "Save Entry"} isSubmitting={isSubmitting}>
           <div className="grid grid-cols-2 gap-4">
@@ -740,10 +769,8 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
             <p className="self-end text-xs text-muted-foreground">Status changes automatically as the inquiry moves through costing and sales.</p>
           </div >
         </Modal >
-      )
-  }
-    </div >
-  );
+      )}
+  </div>;
 }
 
 // ── expenses ────────────────────────────────────────────────────────────────
