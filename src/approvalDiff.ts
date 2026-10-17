@@ -46,15 +46,22 @@ export const approvalChanges = (
     }));
 };
 
-export const approvalValue = (value: unknown): string => {
+const moneyFields = /(?:price|cost|amount|payment|charge)$/i;
+const dateFields = /(?:date|deadline|updatedAt)$/i;
+
+export const approvalValue = (value: unknown, key = ""): string => {
   if (value === null || value === undefined || value === "") return "Not set";
-  if (typeof value === "string") return `“${value}”`;
+  if (typeof value === "string") {
+    if (dateFields.test(key) && !Number.isNaN(Date.parse(value))) return new Date(value).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
+    return value;
+  }
+  if (typeof value === "number" && moneyFields.test(key)) return new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
   if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (Array.isArray(value)) return value.length ? value.map(approvalValue).join(", ") : "None";
+  if (Array.isArray(value)) return value.length ? value.map(entry => approvalValue(entry, key)).join(", ") : "None";
   if (isPlainObject(value)) {
     const entries = Object.entries(value);
     return entries.length
-      ? entries.map(([key, entry]) => `${approvalFieldLabel(key)}: ${approvalValue(entry)}`).join("; ")
+      ? entries.map(([entryKey, entry]) => `${approvalFieldLabel(entryKey)}: ${approvalValue(entry, entryKey)}`).join("; ")
       : "None";
   }
   return String(value);

@@ -26,22 +26,24 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLab
 // ── config ─────────────────────────────────────────────────────────────────
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "https://nilosgold.vercel.app").replace(/\/$/, "");
 const apiFetch = (input: RequestInfo | URL, init: RequestInit = {}) => fetch(input, { ...init, credentials: "include" });
-const notify = (message: string) => window.dispatchEvent(new CustomEvent("nilosgold:toast", { detail: message }));
+type ToastMessage = { message: string; actionLabel?: string; onAction?: () => void };
+const notify = (message: string | ToastMessage) => window.dispatchEvent(new CustomEvent("nilosgold:toast", { detail: typeof message === "string" ? { message } : message }));
 // Keep existing call sites on the in-app toast surface instead of native dialogs.
 const alert = notify;
 
 function ToastHost() {
-  const [message, setMessage] = useState("");
+  const [toast, setToast] = useState<ToastMessage | null>(null);
   useEffect(() => {
     const onToast = (event: Event) => {
-      setMessage(String((event as CustomEvent).detail ?? ""));
-      window.setTimeout(() => setMessage(""), 4200);
+      const detail = (event as CustomEvent).detail;
+      setToast(typeof detail === "string" ? { message: detail } : detail);
+      window.setTimeout(() => setToast(null), 5000);
     };
     window.addEventListener("nilosgold:toast", onToast);
     return () => window.removeEventListener("nilosgold:toast", onToast);
   }, []);
-  if (!message) return null;
-  return <div className="fixed bottom-5 right-5 z-[100] max-w-sm rounded-lg border border-border bg-card px-4 py-3 text-sm text-card-foreground shadow-2xl" role="status" aria-live="polite">{message}</div>;
+  if (!toast) return null;
+  return <div className="fixed bottom-5 right-5 z-[100] flex max-w-sm items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 text-sm text-card-foreground shadow-2xl" role="status" aria-live="polite"><span>{toast.message}</span>{toast.onAction && <Button variant="ghost" className="shrink-0" onClick={() => { toast.onAction?.(); setToast(null); }}>{toast.actionLabel ?? "Undo"}</Button>}</div>;
 }
 
 type ConfirmationRequest = { title: string; message: string; confirmLabel?: string; onConfirm: () => void | Promise<void> };
@@ -1129,42 +1131,80 @@ function ProfitAnalysisView({ sales, jobCosts, expenses, selectedYear, setSelect
 function ApprovalQueueView({ onResolved }: { onResolved: () => void }) {
   const [rows, setRows] = useState<any[]>([]);
   const [error, setError] = useState("");
+  const [activeTab, setActiveTab] = useState<"PENDING" | "APPROVED" | "REJECTED">("PENDING");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [rejecting, setRejecting] = useState<any | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [busy, setBusy] = useState(false);
   const load = () => apiFetch(BASE_URL + "/approvals").then(async response => {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error ?? "Approval requests could not be loaded.");
-    setRows(asRows(data));
+    setRows(asRows(data)); setError("");
   }).catch(err => setError(err instanceof Error ? err.message : "Approval requests could not be loaded."));
   useEffect(() => { void load(); }, []);
-  const resolve = async (row: any, action: "approve" | "reject") => {
-    const note = action === "reject" ? window.prompt("Optional reason for rejecting this change:") : "";
-    if (action === "reject" && note === null) return;
+  const relativeTime = (value: string) => {
+    const seconds = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 1000));
+    if (seconds < 60) return "Just now";
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    return `${Math.floor(seconds / 86400)}d ago`;
+  };
+  const undo = async (row: any) => {
+    try {
+      const response = await apiFetch(`${BASE_URL}/approvals/${encodeURIComponent(row.requestId)}/undo`, { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "The approval could not be undone.");
+      notify(data.message ?? "Approval undone."); await load(); onResolved();
+    } catch (err) { notify(err instanceof Error ? err.message : "The approval could not be undone."); }
+  };
+  const resolve = async (row: any, action: "approve" | "reject", note = "") => {
     try {
       const response = await apiFetch(BASE_URL + "/approvals/" + encodeURIComponent(row.requestId) + "/" + action, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ note }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Approval could not be completed.");
-      alert(data.message);
+      if (action === "approve") notify({ message: data.message ?? "Change approved.", actionLabel: "Undo", onAction: () => { void undo(data.request ?? row); } });
+      else notify(data.message ?? "Change rejected.");
       await load();
       onResolved();
     } catch (err) { alert(err instanceof Error ? err.message : "Approval could not be completed."); }
   };
-  const pending = rows.filter(row => row.status === "PENDING");
+  const counts = { PENDING: rows.filter(row => row.status === "PENDING").length, APPROVED: rows.filter(row => row.status === "APPROVED").length, REJECTED: rows.filter(row => row.status === "REJECTED").length };
+  const visibleRows = rows.filter(row => row.status === activeTab);
+  const pendingVisible = visibleRows.filter(row => row.status === "PENDING");
+  const toggleSelection = (requestId: string) => setSelected(current => { const next = new Set(current); next.has(requestId) ? next.delete(requestId) : next.add(requestId); return next; });
+  const approveSelected = async () => {
+    const targets = pendingVisible.filter(row => selected.has(row.requestId));
+    if (!targets.length) return;
+    setBusy(true);
+    let completed = 0;
+    for (const row of targets) { try { await resolve(row, "approve"); completed++; } catch { /* individual errors are toasted */ } }
+    setSelected(new Set()); setBusy(false);
+    if (completed > 1) notify(`${completed} requests approved.`);
+  };
   return <div className="space-y-4">
     <PageHeader title="Approvals" description="Staff edits and archive requests leave records unchanged until approved." action={<Button onClick={load}>Refresh</Button>} />
     {error && <p className="rounded-lg bg-danger-tint p-3 text-sm text-danger">{error}</p>}
-    {!pending.length && !error && <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">No pending requests.</div>}
-    {pending.map(row => {
-      const requestedAt = new Date(row.createdAt);
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border">
+      <div role="tablist" aria-label="Approval status" className="flex gap-1">{(["PENDING", "APPROVED", "REJECTED"] as const).map(status => <button key={status} role="tab" aria-selected={activeTab === status} onClick={() => { setActiveTab(status); setSelected(new Set()); }} className={`approval-tab ${activeTab === status ? "approval-tab-active" : ""}`}>{sentenceCase(status)} <span>{counts[status]}</span></button>)}</div>
+      {activeTab === "PENDING" && <Button variant="secondary" disabled={!selected.size || busy} onClick={() => void approveSelected}>Approve selected{selected.size ? ` (${selected.size})` : ""}</Button>}
+    </div>
+    {!visibleRows.length && !error && <div className="rounded-xl border border-border bg-card p-10 text-center"><p className="text-base font-medium">All caught up</p><p className="mt-1 text-sm text-muted-foreground">There are no {sentenceCase(activeTab).toLowerCase()} approval requests.</p></div>}
+    {visibleRows.map(row => {
       const requester = row.requester?.empName ?? row.requester?.empRole ?? "Staff";
       const changes = approvalChanges(row.beforeData, row.proposedData);
-      return <article key={row.requestId} className="rounded-xl border border-border bg-card p-5">
+      return <article key={row.requestId} className="rounded-xl border border-border bg-card p-5 approval-card">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><div className="flex items-center gap-2"><h3 className="font-semibold"><Badge status={row.action} /> · {sentenceCase(String(row.entityType))}</h3><Badge status="Pending" /></div><p className="mt-1 text-xs text-muted-foreground">{row.entityId} · requested by {requester} · {requestedAt.toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "2-digit" })} · {requestedAt.toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" })}</p></div>
-          <div className="flex gap-2"><Button variant="danger" type="button" onClick={() => resolve(row, "reject")} className="text-sm">Reject</Button><Button variant="primary" type="button" onClick={() => resolve(row, "approve")} className="text-sm">Approve</Button></div>
+          <div className="flex min-w-0 gap-3">
+            {row.status === "PENDING" && <input aria-label={`Select ${row.entityId}`} type="checkbox" checked={selected.has(row.requestId)} onChange={() => toggleSelection(row.requestId)} className="mt-1" />}
+            <div><div className="flex flex-wrap items-center gap-2"><Badge variant={row.action === "DELETE" ? "danger" : "neutral"}>{sentenceCase(row.action)}</Badge><a href={`#record-${encodeURIComponent(row.entityId)}`} className="font-medium text-primary-text underline underline-offset-2">{sentenceCase(String(row.entityType))} · {row.entityId}</a><Badge status={row.status}>{sentenceCase(row.status)}</Badge></div>
+            <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground"><span className="approval-avatar" aria-hidden="true">{requester.slice(0, 1).toUpperCase()}</span><span>{requester}</span><span aria-hidden="true">·</span><time dateTime={row.createdAt} title={new Date(row.createdAt).toLocaleString("en-PH")}>{relativeTime(row.createdAt)}</time></div></div>
+          </div>
+          {row.status === "PENDING" && <div className="flex gap-2"><Button variant="secondary" type="button" onClick={() => { setRejecting(row); setRejectReason(""); }} className="text-sm">Reject</Button><Button variant="primary" type="button" onClick={() => void resolve(row, "approve")} className="text-sm">Approve</Button></div>}
         </div>
-        {row.action === "UPDATE" && <div className="mt-4 rounded-lg border border-border bg-muted/30 p-4"><p className="mb-3 text-xs font-semibold section-label text-muted-foreground">Requested changes</p>{changes.length ? <dl className="space-y-3">{changes.map(change => <div key={change.key} className="grid gap-1 text-sm sm:grid-cols-[minmax(9rem,0.35fr)_1fr]"><dt className="font-medium text-foreground">{change.label}</dt><dd className="flex min-w-0 flex-wrap items-center gap-2"><span className="break-words text-muted-foreground line-through decoration-danger/70">{approvalValue(change.initialValue)}</span><span aria-hidden="true" className="text-muted-foreground">→</span><span className="break-words font-medium text-foreground">{approvalValue(change.editedValue)}</span></dd></div>)}</dl> : <p className="text-sm text-muted-foreground">No value changes were detected.</p>}</div>}
+        {row.action === "UPDATE" && <div className="mt-4 overflow-x-auto rounded-lg border border-border"><table className="approval-diff"><thead><tr><th>Field</th><th>Before</th><th>After</th></tr></thead><tbody>{changes.length ? changes.map(change => <tr key={change.key}><th scope="row">{change.label}</th><td className="approval-before">{approvalValue(change.initialValue, change.key)}</td><td className="approval-after">{approvalValue(change.editedValue, change.key)}</td></tr>) : <tr><td colSpan={3} className="text-muted-foreground">No value changes were detected.</td></tr>}</tbody></table></div>}
       </article>
     })}
-    {rows.some(row => row.status !== "PENDING") && <details className="rounded-xl border border-border bg-card p-4"><summary className="cursor-pointer text-sm font-medium">Recently reviewed requests</summary><div className="mt-3 space-y-2">{rows.filter(row => row.status !== "PENDING").slice(0, 15).map(row => <div key={row.requestId} className="flex flex-wrap justify-between gap-2 border-t border-border pt-2 text-sm"><span><Badge status={row.action} /> {sentenceCase(String(row.entityType))} · {row.entityId}</span><Badge status={statusLabel(row.status)} /></div>)}</div></details>}
+    {rejecting && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-overlay backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="reject-title"><div className="w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-2xl"><h2 id="reject-title" className="text-base font-semibold">Reject request</h2><label className="mt-4 block text-sm text-muted-foreground" htmlFor="reject-reason">Reason <span className="text-xs">(optional)</span></label><textarea id="reject-reason" value={rejectReason} onChange={event => setRejectReason(event.target.value)} maxLength={500} rows={3} className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm" placeholder="Explain why this request was rejected" /><div className="mt-5 flex justify-end gap-2"><Button variant="secondary" onClick={() => setRejecting(null)}>Cancel</Button><Button variant="danger" onClick={() => { void resolve(rejecting, "reject", rejectReason); setRejecting(null); }}>Reject</Button></div></div></div>}
   </div>;
 }
 

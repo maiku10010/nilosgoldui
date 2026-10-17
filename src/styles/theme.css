@@ -249,3 +249,16 @@ small { font-size: 12px; }
 .attention-list button:hover { color: var(--primary-text); }
 .attention-approvals { margin-top: 16px; padding-top: 20px; border-top: 1px solid var(--border); }
 @media (prefers-reduced-motion: reduce) { .dashboard-overview [data-slot="skeleton"] { animation: none; } }
+.approval-tab { border-bottom: 3px solid transparent; padding: 10px 12px; color: var(--muted-foreground); font-size: 14px; font-weight: 500; }
+.approval-tab:hover { color: var(--foreground); }
+.approval-tab-active { border-bottom-color: var(--gold); color: var(--foreground); }
+.approval-tab span { margin-left: 5px; border-radius: 999px; background: var(--muted); padding: 1px 6px; font-size: 12px; }
+.approval-card { border-left: 3px solid color-mix(in srgb, var(--gold) 55%, transparent); }
+.approval-avatar { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--navy); color: white; font-weight: 600; }
+.approval-diff { width: 100%; min-width: 540px; border-collapse: collapse; font-size: 14px; }
+.approval-diff th, .approval-diff td { padding: 10px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.approval-diff thead th { background: var(--muted); color: var(--muted-foreground); font-size: 12px; font-weight: 500; }
+.approval-diff tbody tr:last-child th, .approval-diff tbody tr:last-child td { border-bottom: 0; }
+.approval-diff tbody > tr > th { width: 24%; font-weight: 500; }
+.approval-before { color: var(--danger); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--danger) 70%, transparent); }
+.approval-after { color: var(--success); font-weight: 500; }
