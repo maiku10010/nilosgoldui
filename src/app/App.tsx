@@ -940,7 +940,7 @@ function RecordDetails({ title, record, onClose }: { title: string; record: Reco
   </div>;
 }
 
-function ProfitAnalysisView({ sales, jobCosts, expenses }: { sales: Sale[]; jobCosts: JobCost[]; expenses: Expense[] }) {
+function ProfitAnalysisView({ sales, jobCosts, expenses, onRefresh }: { sales: Sale[]; jobCosts: JobCost[]; expenses: Expense[]; onRefresh: () => void }) {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const invalidRange = !!startDate && !!endDate && startDate > endDate;
@@ -975,7 +975,7 @@ function ProfitAnalysisView({ sales, jobCosts, expenses }: { sales: Sale[]; jobC
     { label: "Job cost", value: totalCost, color: "var(--chart-2)" },
     { label: "Expenses", value: totalExp, color: "var(--chart-4)" },
   ];
-  const bridgeMax = Math.max(1, totalRevenue);
+  const bridgeMax = Math.max(1, totalRevenue, totalCost, totalExp, Math.abs(netProfit));
   const rangeLabel = startDate || endDate ? `${startDate ? fmtDate(startDate) : "Beginning"} – ${endDate ? fmtDate(endDate) : "Present"}` : "All dates";
 
   const rankedCategories = Object.entries(selectedExpenses.reduce((totals, expense) => {
@@ -999,17 +999,17 @@ function ProfitAnalysisView({ sales, jobCosts, expenses }: { sales: Sale[]; jobC
     const jcs = costedJobCosts.filter(j => salesByInvoice.get(j.invoiceId)?.serviceType === type);
     const margin = jcs.length ? jcs.reduce((a, j) => a + j.marginPct, 0) / jcs.length : 0;
     return { type, margin: parseFloat(margin.toFixed(1)), count: jcs.length };
-  });
-  const marginAxisTick = ({ x, y, payload }: any) => {
-    const row = byService.find(item => item.type === payload.value);
-    return <g transform={`translate(${x},${y})`}><text y={0} dy={12} textAnchor="middle" fill="var(--muted-foreground)" fontSize={12} fontFamily="Inter">{payload.value}</text><text y={18} textAnchor="middle" fill="var(--muted-foreground)" fontSize={12} fontFamily="Inter">{row?.count ?? 0} jobs</text></g>;
-  };
+  }).sort((a, b) => b.margin - a.margin || a.type.localeCompare(b.type));
+  const marginMin = Math.min(0, ...byService.map(row => row.margin));
+  const marginMax = Math.max(0, ...byService.map(row => row.margin));
+  const marginSpan = marginMax - marginMin || 1;
+  const marginZero = -marginMin / marginSpan * 100;
 
   const cardCls = "bg-card border border-border rounded-xl p-5";
 
   return (
-    <div className="space-y-5">
-      <PageHeader title="Reports" description={`Financial summary · ${rangeLabel}`} action={<DateRangePicker startDate={startDate} endDate={endDate} onChange={(start, end) => { setStartDate(start); setEndDate(end); }} label="Report date range" />} />
+    <div className="reports-view space-y-5">
+      <PageHeader title="Reports" description={`Financial summary · ${rangeLabel}`} action={<div className="flex flex-wrap items-center justify-end gap-3"><DateRangePicker startDate={startDate} endDate={endDate} onChange={(start, end) => { setStartDate(start); setEndDate(end); }} label="Report date range" /><Button variant="secondary" onClick={onRefresh}>Refresh</Button></div>} />
       {invalidRange && <p role="alert" className="text-sm text-danger">The end date must be on or after the start date.</p>}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {[
@@ -1043,12 +1043,12 @@ function ProfitAnalysisView({ sales, jobCosts, expenses }: { sales: Sale[]; jobC
           </ResponsiveContainer>
         </section>
 
-        <section aria-labelledby="profit-bridge-title" className={cardCls + " col-span-12 min-w-0 xl:col-span-5"}>
+        <section aria-labelledby="profit-bridge-title" className={cardCls + " col-span-12 min-w-0 self-start xl:col-span-5"}>
           <h2 id="profit-bridge-title" className="text-sm font-medium">Profit bridge</h2>
           <p className="mt-1 text-xs text-muted-foreground">Revenue − Job cost − Expenses = Net · {rangeLabel}</p>
           <div className="profit-bridge mt-6" aria-label={`Revenue ${php(totalRevenue)} minus job cost ${php(totalCost)} minus expenses ${php(totalExp)} equals net ${php(netProfit)}`}>
             {[{ label: "Revenue", value: totalRevenue, color: "var(--primary)", sign: "" }, { label: "Job cost", value: totalCost, color: "var(--chart-2)", sign: "−" }, { label: "Expenses", value: totalExp, color: "var(--chart-4)", sign: "−" }, { label: "Net", value: netProfit, color: netProfit < 0 ? "var(--danger)" : "var(--success)", sign: "=" }].map((item, index) => <div key={item.label} className="profit-bridge-step" style={{ "--bridge-color": item.color, "--bridge-width": `${Math.min(100, Math.abs(item.value) / bridgeMax * 100)}%` } as React.CSSProperties}>
-              <span className="profit-bridge-sign" aria-hidden="true">{index === 0 ? "" : item.sign}</span><span className="profit-bridge-label">{item.label}</span><strong>{index === 3 && netProfit < 0 ? "− " : ""}{php(Math.abs(item.value))}</strong><span className="profit-bridge-track" aria-hidden="true"><i /></span>
+              <span className="profit-bridge-label"><span className="profit-bridge-sign" aria-hidden="true">{item.sign}</span>{item.label}</span><strong>{index === 3 && netProfit < 0 ? "− " : ""}{php(Math.abs(item.value))}</strong><span className="profit-bridge-track" aria-hidden="true"><i /></span>
             </div>)}
           </div>
         </section>
@@ -1122,24 +1122,20 @@ function ProfitAnalysisView({ sales, jobCosts, expenses }: { sales: Sale[]; jobC
         </div> : <p className="py-12 text-center text-sm text-muted-foreground">No expense amounts to display for this period.</p>}
       </section>
 
-      <div className={cardCls}>
-        <p className="text-xs font-sans text-muted-foreground section-label mb-1">Average margin by service type</p>
-        <p className="mb-4 text-xs text-muted-foreground">Costed jobs only · job counts appear below each type.</p>
-        <ResponsiveContainer width="100%" height={210}>
-          <BarChart data={byService} margin={{ top: 4, right: 4, bottom: 0, left: 10 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-            <XAxis dataKey="type" tick={marginAxisTick} height={42} interval={0} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fill: "var(--muted-foreground)", fontSize: 12, fontFamily: "Inter" }} axisLine={false} tickLine={false} tickFormatter={v => v + "%"} />
-            <Tooltip
-              formatter={(v: any) => [v + "%", "Avg Margin"]}
-              contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: "8px", fontFamily: "Inter", fontSize: "12px", color: "var(--foreground)" }}
-              labelStyle={{ color: "var(--muted-foreground)" }}
-              itemStyle={{ color: "var(--foreground)" }}
-            />
-            <Bar dataKey="margin" name="Margin %" fill="var(--chart-4)" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+      <section aria-labelledby="average-margin-title" className={cardCls}>
+        <h2 id="average-margin-title" className="text-sm font-medium">Average margin by service type</h2>
+        <p className="mt-1 text-xs text-muted-foreground">Only costed jobs count · sorted by average margin, highest first.</p>
+        <ol className="service-margin-chart mt-6" aria-label="Average margin and costed job count by service type">
+          {byService.map(row => <li key={row.type} className="service-margin-row">
+            <span className="service-margin-label">{row.type}</span>
+            <span className="service-margin-track" aria-hidden="true">
+              <span className="service-margin-zero" style={{ left: `${marginZero}%` }} />
+              <span className="service-margin-bar" style={{ left: `${(Math.min(0, row.margin) - marginMin) / marginSpan * 100}%`, width: `${Math.abs(row.margin) / marginSpan * 100}%`, backgroundColor: row.margin < 0 ? "var(--danger)" : "var(--chart-4)" }} />
+            </span>
+            <span className="service-margin-value"><strong>{row.margin.toFixed(1)}%</strong><span>{row.count} {row.count === 1 ? "job" : "jobs"}</span></span>
+          </li>)}
+        </ol>
+      </section>
     </div>
   );
 }
@@ -1553,14 +1549,13 @@ function AppContent() {
         <main className="dashboard-main" key={tab}>
           <div className="dashboard-content">
 
-          {tab === "PROFIT_ANALYSIS" && <PageHeader title="Reports" description="Understand revenue, costs, and profitability over time." action={<Button variant="secondary" onClick={() => setReloadKey(k => k + 1)}>Refresh report</Button>} />}
         {tab === "DASHBOARD" && <Dashboard sales={sales} jobCosts={jobCosts} expenses={expenses} loading={dataLoading} error={dataError} isAdmin={isAdmin} goldRate={goldRate} goldStock={goldStock} goldLoading={goldLoading} goldStale={goldInfo?.stale ?? true} loadApprovals={loadDashboardApprovals} onJobs={() => setTab("JOB_COSTING")} onApprovals={() => setTab("APPROVALS")} onRetry={() => setReloadKey(k => k + 1)} onView={(title, record) => setViewRecord({ title, record })} />}
         {tab === "DAILY_SALES" && <DailySalesView sales={sales.filter(isCompletedSale)} jobCosts={jobCosts} onJobs={() => setTab("JOB_COSTING")} onUpdate={s => setSales(p => p.map(item => item.invoiceId === s.invoiceId ? s : s.clientId && item.clientId === s.clientId ? { ...item, email: s.email } : item))} onDelete={id => deleteFromApi("sales", id, () => { const removed = sales.find(item => item.invoiceId === id); const linkedJob = jobCosts.find(item => item.jobCostId === removed?.jobCostId); setSales(p => p.filter(item => item.invoiceId !== id)); if (removed?.jobCostId) setJobCosts(p => p.filter(item => item.jobCostId !== removed.jobCostId)); if (linkedJob?.inquiryId) setInquiries(p => p.map(i => i.inquiryId === linkedJob.inquiryId ? { ...i, status: "Pending" } : i)); })} />}
         {tab === "JOB_COSTING" && <JobCostingView jobCosts={jobCosts} inquiries={inquiries} inventory={inventory} selectedInquiryId={selectedInquiryForCosting} clearSelectedInquiry={() => setSelectedInquiryForCosting(null)} onAdd={j => { setJobCosts(p => [j, ...p]); if (j.sale) setSales(p => [j.sale!, ...p.filter(s => s.invoiceId !== j.sale!.invoiceId)]); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Approved" } : i)); }} onUpdate={j => { setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? j : item)); if (j.sale) setSales(p => p.map(s => s.invoiceId === j.sale!.invoiceId ? j.sale! : s)); }} onDelete={j => deleteFromApi("job-cost", j.jobCostId, () => { setJobCosts(p => p.filter(item => item.jobCostId !== j.jobCostId)); setSales(p => p.filter(s => s.invoiceId !== j.invoiceId)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Pending" } : i)); })} onApprove={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/approve`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Costing could not be approved."); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Costing could not be approved."); } }} onReady={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/ready`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Item could not be marked ready."); const reason = data.notification?.sent ? (data.notification.reason ?? "Customer notification sent.") : (data.notification?.reason ?? "Customer notification could not be sent."); alert(`Marked ready for pickup. ${reason}`); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Item could not be marked ready."); } }} onFinish={async (j, materials) => { try { const response = await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(j.invoiceId)}/finish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ invoiceId: j.invoiceId, clientName: j.clientName, materials }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Sale could not be finished."); const sale = normalizeSale(data); setSales(p => [sale, ...p.filter(item => item.invoiceId !== sale.invoiceId)]); setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? { ...item, status: "Finished", sale } : item)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Finished" } : i)); alert("Sale completed. Confirm receipt sending from Daily Sales when ready."); } catch (error) { alert(error instanceof Error ? error.message : "Sale could not be finished."); } }} />}
         {tab === "INVENTORY" && <GoldInventoryView inventory={inventory} goldRate={goldRate} onAdd={e => { setInventory(p => [...p, e]); setReloadKey(k => k + 1); }} onUpdate={e => { setInventory(p => p.map(item => item.id === e.id ? e : item)); setReloadKey(k => k + 1); }} onDelete={id => deleteFromApi("inventory", id, () => { setInventory(p => p.filter(item => item.id !== id)); setReloadKey(k => k + 1); })} />}
         {tab === "INQUIRIES" && <InquiriesView inquiries={inquiries} onAdd={i => setInquiries(p => [i, ...p])} onUpdate={i => setInquiries(p => p.map(item => item.inquiryId === i.inquiryId ? i : item))} onDelete={id => deleteFromApi("inquiries", id, () => setInquiries(p => p.filter(item => item.inquiryId !== id)))} onStartCosting={id => { setSelectedInquiryForCosting(id); setTab("JOB_COSTING"); }} />}
         {tab === "EXPENSES" && <ExpensesView expenses={expenses} onAdd={e => setExpenses(p => [e, ...p])} onUpdate={e => setExpenses(p => p.map(item => item.expenseId === e.expenseId ? e : item))} onDelete={id => deleteFromApi("expenses", id, () => setExpenses(p => p.filter(item => item.expenseId !== id)))} />}
-        {tab === "PROFIT_ANALYSIS" && <ProfitAnalysisView sales={sales.filter(isCompletedSale)} jobCosts={jobCosts} expenses={expenses} />}
+        {tab === "PROFIT_ANALYSIS" && <ProfitAnalysisView sales={sales.filter(isCompletedSale)} jobCosts={jobCosts} expenses={expenses} onRefresh={() => setReloadKey(k => k + 1)} />}
         {tab === "APPROVALS" && isAdmin && <ApprovalQueueView onResolved={() => setReloadKey(k => k + 1)} />}
         {tab === "AUDIT_LOGS" && isAdmin && <AuditLogsView />}
           </div>
