@@ -1,6 +1,10 @@
+import { gramsToMilligrams } from "./goldStock.ts";
 type Movement = { category: string; unit: string; itemName: string; goldKarat?: number | null; quantityIn: number; quantityOut: number; quantityLoss: number };
 const TROY_OUNCE_GRAMS = 31.1034768;
-const stockKey = (row: Movement) => ["GOLD", "SCRAP"].includes(row.category) ? `${row.category}:${row.goldKarat ?? "unknown"}:grams` : JSON.stringify([row.category, row.unit, row.itemName.trim().toLowerCase()]);
+export const inventoryStockKey = (row: Movement) => row.category === "SCRAP" ? "SCRAP:grams" : row.category === "GOLD" ? `GOLD:${row.goldKarat ?? "unknown"}:grams` : JSON.stringify([row.category, row.unit, row.itemName.trim().toLowerCase()]);
+const stockKey = inventoryStockKey;
+const scrapMilligrams = (grams: number) => (grams < 0 ? -1 : 1) * (gramsToMilligrams(String(grams).replace(/^-/, "")) ?? 0);
+
 
 export const isPieceUnit = (unit: string) => /^(?:pc|pcs|piece|pieces)$/i.test(unit.trim());
 
@@ -23,7 +27,8 @@ export function summarizeInventory(all: Movement[], visible: Movement[]) {
     const key = stockKey(row);
     const factor = row.category === "GOLD" && row.unit === "troy oz" ? TROY_OUNCE_GRAMS : 1;
     const current = products.get(key) ?? { unit: row.category === "GOLD" ? "grams" : row.unit, quantity: 0 };
-    current.quantity += (row.quantityIn - row.quantityOut - row.quantityLoss) * factor;
+    if (row.category === "SCRAP") current.quantity = (scrapMilligrams(current.quantity) + scrapMilligrams(row.quantityIn) - scrapMilligrams(row.quantityOut) - scrapMilligrams(row.quantityLoss)) / 1000;
+    else current.quantity += (row.quantityIn - row.quantityOut - row.quantityLoss) * factor;
     products.set(key, current);
   }
   const visibleKeys = new Set(visible.map(stockKey));
@@ -48,12 +53,19 @@ export function groupInventory<T extends Movement>(all: T[], visible: T[] = all)
   for (const row of all) {
     const key = stockKey(row);
     if (!visibleKeys.has(key)) continue;
-    const group = groups.get(key) ?? { key, itemName: row.category === "GOLD" ? `Gold${row.goldKarat == null ? " (karat unspecified)" : ` · ${row.goldKarat}K`}` : row.category === "SCRAP" ? `Scrap gold${row.goldKarat == null ? "" : ` � ${row.goldKarat}K`}` : row.itemName, category: row.category, goldKarat: ["GOLD", "SCRAP"].includes(row.category) ? row.goldKarat : null, unit: row.category === "GOLD" ? "grams" : row.unit, quantityIn: 0, quantityOut: 0, quantityLoss: 0, balance: 0, movements: [] };
+    const group = groups.get(key) ?? { key, itemName: row.category === "GOLD" ? `Gold${row.goldKarat == null ? " (karat unspecified)" : ` · ${row.goldKarat}K`}` : row.category === "SCRAP" ? "Scrap gold" : row.itemName, category: row.category, goldKarat: row.category === "GOLD" ? row.goldKarat : null, unit: row.category === "GOLD" ? "grams" : row.unit, quantityIn: 0, quantityOut: 0, quantityLoss: 0, balance: 0, movements: [] };
     const factor = row.category === "GOLD" && row.unit === "troy oz" ? TROY_OUNCE_GRAMS : 1;
-    group.quantityIn += row.quantityIn * factor;
-    group.quantityOut += row.quantityOut * factor;
-    group.quantityLoss += row.quantityLoss * factor;
-    group.balance = group.quantityIn - group.quantityOut - group.quantityLoss;
+    if (row.category === "SCRAP") {
+      group.quantityIn = (scrapMilligrams(group.quantityIn) + scrapMilligrams(row.quantityIn)) / 1000;
+      group.quantityOut = (scrapMilligrams(group.quantityOut) + scrapMilligrams(row.quantityOut)) / 1000;
+      group.quantityLoss = (scrapMilligrams(group.quantityLoss) + scrapMilligrams(row.quantityLoss)) / 1000;
+      group.balance = (scrapMilligrams(group.quantityIn) - scrapMilligrams(group.quantityOut) - scrapMilligrams(group.quantityLoss)) / 1000;
+    } else {
+      group.quantityIn += row.quantityIn * factor;
+      group.quantityOut += row.quantityOut * factor;
+      group.quantityLoss += row.quantityLoss * factor;
+      group.balance = group.quantityIn - group.quantityOut - group.quantityLoss;
+    }
     group.movements.push(row);
     groups.set(key, group);
   }

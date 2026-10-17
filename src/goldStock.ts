@@ -51,7 +51,7 @@ export function goldStockError(used: string, scrap: string, source: ReturnType<t
   const usedMg = gramsToMilligrams(used || "0");
   const scrapMg = gramsToMilligrams(scrap || "0");
   if (usedMg === null || scrapMg === null) return "Enter non-negative weights with at most 3 decimal places.";
-  if (usedMg + scrapMg > source.availableMg) return `Insufficient ${source.itemName}: used + scrap must not exceed ${milligramsToGrams(source.availableMg)} g available.`;
+  if (usedMg > source.availableMg) return `Insufficient ${source.itemName}: gold used must not exceed ${milligramsToGrams(source.availableMg)} g available.`;
   return "";
 }
 

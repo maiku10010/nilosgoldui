@@ -4,11 +4,12 @@ import { costingSummary, goldStockError, goldStockSources, gramsToMilligrams, mi
 
 const row = (data = {}) => ({ referenceId: "18K-IN", category: "GOLD", goldKarat: 18, unit: "grams", itemName: "Gold · 18K", quantityIn: "1.2", quantityOut: "0", quantityLoss: "0", ...data });
 
-test("1 g used plus 0.2 g scrap fits exactly in 1.2 g available", () => {
+test("only gold used counts against available source stock", () => {
   const [source] = goldStockSources([row()]);
   assert.equal(source.availableMg, 1200);
   assert.equal(goldStockError("1", "0.2", source), "");
-  assert.equal(goldStockError("1", "0.201", source), "Insufficient Gold · 18K: used + scrap must not exceed 1.2 g available.");
+  assert.equal(goldStockError("1.201", "0.201", source), "Insufficient Gold · 18K: gold used must not exceed 1.2 g available.");
+  assert.equal(goldStockError("1.2", "2", source), "");
   assert.equal(gramsToMilligrams("0.001"), 1);
   assert.equal(gramsToMilligrams("0.0001"), null);
   assert.equal(gramsToMilligrams("-0.1"), null);
