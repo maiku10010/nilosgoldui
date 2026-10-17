@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState, type CSSProperties } from 'react';
 import { ChevronDown, Download, PenSquare, Plus, Search, Trash2 } from 'lucide-react';
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { expenseCategories, expenseCategory, expenseCategoryColor, expenseTotals, expensesCsv, selectExpenses, type ExpenseRecord } from '../../expensesView';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -9,6 +9,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuChe
 import { DateRangePicker } from './DateRangePicker';
 
 const money = (n: number, decimals = 2) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(n);
+const compactMoney = (n: number) => '₱' + new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 0 }).format(n);
 const displayDate = (date: string, month = false) => new Date(date + (month ? '-01T00:00:00' : 'T00:00:00')).toLocaleDateString('en-PH', { month: 'short', ...(month ? {} : { day: 'numeric' }), year: 'numeric' });
 export function ExpensesLedger({ expenses, onAdd, onEdit, onDelete }: { expenses: ExpenseRecord[]; onAdd: () => void; onEdit: (row: ExpenseRecord) => void; onDelete: (id: string) => void }) {
   const [query, setQuery] = useState('');
@@ -17,6 +18,7 @@ export function ExpensesLedger({ expenses, onAdd, onEdit, onDelete }: { expenses
   const [end, setEnd] = useState('');
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(25);
+  const [showAllMonths, setShowAllMonths] = useState(false);
   const invalidRange = !!start && !!end && start > end;
   const filtered = useMemo(() => selectExpenses(expenses, { query, categories, start, end }), [expenses, query, categories, start, end]);
   const daily = useMemo(() => expenseTotals(filtered, 10), [filtered]);
@@ -27,6 +29,8 @@ export function ExpensesLedger({ expenses, onAdd, onEdit, onDelete }: { expenses
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
   }), []);
   const monthlyChart = monthKeys.map(key => ({ key, month: new Date(`${key}-01T00:00:00`).toLocaleDateString('en-PH', { month: 'short' }), amount: monthly.get(key) ?? 0 }));
+  const visibleMonths = showAllMonths ? monthlyChart : monthlyChart.filter(month => month.amount !== 0);
+  const selectedMonth = start && end && start.slice(0, 7) === end.slice(0, 7) ? start.slice(0, 7) : '';
   const hasMonthlyChartData = monthlyChart.some(month => month.amount > 0);
   const total = filtered.reduce((sum, row) => sum + row.amount, 0);
   const pages = Math.max(1, Math.ceil(filtered.length / size));
@@ -53,7 +57,25 @@ export function ExpensesLedger({ expenses, onAdd, onEdit, onDelete }: { expenses
       <Button variant="secondary" className="ml-auto" onClick={download} disabled={!filtered.length || invalidRange}><Download size={16} />Export CSV</Button>
     </div>
     {invalidRange && <p role="alert" className="text-sm text-danger">The end date must be on or after the start date.</p>}
-    <section className="expense-month-chart" aria-label="Monthly expense totals for the last 12 months"><div className="expense-month-chart-heading"><span className="section-label">Monthly totals · select a month</span><span className="text-xs text-muted-foreground">Last 12 months · categories and search applied</span></div>{!hasMonthlyChartData ? <p className="text-sm text-muted-foreground">No expenses in the last 12 months for these categories and search.</p> : <div className="expense-month-chart-plot"><ResponsiveContainer width="100%" height="100%"><BarChart data={monthlyChart} margin={{ top: 6, right: 8, left: 8, bottom: 0 }}><CartesianGrid vertical={false} stroke="var(--border)" /><XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }} /><YAxis hide /><Tooltip formatter={(value: number) => money(value)} labelFormatter={(_, payload) => payload?.[0]?.payload?.key ? displayDate(payload[0].payload.key, true) : ''} contentStyle={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)', borderRadius: 8, fontSize: 12 }} /><Bar dataKey="amount" name="Expenses" fill="var(--navy)" radius={[4, 4, 0, 0]} maxBarSize={32} cursor="pointer" onClick={(entry: any) => entry?.payload?.key && selectMonth(entry.payload.key)} /></BarChart></ResponsiveContainer></div>}</section>
+    <section className="expense-month-chart" aria-label="Monthly expense totals for the last 12 months">
+      <div className="expense-month-chart-heading">
+        <div><span className="section-label">Monthly totals · select a month</span><p className="mt-1 text-xs text-muted-foreground">Last 12 months · categories and search applied{selectedMonth ? ` · Selected: ${displayDate(selectedMonth, true)}` : ''}</p></div>
+        <label className="expense-month-toggle"><input type="checkbox" checked={showAllMonths} onChange={event => setShowAllMonths(event.target.checked)} />Show all 12 months</label>
+      </div>
+      {!hasMonthlyChartData ? <p className="mt-3 text-sm text-muted-foreground">No expenses in the last 12 months for these categories and search.</p> :
+        <div className="expense-month-chart-plot"><ResponsiveContainer width="100%" height="100%">
+          <BarChart data={visibleMonths} margin={{ top: 26, right: 16, left: 16, bottom: 0 }}>
+            <CartesianGrid vertical={false} stroke="var(--border)" />
+            <XAxis dataKey="month" interval={0} axisLine={false} tickLine={false} tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }} />
+            <YAxis hide />
+            <Tooltip cursor={{ fill: 'var(--muted)', opacity: .6 }} formatter={(value: number) => money(value)} labelFormatter={(_, payload) => payload?.[0]?.payload?.key ? displayDate(payload[0].payload.key, true) : ''} contentStyle={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)', borderRadius: 8, fontSize: 12 }} labelStyle={{ color: 'var(--foreground)' }} itemStyle={{ color: 'var(--foreground)' }} />
+            <Bar dataKey="amount" name="Expenses" fill="var(--navy)" radius={[4, 4, 0, 0]} maxBarSize={40} cursor="pointer" onClick={(entry: any) => { const key = entry?.payload?.key ?? entry?.key; if (key) selectMonth(key); }}>
+              {visibleMonths.map(month => <Cell key={month.key} fill={month.key === selectedMonth ? 'var(--gold)' : 'var(--navy)'} />)}
+              <LabelList dataKey="amount" position="top" offset={8} formatter={(value: number) => value ? compactMoney(value) : ''} fill="var(--foreground)" fontSize={12} fontWeight={500} />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer></div>}
+    </section>
     <div className="expense-table-container" role="region" aria-label="Expenses grouped by date">
       <table className="expense-table"><colgroup><col style={{ width: '12%' }} /><col style={{ width: '17%' }} /><col /><col style={{ width: '16%' }} /><col style={{ width: 80 }} /></colgroup><thead><tr><th scope="col">Expense ID</th><th scope="col">Category</th><th scope="col">Description</th><th scope="col" className="expense-number">Amount</th><th scope="col" className="expense-actions-heading"><span className="sr-only">Actions</span></th></tr></thead><tbody>
         {visible.map((row, index) => { const category = expenseCategory(row.category); return <Fragment key={row.expenseId}>

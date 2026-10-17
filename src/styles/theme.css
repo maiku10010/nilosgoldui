@@ -370,8 +370,10 @@ small { font-size: 12px; }
 .date-range-presets button { height: 32px; padding-inline: 10px; font-size: 12px; }
 .date-range-popover .rdp-months { gap: 16px; }
 .expense-month-chart { padding: 14px 16px 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
-.expense-month-chart-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.expense-month-chart-plot { height: 112px; margin-top: 8px; }
+.expense-month-chart-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.expense-month-toggle { display: inline-flex; align-items: center; gap: 8px; color: var(--muted-foreground); font-size: 12px; white-space: nowrap; cursor: pointer; }
+.expense-month-toggle input { accent-color: var(--primary); }
+.expense-month-chart-plot { height: 160px; margin-top: 8px; font-variant-numeric: tabular-nums; }
 .expense-month-chart-plot .recharts-bar-rectangle { cursor: pointer; }
 .expense-table-container { overflow: visible; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
 .expense-table { width: 100%; min-width: 760px; border-collapse: separate; border-spacing: 0; font-size: 14px; }
