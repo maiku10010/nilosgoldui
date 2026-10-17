@@ -23,6 +23,7 @@ import { isValidEmail, isValidPHContact, normalizeContactInput } from "../valida
 import { ContactInput } from "./components/ContactInput";
 import { summarizeInventory, groupInventory, sortInventoryStock, sumGemstonePieces, estimateGoldValue } from "../inventorySummary";
 import { inquiryBucket, inquiryMatchesTab } from "../inquiryStatus";
+import { relativeTime } from "../relativeTime";
 import { approvalChanges, approvalFieldLabel, approvalValue } from "../approvalDiff";
 import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "./components/ui/sheet";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuItem } from "./components/ui/dropdown-menu";
@@ -1172,13 +1173,6 @@ function ApprovalQueueView({ onResolved }: { onResolved: () => void }) {
     setRows(asRows(data)); setError("");
   }).catch(err => setError(err instanceof Error ? err.message : "Approval requests could not be loaded."));
   useEffect(() => { void load(); }, []);
-  const relativeTime = (value: string) => {
-    const seconds = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 1000));
-    if (seconds < 60) return "Just now";
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-    return `${Math.floor(seconds / 86400)}d ago`;
-  };
   const undo = async (row: any) => {
     try {
       const response = await apiFetch(`${BASE_URL}/approvals/${encodeURIComponent(row.requestId)}/undo`, { method: "POST" });
@@ -1269,15 +1263,6 @@ function AuditLogsView() {
     for (const child of Object.values(value)) { const found = findRecordId(child, type, depth + 1); if (found) return found; }
     return null;
   };
-  const relativeTime = (value: string) => {
-    const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000));
-    if (!Number.isFinite(seconds)) return "—";
-    if (seconds < 60) return "Just now";
-    if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)} hr ago`;
-    if (seconds < 604800) return `${Math.floor(seconds / 86400)} days ago`;
-    return fmtDate(value.slice(0, 10));
-  };
   const users = [...new Set(rows.map(row => String(row.actorName ?? "Unknown user")))].sort();
   const roles = [...new Set(rows.map(row => String(row.actorRole ?? "Unknown")))].sort();
   const actions = [...new Set(rows.map(row => actionLabel(String(row.action ?? ""))))].sort();
@@ -1327,7 +1312,7 @@ function AuditLogsView() {
           : `${recordNames[type] ?? (type ? sentenceCase(type) : "System event")} ${recordId ?? "—"}`;
         const expandedRow = expanded.has(row.logId);
         return <Fragment key={row.logId}><TRow onClick={() => toggleExpanded(row.logId)}>
-          <td className={tdc} title={new Date(row.createdAt).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "medium" })}>{relativeTime(row.createdAt)}<span className="ml-2 text-muted-foreground">{fmtDate(String(row.createdAt).slice(0, 10))}</span></td>
+          <td className={tdc}><time dateTime={row.createdAt} title={new Date(row.createdAt).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "medium" })}>{relativeTime(row.createdAt)}</time></td>
           <td className={tdc + " font-medium"}>{row.actorName || "Unknown user"}</td><td className={tdc}><Badge variant="neutral" status={sentenceCase(String(row.actorRole ?? "Unknown"))} /></td>
           <td className={tdc}><Badge variant={actionVariant(action)} status={actionLabel(action)} /></td>
           <td className={tdc}><button type="button" aria-expanded={expandedRow} onClick={event => { event.stopPropagation(); toggleExpanded(row.logId); }} className="inline-flex items-center gap-2 text-sm text-primary hover:underline"><Icon size={14} aria-hidden="true" />{recordLabel}</button></td>
