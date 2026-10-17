@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { SERVICE_RULES, validateServiceFields } from "../src/lib/serviceRules.ts";
+import { SERVICE_RULES, validateServiceFields, getAllowedFields, stripDisallowedFields } from "../src/lib/serviceRules.ts";
 import { costingSummary } from "../src/goldStock.ts";
 for (const [type, expected] of Object.entries({ Repair: [true, true, true, true, 11100], Custom: [true, true, true, true, 11100], Resize: [true, false, true, true, 10600], Cleaning: [false, false, false, true, 1000] })) {
   test(`${type} fields and live summary follow the service contract`, () => {
@@ -13,3 +13,32 @@ for (const [type, expected] of Object.entries({ Repair: [true, true, true, true,
     assert.equal(summary.profit, 15000 - expected[4]);
   });
 }
+
+const expectedAllowed = {
+  Repair: ['goldSourceId', 'goldUsed', 'goldCostPerG', 'goldScrap', 'stoneCost', 'laborCost', 'laborCharge'],
+  Custom: ['goldSourceId', 'goldUsed', 'goldCostPerG', 'goldScrap', 'stoneCost', 'laborCost', 'laborCharge'],
+  Resize: ['goldSourceId', 'goldUsed', 'goldCostPerG', 'goldScrap', 'laborCost', 'laborCharge'],
+  Cleaning: ['laborCost', 'laborCharge'],
+};
+for (const [type, allowed] of Object.entries(expectedAllowed)) {
+  test(`${type} lists allowed fields and clears only disabled fields without mutating the payload`, () => {
+    const original = Object.freeze({ goldSourceId: 'GOLD-18K', goldUsed: '1.2', goldCostPerG: 8000, goldScrap: '0.2', stoneCost: 0, laborCost: 1000, laborCharge: 1500, sellingPrice: 15000, clientName: 'Mia' });
+    assert.deepEqual(getAllowedFields(type).sort(), [...allowed].sort());
+    const stripped = stripDisallowedFields(type, original);
+    assert.notEqual(stripped, original);
+    for (const key of expectedAllowed.Custom) assert.equal(stripped[key], allowed.includes(key) ? original[key] : null);
+    assert.equal(stripped.sellingPrice, original.sellingPrice);
+    assert.equal(stripped.clientName, original.clientName);
+    assert.equal(original.goldUsed, '1.2');
+    assert.deepEqual(stripDisallowedFields(type, stripped), stripped);
+    const empty = stripDisallowedFields(type, {});
+    for (const key of expectedAllowed.Custom) assert.equal(Object.hasOwn(empty, key), !allowed.includes(key));
+    assert.deepEqual(getAllowedFields(type).sort(), [...allowed].sort());
+  });
+}
+test('helpers reject unknown services instead of silently allowing fields', () => {
+  for (const type of ['Other', '__proto__', undefined]) {
+    assert.throws(() => getAllowedFields(type), error => error.statusCode === 400);
+    assert.throws(() => stripDisallowedFields(type, {}), error => error.statusCode === 400);
+  }
+});
