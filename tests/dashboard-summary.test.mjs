@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { dashboardSummary } from '../src/dashboardSummary.ts';
+import { dashboardSummary, daysOpen } from '../src/dashboardSummary.ts';
 const sale = (invoiceId, date, overrides = {}) => ({ invoiceId, date, status: 'Finished', price: 1000, payment: 1000, ...overrides });
 test('month-to-date uses completed revenue, associated costs, expenses and payment dates', () => {
   const result = dashboardSummary([sale('old', '2026-09-05', { payments: [{ amount: 400, paidAt: '2026-10-03' }] }), sale('new', '2026-10-02', { payments: [{ amount: 600, paidAt: null }] }), sale('pending', '2026-10-01', { status: 'Pending', payments: [{ amount: 200, paidAt: '2026-10-01' }] })], [{ invoiceId: 'new', totalCost: 300, status: 'Finished' }], [{ expDate: '2026-10-01', amount: 100 }], new Date(2026, 9, 17));
@@ -24,4 +24,15 @@ test('previous period caps at month end and activity sorts by actual job date', 
   assert.equal(result.recent.length, 8);
   assert.equal(result.recent[0].jobCostId, '9');
   assert.equal(result.active.length, 9);
+});
+test('active jobs sort oldest first and days open uses calendar days', () => {
+  const jobs = [
+    { jobCostId: 'new', jobDate: '2026-10-15', status: 'In Progress' },
+    { jobCostId: 'old', jobDate: '2026-10-01', status: 'In Progress' },
+    { jobCostId: 'undated', status: 'In Progress' },
+  ];
+  const result = dashboardSummary([], jobs, [], new Date(2026, 9, 17));
+  assert.deepEqual(result.active.map(job => job.jobCostId), ['old', 'new', 'undated']);
+  assert.equal(daysOpen('2026-10-10', new Date(2026, 9, 17)), 7);
+  assert.equal(daysOpen(undefined, new Date(2026, 9, 17)), null);
 });

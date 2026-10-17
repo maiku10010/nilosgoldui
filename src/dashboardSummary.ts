@@ -2,6 +2,16 @@ export type DashboardSale = { invoiceId: string; date: string; status: string; p
 export type DashboardJob = { jobCostId: string; invoiceId: string; jobDate?: string; clientName: string; status: string; totalCost: number; sellingPrice: number; profit: number; sale?: { serviceType: string; date?: string } };
 type Expense = { expDate: string; amount: number };
 const dateKey = (year: number, month: number, day: number) => `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+export function daysOpen(startDate: string | undefined, now = new Date()): number | null {
+  if (!startDate) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(startDate);
+  if (!match) return null;
+  const [, year, month, day] = match;
+  const start = new Date(Number(year), Number(month) - 1, Number(day));
+  if (Number.isNaN(start.getTime()) || start.getFullYear() !== Number(year) || start.getMonth() !== Number(month) - 1 || start.getDate() !== Number(day)) return null;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.max(0, Math.floor((today.getTime() - start.getTime()) / 86400000));
+}
 export function dashboardSummary(sales: DashboardSale[], jobs: DashboardJob[], expenses: Expense[], now = new Date()) {
   const year = now.getFullYear(), month = now.getMonth(), day = now.getDate();
   const completed = sales.filter(s => ['finished', 'paid', 'released'].includes(s.status.toLowerCase()));
@@ -25,6 +35,7 @@ export function dashboardSummary(sales: DashboardSale[], jobs: DashboardJob[], e
   });
   const trend = Array.from({ length: day }, (_, i) => ({ day: i + 1, profit: period(dateKey(year, month, 1), dateKey(year, month, i + 1)).profit }));
   const recent = [...jobs].sort((a, b) => (b.jobDate ?? b.sale?.date ?? '').localeCompare(a.jobDate ?? a.sale?.date ?? '')).slice(0, 8);
-  const active = jobs.filter(j => ['pending', 'approved', 'in progress', 'ready for pickup'].includes(j.status.toLowerCase().replaceAll('_', ' ')));
+  const active = jobs.filter(j => ['pending', 'approved', 'in progress', 'ready for pickup'].includes(j.status.toLowerCase().replaceAll('_', ' ')))
+    .sort((a, b) => (a.jobDate ?? a.sale?.date ?? '9999-12-31').localeCompare(b.jobDate ?? b.sale?.date ?? '9999-12-31'));
   return { current, prior, months, trend, recent, active, undatedPayments: payments.filter(p => !p.paidAt).length };
 }
