@@ -293,7 +293,7 @@ function BrandLogo({ className = "" }: { className?: string }) {
   const [failed, setFailed] = useState(false);
   return failed
     ? <div className={`rounded-xl bg-primary text-primary-foreground flex items-center justify-center ${className}`}><Crown size={20} /></div>
-    : <img src="/nilosgold_logo.jpg" alt="Nilo's Goldsmith" onError={() => setFailed(true)} className={`rounded-xl object-contain bg-card ${className}`} />;
+    : <img src={goldsmithLogo} alt="Nilo's Goldsmith" onError={() => setFailed(true)} className={`rounded-xl object-contain bg-card ${className}`} />;
 }
 
 function TableWrap({ children }: { children: React.ReactNode }) {
@@ -832,25 +832,11 @@ function RecordDetails({ title, record, onClose }: { title: string; record: Reco
   </div>;
 }
 
-function ProfitAnalysisView({ sales, jobCosts, expenses, selectedYear, setSelectedYear, startMonth, setStartMonth, endMonth, setEndMonth }: {
-  sales: Sale[]; jobCosts: JobCost[]; expenses: Expense[];
-  selectedYear: number; setSelectedYear: (year: number) => void;
-  startMonth: number; setStartMonth: (month: number) => void;
-  endMonth: number; setEndMonth: (month: number) => void;
-}) {
-  const currentYear = new Date().getFullYear();
-  const availableYears = useMemo(() => {
-    const years = new Set(Array.from({ length: 11 }, (_, i) => currentYear - i));
-    [...sales.map(s => s.date), ...expenses.map(e => e.expDate)].forEach(date => {
-      const year = Number(date.slice(0, 4));
-      if (Number.isInteger(year) && year <= currentYear) years.add(year);
-    });
-    return [...years].sort((a, b) => b - a);
-  }, [currentYear, sales, expenses]);
-  const inSelectedPeriod = (date: string) => {
-    const [year, month] = date.slice(0, 10).split("-").map(Number);
-    return year === selectedYear && month - 1 >= startMonth && month - 1 <= endMonth;
-  };
+function ProfitAnalysisView({ sales, jobCosts, expenses }: { sales: Sale[]; jobCosts: JobCost[]; expenses: Expense[] }) {
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const invalidRange = !!startDate && !!endDate && startDate > endDate;
+  const inSelectedPeriod = (date: string) => (!startDate || date.slice(0, 10) >= startDate) && (!endDate || date.slice(0, 10) <= endDate);
   const selectedSales = sales.filter(s => inSelectedPeriod(s.date));
   const salesByInvoice = new Map(sales.map(s => [s.invoiceId, s]));
   const selectedJobCosts = jobCosts.filter(j => {
@@ -864,11 +850,17 @@ function ProfitAnalysisView({ sales, jobCosts, expenses, selectedYear, setSelect
   const totalExp = selectedExpenses.reduce((a, e) => a + e.amount, 0);
   const netProfit = grossProfit - totalExp;
   const netMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
-  const chartData = Array.from({ length: endMonth - startMonth + 1 }, (_, offset) => {
-    const monthIndex = startMonth + offset;
-    const revenue = selectedSales.filter(s => Number(s.date.slice(5, 7)) - 1 === monthIndex).reduce((sum, s) => sum + s.price, 0);
-    const cost = selectedJobCosts.filter(j => Number(salesByInvoice.get(j.invoiceId)?.date.slice(5, 7)) - 1 === monthIndex).reduce((sum, j) => sum + j.totalCost, 0);
-    return { month: MONTH_NAMES[monthIndex].slice(0, 3), revenue, cost };
+  const dates = [...selectedSales.map(sale => sale.date), ...selectedExpenses.map(expense => expense.expDate)].sort();
+  const firstMonth = (startDate || dates[0] || todayISO()).slice(0, 7);
+  const lastMonth = (endDate || dates[dates.length - 1] || todayISO()).slice(0, 7);
+  const [firstYear, firstNumber] = firstMonth.split("-").map(Number);
+  const [lastYear, lastNumber] = lastMonth.split("-").map(Number);
+  const chartData = Array.from({ length: Math.max(0, (lastYear - firstYear) * 12 + lastNumber - firstNumber + 1) }, (_, offset) => {
+    const date = new Date(firstYear, firstNumber - 1 + offset, 1);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    const revenue = selectedSales.filter(s => s.date.startsWith(key)).reduce((sum, s) => sum + s.price, 0);
+    const cost = selectedJobCosts.filter(j => salesByInvoice.get(j.invoiceId)?.date.startsWith(key)).reduce((sum, j) => sum + j.totalCost, 0);
+    return { month: date.toLocaleDateString("en-PH", { month: "short", year: "numeric" }), revenue, cost };
   });
   const comparisonTotals = [
     { label: "Revenue", value: totalRevenue, color: "var(--primary)" },
@@ -876,9 +868,7 @@ function ProfitAnalysisView({ sales, jobCosts, expenses, selectedYear, setSelect
     { label: "Expenses", value: totalExp, color: "var(--chart-4)" },
   ];
   const comparisonMax = Math.max(1, ...comparisonTotals.map(item => Math.abs(item.value)));
-  const rangeLabel = startMonth === endMonth
-    ? `${MONTH_NAMES[startMonth]} ${selectedYear}`
-    : `${MONTH_NAMES[startMonth].slice(0, 3)}–${MONTH_NAMES[endMonth].slice(0, 3)} ${selectedYear}`;
+  const rangeLabel = startDate || endDate ? `${startDate ? fmtDate(startDate) : "Beginning"} – ${endDate ? fmtDate(endDate) : "Present"}` : "All dates";
 
   const rankedCategories = Object.entries(selectedExpenses.reduce((totals, expense) => {
     totals[expense.category] = (totals[expense.category] ?? 0) + expense.amount;
@@ -923,22 +913,11 @@ function ProfitAnalysisView({ sales, jobCosts, expenses, selectedYear, setSelect
         <section aria-label="Monthly revenue and cost" className={cardCls + " col-span-12 min-w-0 xl:col-span-7"}>
           <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
             <div><h2 className="text-sm font-medium">Monthly Revenue vs. Cost</h2><p className="mt-1 text-xs text-muted-foreground">{rangeLabel}</p></div>
-            <div className="flex flex-wrap gap-2">
-              <label className="text-xs text-muted-foreground">From
-                <select aria-label="Start month" className={`${ic} ml-2 w-auto py-1.5`} value={startMonth} onChange={e => setStartMonth(Number(e.target.value))}>
-                  {MONTH_NAMES.map((month, i) => <option key={month} value={i} disabled={i > endMonth}>{month}</option>)}
-                </select>
-              </label>
-              <label className="text-xs text-muted-foreground">To
-                <select aria-label="End month" className={`${ic} ml-2 w-auto py-1.5`} value={endMonth} onChange={e => setEndMonth(Number(e.target.value))}>
-                  {MONTH_NAMES.map((month, i) => <option key={month} value={i} disabled={i < startMonth || (selectedYear === currentYear && i > new Date().getMonth())}>{month}</option>)}
-                </select>
-              </label>
-              <label className="text-xs text-muted-foreground">Year
-                <select aria-label="Year" className={`${ic} ml-2 w-auto py-1.5`} value={selectedYear} onChange={e => { const year = Number(e.target.value); setSelectedYear(year); if (year === currentYear) { const maxMonth = new Date().getMonth(); setStartMonth(m => Math.min(m, maxMonth)); setEndMonth(m => Math.min(m, maxMonth)); } }}>
-                  {availableYears.map(year => <option key={year} value={year}>{year}</option>)}
-                </select>
-              </label>
+            <div className="expense-filters">
+              <label className="expense-date">From<input type="date" aria-label="From date" value={startDate} max={endDate || undefined} onChange={event => setStartDate(event.target.value)} /></label>
+              <label className="expense-date">To<input type="date" aria-label="To date" value={endDate} min={startDate || undefined} onChange={event => setEndDate(event.target.value)} /></label>
+              {(startDate || endDate) && <Button variant="ghost" onClick={() => { setStartDate(""); setEndDate(""); }}>Clear filters</Button>}
+              {invalidRange && <p role="alert" className="text-sm text-danger">The end date must be on or after the start date.</p>}
             </div>
           </div>
           <div className="mb-5 flex items-center gap-5 text-xs text-muted-foreground" aria-label="Chart legend">
@@ -1400,7 +1379,7 @@ function AppContent() {
         {tab === "INVENTORY" && <GoldInventoryView inventory={inventory} goldRate={goldRate} onAdd={e => { setInventory(p => [...p, e]); setReloadKey(k => k + 1); }} onUpdate={e => { setInventory(p => p.map(item => item.id === e.id ? e : item)); setReloadKey(k => k + 1); }} onDelete={id => deleteFromApi("inventory", id, () => { setInventory(p => p.filter(item => item.id !== id)); setReloadKey(k => k + 1); })} />}
         {tab === "INQUIRIES" && <InquiriesView inquiries={inquiries} onAdd={i => setInquiries(p => [i, ...p])} onUpdate={i => setInquiries(p => p.map(item => item.inquiryId === i.inquiryId ? i : item))} onDelete={id => deleteFromApi("inquiries", id, () => setInquiries(p => p.filter(item => item.inquiryId !== id)))} onStartCosting={id => { setSelectedInquiryForCosting(id); setTab("JOB_COSTING"); }} />}
         {tab === "EXPENSES" && <ExpensesView expenses={expenses} onAdd={e => setExpenses(p => [e, ...p])} onUpdate={e => setExpenses(p => p.map(item => item.expenseId === e.expenseId ? e : item))} onDelete={id => deleteFromApi("expenses", id, () => setExpenses(p => p.filter(item => item.expenseId !== id)))} />}
-        {tab === "PROFIT_ANALYSIS" && <ProfitAnalysisView sales={sales.filter(isCompletedSale)} jobCosts={jobCosts} expenses={expenses} selectedYear={selectedYear} setSelectedYear={setSelectedYear} startMonth={startMonth} setStartMonth={setStartMonth} endMonth={endMonth} setEndMonth={setEndMonth} />}
+        {tab === "PROFIT_ANALYSIS" && <ProfitAnalysisView sales={sales.filter(isCompletedSale)} jobCosts={jobCosts} expenses={expenses} />}
         {tab === "APPROVALS" && isAdmin && <ApprovalQueueView onResolved={() => setReloadKey(k => k + 1)} />}
         {tab === "AUDIT_LOGS" && isAdmin && <AuditLogsView />}
           </div>
