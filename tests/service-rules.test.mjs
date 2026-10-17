@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { SERVICE_RULES, validateServiceFields, getAllowedFields, stripDisallowedFields } from "../src/lib/serviceRules.ts";
+import { SERVICE_RULES, validateServiceFields, getAllowedFields, stripDisallowedFields, getInquiryServiceType } from "../src/lib/serviceRules.ts";
 import { costingSummary } from "../src/goldStock.ts";
 for (const [type, expected] of Object.entries({ Repair: [true, true, true, true, 11100], Custom: [true, true, true, true, 11100], Resize: [true, false, true, true, 10600], Cleaning: [false, false, false, true, 1000] })) {
   test(`${type} fields and live summary follow the service contract`, () => {
@@ -46,4 +46,10 @@ test('helpers reject unknown services instead of silently allowing fields', () =
 test('disallowed fields accept null or omission, but reject zero and every other supplied value', () => {
   for (const value of [0, "0", "", false, 100]) assert.throws(() => validateServiceFields("Cleaning", { stoneCost: value }), error => error.statusCode === 400);
   assert.doesNotThrow(() => validateServiceFields("Cleaning", { stoneCost: null, goldUsed: null, goldScrap: null, goldCostPerG: null, goldSourceId: null }));
+});
+
+test("inquiry API service type takes precedence over the legacy category name", () => {
+  assert.equal(getInquiryServiceType({ serviceType: "Cleaning", category: "Custom" }), "Cleaning");
+  assert.equal(getInquiryServiceType({ category: " resize " }), "Resize");
+  assert.equal(getInquiryServiceType({ category: "Unknown" }), null);
 });

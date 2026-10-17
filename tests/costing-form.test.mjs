@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { changeCostingService, optionalCostValue } from "../src/costingForm.ts";
+import { changeCostingService, optionalCostValue, applyInquiryToCosting } from "../src/costingForm.ts";
 import { stripDisallowedFields } from "../src/lib/serviceRules.ts";
 import { costingSummary } from "../src/goldStock.ts";
 const custom = { serviceType: "Custom", goldSourceId: "18K-IN", goldUsed: "1", goldScrap: ".2", goldCostPerG: "8000", stoneCost: "500", laborCost: "1000", sellingPrice: "15000", clientName: "Mia", note: null };
@@ -45,4 +45,20 @@ test("optional stone cost stays null when blank and contributes zero only to the
     assert.equal(summary.total, 9000);
     assert.equal(summary.profit, 6000);
   }
+});
+
+test("selecting an inquiry inherits its type, clears hidden fields and replaces any previous override", () => {
+  const inquiry = { inquiryId: "INQ-1", serviceType: "Cleaning", customerName: "Mia", contactInfo: "09228651975", quotedPrice: 1500 };
+  const selected = applyInquiryToCosting(custom, inquiry);
+  assert.equal(selected.serviceType, "Cleaning");
+  assert.equal(selected.clientName, "Mia");
+  assert.equal(selected.sellingPrice, "1500");
+  assert.equal(selected.inquiryId, "INQ-1");
+  for (const key of ["goldSourceId", "goldUsed", "goldCostPerG", "goldScrap", "stoneCost"]) assert.equal(selected[key], "");
+  const overridden = changeCostingService(selected, "Repair");
+  assert.equal(overridden.serviceType, "Repair");
+  const next = applyInquiryToCosting(overridden, { ...inquiry, inquiryId: "INQ-2", serviceType: "Custom" });
+  assert.equal(next.serviceType, "Custom");
+  assert.equal(next.inquiryId, "INQ-2");
+  assert.equal(custom.serviceType, "Custom");
 });

@@ -1,5 +1,5 @@
-import { changeCostingService, optionalCostValue } from "../costingForm";
-import { SERVICE_RULES, stripDisallowedFields } from "../lib/serviceRules";
+import { changeCostingService, optionalCostValue, applyInquiryToCosting } from "../costingForm";
+import { SERVICE_RULES, stripDisallowedFields, getInquiryServiceType, type ServiceType } from "../lib/serviceRules";
 import { JobsTable } from "./components/JobsTable";
 import { FinishSaleModal } from "./components/FinishSaleModal";
 import { ExpensesLedger } from "./components/ExpensesLedger";
@@ -121,16 +121,17 @@ const selectedStatus = (sale: Sale, jobCosts: JobCost[]) => jobCosts.find(job =>
 const normalizeJobCost = (row: any): JobCost => {
   const sellingPrice = roundTwo(row.sellingPrice ?? row.sales?.price ?? row.sale?.price);
   const sale = row.sales ?? row.sale;
-  const serviceType = Object.hasOwn(SERVICE_RULES, sale?.serviceType) ? sale.serviceType as ServiceType : "Custom";
+  const storedType = row.serviceType ?? sale?.serviceType;
+  const serviceType = Object.hasOwn(SERVICE_RULES, storedType) ? storedType as ServiceType : "Custom";
   const rules = SERVICE_RULES[serviceType as ServiceType] ?? SERVICE_RULES.Custom;
   const goldCostPerG = rules.gold ? roundTwo(numeric(row.goldCostPerG)) : 0;
   const summary = costingSummary(String(row.goldUsed ?? 0), String(row.goldScrap ?? 0), String(goldCostPerG), String(row.stoneCost ?? 0), String(row.laborCost ?? 0), String(sellingPrice), serviceType);
   const goldCost = summary.goldCost;
   const totalCost = roundTwo(summary.total + numeric(row.otherCost));
-  return { jobDate: row.jobDate ? String(row.jobDate) : undefined, jobCostId: String(row.jobCostId ?? ""), invoiceId: String(row.invoiceId ?? sale?.invoiceId ?? ""), clientName: String(row.clientName ?? sale?.client?.clientName ?? row.inquiry?.customerName ?? ""), itemName: row.itemName ?? "", deadline: row.deadline || row.deliveryDate ? String(row.deadline ?? row.deliveryDate).slice(0, 10) : "", empId: row.empId, inquiryId: row.inquiryId ?? row.inquiry?.inquiryId, status: statusLabel(row.status), sale: sale ? normalizeSale(sale) : undefined, goldUsed: rules.gold ? numeric(row.goldUsed) : 0, goldScrap: rules.scrap ? numeric(row.goldScrap) : 0, goldKarat: row.goldKarat == null ? null : numeric(row.goldKarat), goldCostPerG, goldCost, stoneCost: rules.stone && row.stoneCost != null ? roundTwo(numeric(row.stoneCost)) : null, laborCost: roundTwo(numeric(row.laborCost)), totalCost, sellingPrice, profit: roundTwo(sellingPrice - totalCost), marginPct: roundTwo(sellingPrice ? ((sellingPrice - totalCost) / sellingPrice) * 100 : 0) };
+  return { serviceType, jobDate: row.jobDate ? String(row.jobDate) : undefined, jobCostId: String(row.jobCostId ?? ""), invoiceId: String(row.invoiceId ?? sale?.invoiceId ?? ""), clientName: String(row.clientName ?? sale?.client?.clientName ?? row.inquiry?.customerName ?? ""), itemName: row.itemName ?? "", deadline: row.deadline || row.deliveryDate ? String(row.deadline ?? row.deliveryDate).slice(0, 10) : "", empId: row.empId, inquiryId: row.inquiryId ?? row.inquiry?.inquiryId, status: statusLabel(row.status), sale: sale ? normalizeSale(sale) : undefined, goldUsed: rules.gold ? numeric(row.goldUsed) : 0, goldScrap: rules.scrap ? numeric(row.goldScrap) : 0, goldKarat: row.goldKarat == null ? null : numeric(row.goldKarat), goldCostPerG, goldCost, stoneCost: rules.stone && row.stoneCost != null ? roundTwo(numeric(row.stoneCost)) : null, laborCost: roundTwo(numeric(row.laborCost)), totalCost, sellingPrice, profit: roundTwo(sellingPrice - totalCost), marginPct: roundTwo(sellingPrice ? ((sellingPrice - totalCost) / sellingPrice) * 100 : 0) };
 };
 const normalizeInventory = (row: any): InvEntry => ({ id: row.referenceId, jobCostId: row.jobCostId ?? null, date: apiDate(row.updatedAt ?? row.date), referenceId: row.referenceId, itemName: row.itemName ?? row.referenceId, category: row.category ?? "GOLD", goldKarat: row.goldKarat == null ? null : numeric(row.goldKarat), quantityIn: numeric(row.quantityIn ?? row.goldIn), quantityOut: numeric(row.quantityOut ?? row.goldOut), quantityLoss: numeric(row.quantityLoss ?? row.scraps ?? row.scrap), balance: numeric(row.balance ?? row.totalGold), unit: row.unit ?? "grams", unitPrice: numeric(row.unitPrice) });
-const normalizeInquiry = (row: any): Inquiry => ({ inquiryId: String(row.inquiryId ?? ""), date: apiDate(row.inqDate ?? row.date), customerName: String(row.customerName ?? ""), contactInfo: normalizeContactInput(String(row.contactInfo ?? "")), email: String(row.email ?? ""), details: String(row.details ?? ""), category: String(row.category ?? ""), quotedPrice: numeric(row.quotedPrice), isFullyPaid: Boolean(row.isFullyPaid), status: statusLabel(row.status) as InqStatus });
+const normalizeInquiry = (row: any): Inquiry => ({ serviceType: getInquiryServiceType(row), inquiryId: String(row.inquiryId ?? ""), date: apiDate(row.inqDate ?? row.date), customerName: String(row.customerName ?? ""), contactInfo: normalizeContactInput(String(row.contactInfo ?? "")), email: String(row.email ?? ""), details: String(row.details ?? ""), category: String(row.category ?? ""), quotedPrice: numeric(row.quotedPrice), isFullyPaid: Boolean(row.isFullyPaid), status: statusLabel(row.status) as InqStatus });
 const normalizeExpense = (row: any): Expense => ({ expenseId: String(row.expenseId ?? ""), expDate: apiDate(row.expDate ?? row.date), category: String(row.category ?? ""), description: String(row.description ?? ""), amount: numeric(row.amount) });
 const asRows = (value: unknown): any[] => Array.isArray(value) ? value : [];
 const loadDashboardApprovals = async () => {
@@ -140,7 +141,6 @@ const loadDashboardApprovals = async () => {
 };
 
 // ── types ──────────────────────────────────────────────────────────────────
-type ServiceType = "Custom" | "Repair" | "Resize" | "Cleaning";
 type SaleStatus = "Ongoing" | "Paid" | "Released" | "Pending" | "Finished" | "Partial" | "Cancelled";
 type InqStatus = "Yes" | "No" | "Pending" | "Approved" | "Rejected" | "Finished";
 
@@ -151,6 +151,7 @@ interface Sale {
   price: number; payment: number; balance: number; status: SaleStatus; receiptSentAt?: string | null;
 }
 interface JobCost {
+  serviceType: ServiceType;
   jobDate?: string;
   jobCostId: string; invoiceId: string; clientName: string; itemName: string; deadline: string; empId?: string;
   inquiryId?: string; status: string; sale?: Sale; goldKarat?: number | null;
@@ -163,6 +164,7 @@ interface InvEntry {
   category: string; goldKarat?: number | null; jobCostId?: string | null; quantityIn: number; quantityOut: number; quantityLoss: number; balance: number; unit: string; unitPrice: number;
 }
 interface Inquiry {
+  serviceType?: ServiceType | null;
   inquiryId: string; date: string; customerName: string; contactInfo: string; email: string;
   details: string; category: string; quotedPrice: number; isFullyPaid: boolean; status: InqStatus;
 }
@@ -545,6 +547,7 @@ function JobCostingView({ jobCosts, inquiries, inventory, goldRate, selectedInqu
   onApprove: (j: JobCost) => void; onReady: (j: JobCost) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [changingServiceType, setChangingServiceType] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [stockServerError, setStockServerError] = useState("");
@@ -556,18 +559,20 @@ function JobCostingView({ jobCosts, inquiries, inventory, goldRate, selectedInqu
   const [form, setForm] = useState(blankForm);
   const selectInquiry = (inquiryId: string) => {
     const inquiry = pendingInquiries.find(item => item.inquiryId === inquiryId);
-    setForm(f => ({ ...f, inquiryId, clientName: inquiry?.customerName ?? "", contactNum: inquiry?.contactInfo ?? "", sellingPrice: inquiry ? String(inquiry.quotedPrice) : "" }));
+    setChangingServiceType(false); setStockServerError(""); setCostFormError("");
+    setForm(f => applyInquiryToCosting(f, inquiry));
   };
   useEffect(() => {
     if (!selectedInquiryId) return;
     const inquiry = pendingInquiries.find(item => item.inquiryId === selectedInquiryId);
     setEditingId(null);
-    setForm({ ...blankForm(), inquiryId: selectedInquiryId, clientName: inquiry?.customerName ?? "", contactNum: inquiry?.contactInfo ?? "", sellingPrice: inquiry ? String(inquiry.quotedPrice) : "" });
+    setChangingServiceType(false); setStockServerError(""); setCostFormError("");
+    setForm(applyInquiryToCosting(blankForm(), inquiry));
     setOpen(true);
     clearSelectedInquiry();
   }, [selectedInquiryId]);
 
-  const resetForm = () => { setStockServerError(""); setCostFormError(""); setForm(blankForm()); };
+  const resetForm = () => { setChangingServiceType(false); setStockServerError(""); setCostFormError(""); setForm(blankForm()); };
   const goldSources = useMemo(() => goldStockSources(inventory, editingId), [inventory, editingId]);
   const selectedGoldSource = goldSources.find(source => source.referenceId === form.goldSourceId);
   const rules = SERVICE_RULES[form.serviceType];
@@ -577,8 +582,9 @@ function JobCostingView({ jobCosts, inquiries, inventory, goldRate, selectedInqu
   const updateGold = (changes: Partial<typeof form>) => { setStockServerError(""); setCostFormError(""); setForm(current => ({ ...current, ...changes })); };
   const editJob = (j: JobCost) => {
     setStockServerError(""); setCostFormError("");
+    setChangingServiceType(false);
     setEditingId(j.jobCostId);
-    setForm({ inquiryId: j.inquiryId ?? "", invoiceId: j.invoiceId, clientName: j.clientName, itemName: j.itemName, deadline: j.deadline, contactNum: j.sale?.contactNum ?? "", empId: j.empId ?? "", serviceType: j.sale?.serviceType ?? "Custom", goldSourceId: goldStockSources(inventory, j.jobCostId).find(source => source.karat === j.goldKarat)?.referenceId ?? "", goldUsed: String(j.goldUsed), goldScrap: String(j.goldScrap), goldCostPerG: String(j.goldCostPerG), stoneCost: j.stoneCost == null ? "" : String(j.stoneCost), laborCost: String(j.laborCost), sellingPrice: String(j.sellingPrice) });
+    setForm({ inquiryId: j.inquiryId ?? "", invoiceId: j.invoiceId, clientName: j.clientName, itemName: j.itemName, deadline: j.deadline, contactNum: j.sale?.contactNum ?? "", empId: j.empId ?? "", serviceType: j.serviceType, goldSourceId: goldStockSources(inventory, j.jobCostId).find(source => source.karat === j.goldKarat)?.referenceId ?? "", goldUsed: String(j.goldUsed), goldScrap: String(j.goldScrap), goldCostPerG: String(j.goldCostPerG), stoneCost: j.stoneCost == null ? "" : String(j.stoneCost), laborCost: String(j.laborCost), sellingPrice: String(j.sellingPrice) });
     setOpen(true);
   };
   const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
@@ -640,7 +646,15 @@ function JobCostingView({ jobCosts, inquiries, inventory, goldRate, selectedInqu
               {!editingId && <FF label="Pending inquiry"><select className={ic} value={form.inquiryId} onChange={e => selectInquiry(e.target.value)} required><option value="">Select an inquiry</option>{pendingInquiries.map(i => <option key={i.inquiryId} value={i.inquiryId}>{i.customerName} · {i.category} · {i.inquiryId}</option>)}</select></FF>}
               {editingId && <FF label="Reference"><input className={`${ic} read-only-field`} value={form.invoiceId} readOnly /></FF>}
               <FF label="Client name"><input className={`${ic} read-only-field`} value={form.clientName} readOnly placeholder="Select a pending inquiry" required /></FF>
-              {!editingId && <FF label="Service type"><select className={ic} value={form.serviceType} onChange={e => { setStockServerError(""); setCostFormError(""); const serviceType = e.target.value as ServiceType; setForm(f => changeCostingService(f, serviceType)); }}>{(Object.keys(SERVICE_RULES) as ServiceType[]).map(t => <option key={t}>{t}</option>)}</select></FF>}
+              <FF label="Service type">
+                {!editingId && changingServiceType ? <>
+                  <select aria-label="Service type" className={ic} value={form.serviceType} onChange={e => { setStockServerError(""); setCostFormError(""); const serviceType = e.target.value as ServiceType; setForm(f => changeCostingService(f, serviceType)); }}>{(Object.keys(SERVICE_RULES) as ServiceType[]).map(t => <option key={t}>{t}</option>)}</select>
+                  <p className="mt-1 text-xs text-muted-foreground">Changing the service type updates which cost fields apply.</p>
+                </> : <div className="flex min-h-9 items-center gap-2">
+                  <Badge variant="neutral">{form.inquiryId || editingId ? form.serviceType : "Select an inquiry"}</Badge>
+                  {!editingId && form.inquiryId && <Button variant="link" className="h-auto px-0 py-0 text-xs" onClick={() => setChangingServiceType(true)} disabled={isSubmitting} aria-label="Change service type">Change</Button>}
+                </div>}
+              </FF>
               <FF label="Employee ID (optional)" helper="Leave blank to assign available staff."><input className={ic} value={form.empId} onChange={e => setForm(f => ({ ...f, empId: e.target.value }))} placeholder="Optional" /></FF>
               <FF label="Item name (optional)"><input className={ic} value={form.itemName} onChange={e => setForm(f => ({ ...f, itemName: e.target.value }))} placeholder="e.g. Gold ring" maxLength={120} /></FF>
               <FF label="Delivery date / deadline (optional)"><DatePicker min={todayISO()} label="Delivery date" value={form.deadline} onChange={deadline => setForm(f => ({ ...f, deadline }))} disabled={isSubmitting} /></FF>

@@ -1,13 +1,14 @@
 export type JobFilter = 'all' | 'inProgress' | 'finished';
 export type JobSortKey = 'jobId' | 'clientName' | 'type' | 'sellingPrice' | 'totalCost' | 'profit' | 'marginPct' | 'status';
 export interface JobTableRecord {
+  serviceType?: string;
   jobCostId: string; invoiceId: string; clientName: string; status: string;
   goldUsed: number; goldScrap?: number; goldCostPerG: number; goldCost: number; stoneCost: number | null; laborCost: number;
   sellingPrice: number; totalCost: number; profit: number; marginPct: number;
   sale?: { serviceType?: string };
 }
 export const jobId = (job: JobTableRecord) => job.invoiceId || job.jobCostId;
-export const jobType = (job: JobTableRecord) => job.sale?.serviceType || '—';
+export const jobType = (job: JobTableRecord) => job.serviceType || job.sale?.serviceType || '—';
 export function jobGroup(status: string): JobFilter {
   const normalized = status.replaceAll('_', ' ').toLowerCase();
   if (['finished', 'paid', 'released'].includes(normalized)) return 'finished';

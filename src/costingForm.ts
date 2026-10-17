@@ -12,3 +12,11 @@ export function changeCostingService<T extends Record<string, unknown> & { servi
 export function optionalCostValue(value: string): number | null {
   return value.trim() === "" ? null : roundTwo(value);
 }
+
+/** Apply the inquiry's type to the one form state and clear costs it hides. */
+export function applyInquiryToCosting<T extends Record<string, unknown> & { serviceType: ServiceType }>(form: T, inquiry?: {
+  inquiryId: string; serviceType?: ServiceType | null; customerName: string; contactInfo: string; quotedPrice: number;
+}): T {
+  const updated = { ...form, inquiryId: inquiry?.inquiryId ?? "", clientName: inquiry?.customerName ?? "", contactNum: inquiry?.contactInfo ?? "", sellingPrice: inquiry ? String(inquiry.quotedPrice) : "" };
+  return inquiry?.serviceType ? changeCostingService(updated, inquiry.serviceType) : updated;
+}

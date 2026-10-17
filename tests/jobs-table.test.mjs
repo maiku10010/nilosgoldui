@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { selectJobs, jobId, jobGroup } from '../src/jobsTable.ts';
+import { selectJobs, jobId, jobGroup, jobType } from '../src/jobsTable.ts';
 const job = (id, overrides = {}) => ({ jobCostId: `internal-${id}`, invoiceId: `JOB-${id}`, clientName: `Client ${id}`, status: 'In Progress', goldUsed: 2, goldCostPerG: 500, goldCost: 1000, stoneCost: 0, laborCost: 100, sellingPrice: 2000, totalCost: 1100, profit: 900, marginPct: 45, sale: { serviceType: 'Repair' }, ...overrides });
 const options = { query: '', filter: 'all', sortKey: 'jobId', direction: 1, page: 1, pageSize: 10 };
 
@@ -60,4 +60,13 @@ test('type and missing-cost filters compose while reporting the missing-cost cou
   const byType = selectJobs(jobs, { ...options, type: 'custom' });
   assert.equal(byType.total, 1);
   assert.equal(byType.missingCostsCount, 0);
+});
+
+test('job type labels and filters use the persisted costing type ahead of invoice metadata', () => {
+  const record = job(1, { serviceType: 'Cleaning', sale: { serviceType: 'Repair' } });
+  assert.equal(jobType(record), 'Cleaning');
+  const options = { query: '', filter: 'all', sortKey: 'jobId', direction: 1, page: 1, pageSize: 25 };
+  const filtered = selectJobs([record], { ...options, type: 'Cleaning' });
+  assert.equal(filtered.total, 1);
+  assert.equal(selectJobs([record], { ...options, type: 'Repair' }).total, 0);
 });
