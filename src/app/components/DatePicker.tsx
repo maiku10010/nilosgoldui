@@ -11,8 +11,8 @@ const fromISO = (value: string) => {
 };
 const toISO = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 
-export function DatePicker({ value, onChange, max, label = "Date", disabled = false }: {
-  value: string; onChange: (value: string) => void; max?: string; label?: string; disabled?: boolean;
+export function DatePicker({ value, onChange, min, max, label = "Date", disabled = false }: {
+  value: string; onChange: (value: string) => void; min?: string; max?: string; label?: string; disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const selected = fromISO(value);
@@ -21,7 +21,7 @@ export function DatePicker({ value, onChange, max, label = "Date", disabled = fa
       <CalendarDays size={16} aria-hidden="true" />{selected?.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }) ?? "Select date"}
     </Button></PopoverTrigger>
     <PopoverContent className="single-date-popover" align="start">
-      <Calendar mode="single" selected={selected} defaultMonth={selected} disabled={max ? { after: fromISO(max)! } : undefined} onSelect={date => { if (date) { onChange(toISO(date)); setOpen(false); } }} initialFocus />
+      <Calendar mode="single" selected={selected} defaultMonth={selected} disabled={[...(min ? [{ before: fromISO(min)! }] : []), ...(max ? [{ after: fromISO(max)! }] : [])]} onSelect={date => { if (date) { onChange(toISO(date)); setOpen(false); } }} initialFocus />
     </PopoverContent>
   </Popover>;
 }

@@ -10,6 +10,7 @@ import { DateRangePicker } from "./components/DateRangePicker";
 import { DatePicker } from "./components/DatePicker";
 import { CurrencyInput } from "./components/CurrencyInput";
 import { salePaymentSummary } from "../moneyInput";
+import { costingSummary, goldStockError, goldStockSources, gramsToMilligrams, milligramsToGrams } from "../goldStock";
 import { roundTwo } from "../rounding";
 import { Children, Fragment, isValidElement, useState, useEffect, useMemo, useRef, createContext, useContext } from "react";
 import goldsmithLogo from "../assets/nilosgold_logo.jpg";
@@ -118,12 +119,12 @@ const selectedStatus = (sale: Sale, jobCosts: JobCost[]) => jobCosts.find(job =>
 const normalizeJobCost = (row: any): JobCost => {
   const sellingPrice = roundTwo(row.sellingPrice ?? row.sales?.price ?? row.sale?.price);
   const goldCostPerG = roundTwo(numeric(row.goldCostPerG));
-  const goldCost = roundTwo(row.goldCost ?? roundTwo(numeric(row.goldUsed)) * goldCostPerG);
+  const goldCost = roundTwo(row.goldCost ?? costingSummary(String(row.goldUsed ?? 0), String(row.goldScrap ?? 0), String(goldCostPerG), "0", "0", "0").goldCost);
   const totalCost = roundTwo(row.totalCost ?? goldCost + roundTwo(numeric(row.laborCost)) + roundTwo(numeric(row.stoneCost)));
   const sale = row.sales ?? row.sale;
-  return { jobDate: row.jobDate ? String(row.jobDate) : undefined, jobCostId: String(row.jobCostId ?? ""), invoiceId: String(row.invoiceId ?? sale?.invoiceId ?? ""), clientName: String(row.clientName ?? sale?.client?.clientName ?? row.inquiry?.customerName ?? ""), itemName: row.itemName ?? "", deadline: row.deadline || row.deliveryDate ? String(row.deadline ?? row.deliveryDate).slice(0, 10) : "", empId: row.empId, inquiryId: row.inquiryId ?? row.inquiry?.inquiryId, status: statusLabel(row.status), sale: sale ? normalizeSale(sale) : undefined, goldUsed: roundTwo(numeric(row.goldUsed)), goldScrap: roundTwo(numeric(row.goldScrap)), goldCostPerG, goldCost, stoneCost: roundTwo(numeric(row.stoneCost)), laborCost: roundTwo(numeric(row.laborCost)), totalCost, sellingPrice, profit: roundTwo(row.profit ?? sellingPrice - totalCost), marginPct: roundTwo(row.marginPct ?? (sellingPrice ? ((sellingPrice - totalCost) / sellingPrice) * 100 : 0)) };
+  return { jobDate: row.jobDate ? String(row.jobDate) : undefined, jobCostId: String(row.jobCostId ?? ""), invoiceId: String(row.invoiceId ?? sale?.invoiceId ?? ""), clientName: String(row.clientName ?? sale?.client?.clientName ?? row.inquiry?.customerName ?? ""), itemName: row.itemName ?? "", deadline: row.deadline || row.deliveryDate ? String(row.deadline ?? row.deliveryDate).slice(0, 10) : "", empId: row.empId, inquiryId: row.inquiryId ?? row.inquiry?.inquiryId, status: statusLabel(row.status), sale: sale ? normalizeSale(sale) : undefined, goldUsed: numeric(row.goldUsed), goldScrap: numeric(row.goldScrap), goldKarat: row.goldKarat == null ? null : numeric(row.goldKarat), goldCostPerG, goldCost, stoneCost: roundTwo(numeric(row.stoneCost)), laborCost: roundTwo(numeric(row.laborCost)), totalCost, sellingPrice, profit: roundTwo(row.profit ?? sellingPrice - totalCost), marginPct: roundTwo(row.marginPct ?? (sellingPrice ? ((sellingPrice - totalCost) / sellingPrice) * 100 : 0)) };
 };
-const normalizeInventory = (row: any): InvEntry => ({ id: row.referenceId, date: apiDate(row.updatedAt ?? row.date), referenceId: row.referenceId, itemName: row.itemName ?? row.referenceId, category: row.category ?? "GOLD", goldKarat: row.goldKarat == null ? null : numeric(row.goldKarat), quantityIn: numeric(row.quantityIn ?? row.goldIn), quantityOut: numeric(row.quantityOut ?? row.goldOut), quantityLoss: numeric(row.quantityLoss ?? row.scraps ?? row.scrap), balance: numeric(row.balance ?? row.totalGold), unit: row.unit ?? "grams", unitPrice: numeric(row.unitPrice) });
+const normalizeInventory = (row: any): InvEntry => ({ id: row.referenceId, jobCostId: row.jobCostId ?? null, date: apiDate(row.updatedAt ?? row.date), referenceId: row.referenceId, itemName: row.itemName ?? row.referenceId, category: row.category ?? "GOLD", goldKarat: row.goldKarat == null ? null : numeric(row.goldKarat), quantityIn: numeric(row.quantityIn ?? row.goldIn), quantityOut: numeric(row.quantityOut ?? row.goldOut), quantityLoss: numeric(row.quantityLoss ?? row.scraps ?? row.scrap), balance: numeric(row.balance ?? row.totalGold), unit: row.unit ?? "grams", unitPrice: numeric(row.unitPrice) });
 const normalizeInquiry = (row: any): Inquiry => ({ inquiryId: String(row.inquiryId ?? ""), date: apiDate(row.inqDate ?? row.date), customerName: String(row.customerName ?? ""), contactInfo: normalizeContactInput(String(row.contactInfo ?? "")), email: String(row.email ?? ""), details: String(row.details ?? ""), category: String(row.category ?? ""), quotedPrice: numeric(row.quotedPrice), isFullyPaid: Boolean(row.isFullyPaid), status: statusLabel(row.status) as InqStatus });
 const normalizeExpense = (row: any): Expense => ({ expenseId: String(row.expenseId ?? ""), expDate: apiDate(row.expDate ?? row.date), category: String(row.category ?? ""), description: String(row.description ?? ""), amount: numeric(row.amount) });
 const asRows = (value: unknown): any[] => Array.isArray(value) ? value : [];
@@ -147,14 +148,14 @@ interface Sale {
 interface JobCost {
   jobDate?: string;
   jobCostId: string; invoiceId: string; clientName: string; itemName: string; deadline: string; empId?: string;
-  inquiryId?: string; status: string; sale?: Sale;
+  inquiryId?: string; status: string; sale?: Sale; goldKarat?: number | null;
   goldUsed: number; goldScrap: number; goldCostPerG: number; goldCost: number;
   stoneCost: number; laborCost: number; totalCost: number;
   sellingPrice: number; profit: number; marginPct: number;
 }
 interface InvEntry {
   id: string; date: string; referenceId: string; itemName: string;
-  category: string; goldKarat?: number | null; quantityIn: number; quantityOut: number; quantityLoss: number; balance: number; unit: string; unitPrice: number;
+  category: string; goldKarat?: number | null; jobCostId?: string | null; quantityIn: number; quantityOut: number; quantityLoss: number; balance: number; unit: string; unitPrice: number;
 }
 interface Inquiry {
   inquiryId: string; date: string; customerName: string; contactInfo: string; email: string;
@@ -172,9 +173,9 @@ type Tab = (typeof TABS)[number];
 
 // ── shared ui primitives ────────────────────────────────────────────────────
 
-function Modal({ title, onClose, onSubmit, children, submitLabel = "Save entry", isSubmitting = false, submitDisabled = false, className = "", formClassName = "", footerNote }: {
+function Modal({ title, onClose, onSubmit, children, submitLabel = "Save entry", isSubmitting = false, submitDisabled = false, className = "", formClassName = "", footerNote, stickyLayout = false }: {
   title: string; onClose: () => void; onSubmit: (e: React.FormEvent) => void; children: React.ReactNode;
-  submitLabel?: string; isSubmitting?: boolean; submitDisabled?: boolean; className?: string; formClassName?: string; footerNote?: React.ReactNode;
+  submitLabel?: string; isSubmitting?: boolean; submitDisabled?: boolean; className?: string; formClassName?: string; footerNote?: React.ReactNode; stickyLayout?: boolean;
 }) {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const handleFieldChange = (event: React.FormEvent<HTMLFormElement>) => {
@@ -208,21 +209,21 @@ function Modal({ title, onClose, onSubmit, children, submitLabel = "Save entry",
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay backdrop-blur-sm">
       <div className={`bg-card border border-border rounded-xl w-full max-w-lg mx-4 shadow-2xl shadow-ink/30 max-h-[90vh] flex flex-col ${className}`}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+        <div className="modal-header flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
           <span className="text-xl font-semibold">{title}</span>
           <Button variant="ghost" size="icon" aria-label="Close dialog" onClick={onClose} >
             <X size={16} />
           </Button>
         </div>
-        <form noValidate onSubmit={handleFormSubmit} onChangeCapture={handleFieldChange} className={`p-6 space-y-4 overflow-y-auto ${formClassName}`}>
-          <FieldErrorsContext.Provider value={fieldErrors}>{children}</FieldErrorsContext.Provider>
-          <div className="flex gap-3 pt-2">
+        <form noValidate onSubmit={handleFormSubmit} onChangeCapture={handleFieldChange} className={`${stickyLayout ? "modal-form-pinned" : "p-6 space-y-4 overflow-y-auto"} ${formClassName}`}>
+          <FieldErrorsContext.Provider value={fieldErrors}>{stickyLayout ? <div className="modal-scroll-body">{children}</div> : children}</FieldErrorsContext.Provider>
+          <div className={stickyLayout ? "modal-pinned-footer" : "flex gap-3 pt-2"}>
             <Button variant="secondary" type="button" onClick={onClose}
-              className="flex-1 text-sm">
+              className={stickyLayout ? "text-sm" : "flex-1 text-sm"}>
               Cancel
             </Button>
             <Button variant="primary" type="submit" disabled={isSubmitting || submitDisabled}
-              className="flex-1 text-sm disabled:cursor-not-allowed">
+              className={`${stickyLayout ? "" : "flex-1"} text-sm disabled:cursor-not-allowed`}>
               {isSubmitting ? "Saving..." : submitLabel}
             </Button>
           </div>
@@ -532,19 +533,21 @@ function DailySalesView({ sales, jobCosts, onUpdate, onDelete, onJobs, isAdmin }
 }
 
 // ── job costing ─────────────────────────────────────────────────────────────
-function JobCostingView({ jobCosts, inquiries, inventory, selectedInquiryId, clearSelectedInquiry, onAdd, onUpdate, onDelete, onApprove, onReady, onFinish }: {
+function JobCostingView({ jobCosts, inquiries, inventory, goldRate, selectedInquiryId, clearSelectedInquiry, onAdd, onUpdate, onDelete, onApprove, onReady, onFinish }: {
   jobCosts: JobCost[]; inquiries: Inquiry[]; selectedInquiryId: string | null; clearSelectedInquiry: () => void;
-  inventory: InvEntry[];
+  inventory: InvEntry[]; goldRate: number | null;
   onAdd: (j: JobCost) => void; onUpdate: (j: JobCost) => void; onDelete: (j: JobCost) => void; onFinish: (j: JobCost, materials: { referenceId: string; quantity: number }[]) => Promise<void>;
   onApprove: (j: JobCost) => void; onReady: (j: JobCost) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [stockServerError, setStockServerError] = useState("");
+  const [costFormError, setCostFormError] = useState("");
   const [finishTarget, setFinishTarget] = useState<JobCost | null>(null);
   const submittingRef = useRef(false);
   const pendingInquiries = inquiries.filter(i => i.status === "Pending");
-  const blankForm = () => ({ inquiryId: "", invoiceId: "", clientName: "", itemName: "", deadline: "", contactNum: "", empId: "", serviceType: "Custom" as ServiceType, goldUsed: "", goldScrap: "", goldCostPerG: "", stoneCost: "", laborCost: "", sellingPrice: "" });
+  const blankForm = () => ({ inquiryId: "", invoiceId: "", clientName: "", itemName: "", deadline: "", contactNum: "", empId: "", serviceType: "Custom" as ServiceType, goldSourceId: "", goldUsed: "", goldScrap: "", goldCostPerG: "", stoneCost: "", laborCost: "", sellingPrice: "" });
   const [form, setForm] = useState(blankForm);
   const selectInquiry = (inquiryId: string) => {
     const inquiry = pendingInquiries.find(item => item.inquiryId === inquiryId);
@@ -559,52 +562,54 @@ function JobCostingView({ jobCosts, inquiries, inventory, selectedInquiryId, cle
     clearSelectedInquiry();
   }, [selectedInquiryId]);
 
-  const resetForm = () => setForm(blankForm());
-  const liveGoldCost = roundTwo(Math.max(0, Number(form.goldUsed) || 0) * Math.max(0, Number(form.goldCostPerG) || 0));
-  const liveTotalCost = roundTwo(liveGoldCost + Math.max(0, Number(form.stoneCost) || 0) + Math.max(0, Number(form.laborCost) || 0));
-  const liveSellingPrice = Math.max(0, Number(form.sellingPrice) || 0);
-  const liveProfit = roundTwo(liveSellingPrice - liveTotalCost);
-  const liveMargin = liveSellingPrice > 0 ? roundTwo(liveProfit / liveSellingPrice * 100) : null;
+  const resetForm = () => { setStockServerError(""); setCostFormError(""); setForm(blankForm()); };
+  const goldSources = useMemo(() => goldStockSources(inventory, editingId), [inventory, editingId]);
+  const selectedGoldSource = goldSources.find(source => source.referenceId === form.goldSourceId);
+  const stockError = goldStockError(form.goldUsed, form.goldScrap, selectedGoldSource);
+  const live = costingSummary(form.goldUsed, form.goldScrap, form.goldCostPerG, form.stoneCost, form.laborCost, form.sellingPrice);
+  const liveMargin = live.margin;
+  const updateGold = (changes: Partial<typeof form>) => { setStockServerError(""); setCostFormError(""); setForm(current => ({ ...current, ...changes })); };
   const editJob = (j: JobCost) => {
+    setStockServerError(""); setCostFormError("");
     setEditingId(j.jobCostId);
-    setForm({ inquiryId: j.inquiryId ?? "", invoiceId: j.invoiceId, clientName: j.clientName, itemName: j.itemName, deadline: j.deadline, contactNum: j.sale?.contactNum ?? "", empId: j.empId ?? "", serviceType: j.sale?.serviceType ?? "Custom", goldUsed: String(j.goldUsed), goldScrap: String(j.goldScrap), goldCostPerG: String(j.goldCostPerG), stoneCost: String(j.stoneCost), laborCost: String(j.laborCost), sellingPrice: String(j.sellingPrice) });
+    setForm({ inquiryId: j.inquiryId ?? "", invoiceId: j.invoiceId, clientName: j.clientName, itemName: j.itemName, deadline: j.deadline, contactNum: j.sale?.contactNum ?? "", empId: j.empId ?? "", serviceType: j.sale?.serviceType ?? "Custom", goldSourceId: goldStockSources(inventory, j.jobCostId).find(source => source.karat === j.goldKarat)?.referenceId ?? "", goldUsed: String(j.goldUsed), goldScrap: String(j.goldScrap), goldCostPerG: String(j.goldCostPerG), stoneCost: String(j.stoneCost), laborCost: String(j.laborCost), sellingPrice: String(j.sellingPrice) });
     setOpen(true);
   };
   const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (submittingRef.current) return;
+    if (submittingRef.current || stockError || stockServerError) return;
     submittingRef.current = true;
     setIsSubmitting(true);
-    const goldUsed = roundTwo(form.goldUsed);
-    const goldScrap = roundTwo(form.goldScrap || 0);
+    const goldUsed = form.goldUsed || "0";
+    const goldScrap = form.goldScrap || "0";
     const goldCostPerG = roundTwo(form.goldCostPerG);
     const stoneCost = roundTwo(form.stoneCost || 0);
     const laborCost = roundTwo(form.laborCost);
     const sellingPrice = roundTwo(form.sellingPrice);
-    if (![goldUsed, goldScrap, stoneCost, laborCost].every(Number.isFinite) || goldUsed < 0 || goldScrap < 0 || stoneCost < 0 || laborCost < 0 || !Number.isFinite(goldCostPerG) || goldCostPerG <= 0 || !Number.isFinite(sellingPrice) || sellingPrice <= 0) {
-      alert("Enter valid costs and a selling price greater than zero.");
+    if (![stoneCost, laborCost].every(Number.isFinite) || stoneCost < 0 || laborCost < 0 || !Number.isFinite(goldCostPerG) || goldCostPerG <= 0 || !Number.isFinite(sellingPrice) || sellingPrice <= 0) {
+      setCostFormError("Enter valid costs and a selling price greater than zero.");
       setIsSubmitting(false); submittingRef.current = false; return;
     }
     if (form.deadline && form.deadline < todayISO()) {
-      alert("Delivery date must be today or later.");
+      setCostFormError("Delivery date must be today or later.");
       setIsSubmitting(false); submittingRef.current = false; return;
     }
     try {
       const payload = editingId
-        ? { invoiceId: form.invoiceId, clientName: form.clientName, itemName: form.itemName, deadline: form.deadline || undefined, empId: form.empId || undefined, goldUsed, goldScrap, goldCostPerG, stoneCost, laborCost, sellingPrice }
-        : { inquiryId: form.inquiryId, clientName: form.clientName, itemName: form.itemName, deadline: form.deadline || undefined, contactNum: form.contactNum, empId: form.empId || undefined, serviceType: form.serviceType, goldUsed, goldScrap, goldCostPerG, stoneCost, laborCost, sellingPrice };
+        ? { invoiceId: form.invoiceId, clientName: form.clientName, itemName: form.itemName, deadline: form.deadline || undefined, empId: form.empId || undefined, goldSourceId: form.goldSourceId, goldUsed, goldScrap, goldCostPerG, stoneCost, laborCost, sellingPrice }
+        : { inquiryId: form.inquiryId, clientName: form.clientName, itemName: form.itemName, deadline: form.deadline || undefined, contactNum: form.contactNum, empId: form.empId || undefined, serviceType: form.serviceType, goldSourceId: form.goldSourceId, goldUsed, goldScrap, goldCostPerG, stoneCost, laborCost, sellingPrice };
       if (!editingId && !form.inquiryId) throw new Error("Choose a pending inquiry before creating job costing.");
       const response = await apiFetch(`${BASE_URL}/job-cost${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method: editingId ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await response.json();
-      if (response.status === 202) { alert(data.message); closeModal(); return; }
-      if (!response.ok) throw new Error(data.error ?? "Job costing could not be saved.");
+      if (response.status === 202) { notify(data.message); closeModal(); return; }
+      if (!response.ok) { if (["goldUsed", "goldSourceId"].includes(data.field)) { setStockServerError(data.error); return; } throw new Error(data.error ?? "Job costing could not be saved."); }
       const saved = normalizeJobCost(data);
       if (editingId) onUpdate(saved); else onAdd(saved);
       closeModal();
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Job costing could not be saved.");
+      setCostFormError(error instanceof Error ? error.message : "Job costing could not be saved.");
     } finally {
       setIsSubmitting(false); submittingRef.current = false;
     }
@@ -620,7 +625,8 @@ function JobCostingView({ jobCosts, inquiries, inventory, selectedInquiryId, cle
       <JobsTable jobs={jobCosts} onEdit={editJob} onDelete={onDelete} onApprove={onApprove} onReady={onReady} onFinish={finishJob} />
 
       {finishTarget && <FinishSaleModal key={finishTarget.jobCostId} job={finishTarget} inventory={inventory} onClose={() => setFinishTarget(null)} onFinish={materials => onFinish(finishTarget, materials)} />}
-      {open && <Modal title={editingId ? "Edit job costing" : "Cost a pending inquiry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update costing" : "Save pending costing"} isSubmitting={isSubmitting} className="job-costing-modal max-w-6xl" formClassName="job-costing-form">
+      {open && <Modal title={editingId ? "Edit job costing" : "Cost a pending inquiry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Save changes" : "Save costing"} isSubmitting={isSubmitting} submitDisabled={!form.goldUsed.trim() || !!stockError || !!stockServerError} stickyLayout className="job-costing-modal max-w-6xl" formClassName="job-costing-form">
+        {costFormError && <p className="cost-form-error" role="alert">{costFormError}</p>}
         <div className="job-costing-layout">
           <div className="job-costing-fields">
             <section className="job-costing-group"><div className="job-costing-group-heading"><h2>Client &amp; service</h2><p>Choose the inquiry and add workshop details.</p></div><div className="job-costing-field-grid">
@@ -630,24 +636,33 @@ function JobCostingView({ jobCosts, inquiries, inventory, selectedInquiryId, cle
               {!editingId && <FF label="Service type"><select className={ic} value={form.serviceType} onChange={e => setForm(f => ({ ...f, serviceType: e.target.value as ServiceType }))}>{(["Custom", "Repair", "Resize", "Cleaning"] as ServiceType[]).map(t => <option key={t}>{t}</option>)}</select></FF>}
               <FF label="Employee ID (optional)" helper="Leave blank to assign available staff."><input className={ic} value={form.empId} onChange={e => setForm(f => ({ ...f, empId: e.target.value }))} placeholder="Optional" /></FF>
               <FF label="Item name (optional)"><input className={ic} value={form.itemName} onChange={e => setForm(f => ({ ...f, itemName: e.target.value }))} placeholder="e.g. Gold ring" maxLength={120} /></FF>
-              <FF label="Delivery date / deadline (optional)"><input type="date" min={todayISO()} className={ic} value={form.deadline} onChange={e => setForm(f => ({ ...f, deadline: e.target.value }))} /></FF>
+              <FF label="Delivery date / deadline (optional)"><DatePicker min={todayISO()} label="Delivery date" value={form.deadline} onChange={deadline => setForm(f => ({ ...f, deadline }))} disabled={isSubmitting} /></FF>
             </div></section>
             <section className="job-costing-group"><div className="job-costing-group-heading"><h2>Materials</h2><p>Enter material use and workshop costs.</p></div><div className="job-costing-field-grid">
-              <FF label="Gold used (g)"><input type="number" min="0" step="0.001" className={ic} value={form.goldUsed} onChange={e => setForm(f => ({ ...f, goldUsed: e.target.value }))} required /></FF>
-              <FF label="Gold scrap (g, optional)"><input type="number" min="0" step="0.001" className={ic} value={form.goldScrap} onChange={e => setForm(f => ({ ...f, goldScrap: e.target.value }))} /></FF>
-              <FF label="Gold price per g (₱)"><input type="number" min="0.01" step="0.01" className={ic} value={form.goldCostPerG} onChange={e => setForm(f => ({ ...f, goldCostPerG: e.target.value }))} required /></FF>
-              <FF label="Stone cost (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.stoneCost} onChange={e => setForm(f => ({ ...f, stoneCost: e.target.value }))} required /></FF>
-              <FF label="Labor cost (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.laborCost} onChange={e => setForm(f => ({ ...f, laborCost: e.target.value }))} required /></FF>
+              <div className="col-span-2"><FF label="Gold source"><select aria-label="Gold source" className={ic} value={form.goldSourceId} onChange={e => updateGold({ goldSourceId: e.target.value })} required><option value="">Select a gold source</option>{goldSources.map(source => <option key={source.referenceId} value={source.referenceId}>{source.itemName} · {milligramsToGrams(source.availableMg)} g available</option>)}</select>{!goldSources.length && <p className="mt-1 text-xs text-warning">Add gold stock with a recorded karat before costing.</p>}</FF></div>
+              <FF label="Gold used (g)">
+                <input aria-label="Gold used in grams" aria-invalid={!!stockServerError || (!!form.goldUsed && !!stockError)} aria-describedby={stockServerError || stockError ? "cost-gold-available cost-gold-error" : "cost-gold-available"} type="text" inputMode="decimal" className={ic} value={form.goldUsed} onChange={e => updateGold({ goldUsed: e.target.value })} required />
+                <p id="cost-gold-available" className="mt-1 text-xs text-muted-foreground">{selectedGoldSource ? `Available: ${milligramsToGrams(selectedGoldSource.availableMg)} g` : "Select a gold source to see available stock."}</p>
+                {(stockServerError || (form.goldSourceId && stockError)) && <p id="cost-gold-error" className="field-error" role="alert">{stockServerError || stockError}</p>}
+              </FF>
+              <FF label="Gold scrap (g, optional)"><input aria-label="Gold scrap in grams" type="text" inputMode="decimal" className={ic} value={form.goldScrap} onChange={e => updateGold({ goldScrap: e.target.value })} /></FF>
+              <FF label="Gold price per g" helper={goldRate === null ? "Today's 24K: rate unavailable" : `Today's 24K: ₱${goldRate.toLocaleString("en-PH", { maximumFractionDigits: 0 })}/g`}><CurrencyInput aria-label="Gold price per gram" className={ic} value={form.goldCostPerG} onChange={goldCostPerG => setForm(f => ({ ...f, goldCostPerG }))} required /></FF>
+              <FF label="Stone cost"><CurrencyInput aria-label="Stone cost" className={ic} value={form.stoneCost} onChange={stoneCost => setForm(f => ({ ...f, stoneCost }))} required /></FF>
+              <FF label="Labor cost"><CurrencyInput aria-label="Labor cost" className={ic} value={form.laborCost} onChange={laborCost => setForm(f => ({ ...f, laborCost }))} required /></FF>
             </div></section>
             <section className="job-costing-group"><div className="job-costing-group-heading"><h2>Pricing</h2><p>Set the quoted selling price for this job.</p></div><div className="job-costing-field-grid">
-              <FF label="Selling price (₱)"><input type="number" min="0.01" step="0.01" className={ic} value={form.sellingPrice} onChange={e => setForm(f => ({ ...f, sellingPrice: e.target.value }))} required /></FF>
+              <FF label="Selling price"><CurrencyInput aria-label="Selling price" className={ic} value={form.sellingPrice} onChange={sellingPrice => setForm(f => ({ ...f, sellingPrice }))} required /></FF>
             </div><p className="mt-3 text-xs text-muted-foreground">Invoice number and job costing ID are assigned automatically.</p></section>
           </div>
           <aside className="job-costing-summary" aria-live="polite" aria-label="Live job costing summary"><p className="section-label">Live summary</p><h2>Job estimate</h2><dl>
-            <div><dt>Total cost</dt><dd>{php(liveTotalCost)}</dd></div>
-            <div><dt>Profit</dt><dd className={liveProfit < 0 ? "text-danger" : "text-success"}>{php(liveProfit)}</dd></div>
+            <div><dt>Gold <small>{milligramsToGrams(gramsToMilligrams(form.goldUsed || "0") ?? 0)} g × {php(Number(form.goldCostPerG) || 0)}</small></dt><dd>{php(live.gold)}</dd></div>
+            <div><dt>Scrap <small>{milligramsToGrams(gramsToMilligrams(form.goldScrap || "0") ?? 0)} g</small></dt><dd>{php(live.scrap)}</dd></div>
+            <div><dt>Stone</dt><dd>{php(Number(form.stoneCost) || 0)}</dd></div>
+            <div><dt>Labor</dt><dd>{php(Number(form.laborCost) || 0)}</dd></div>
+            <div className="cost-summary-total"><dt>Total cost</dt><dd>{php(live.total)}</dd></div>
+            <div><dt>Profit</dt><dd className={live.profit < 0 ? "text-danger" : "text-success"}>{php(live.profit)}</dd></div>
             <div><dt>Margin</dt><dd>{liveMargin === null ? <span className="text-muted-foreground">—</span> : <Badge variant={marginVariant(liveMargin)}>{pct(liveMargin)}</Badge>}</dd></div>
-          </dl><p className="job-costing-summary-note">Updates as you enter materials, costs, and selling price.</p></aside>
+          </dl>{liveMargin !== null && liveMargin < 30 && <p className="cost-margin-warning" role="status">Margin is below 30%. Review your selling price.</p>}<p className="job-costing-summary-note">Updates as you enter materials, costs, and selling price.</p></aside>
         </div>
       </Modal>}
     </div>
@@ -1581,7 +1596,7 @@ function AppContent() {
 
         {tab === "DASHBOARD" && <Dashboard sales={sales} jobCosts={jobCosts} expenses={expenses} loading={dataLoading} error={dataError} isAdmin={isAdmin} goldRate={goldRate} goldStock={goldStock} goldLoading={goldLoading} goldStale={goldInfo?.stale ?? true} loadApprovals={loadDashboardApprovals} onJobs={() => setTab("JOB_COSTING")} onApprovals={() => setTab("APPROVALS")} onRetry={() => setReloadKey(k => k + 1)} onView={(title, record) => setViewRecord({ title, record })} />}
         {tab === "DAILY_SALES" && <DailySalesView isAdmin={isAdmin} sales={sales.filter(isCompletedSale)} jobCosts={jobCosts} onJobs={() => setTab("JOB_COSTING")} onUpdate={s => setSales(p => p.map(item => item.invoiceId === s.invoiceId ? s : s.clientId && item.clientId === s.clientId ? { ...item, email: s.email } : item))} onDelete={id => deleteFromApi("sales", id, () => { const removed = sales.find(item => item.invoiceId === id); const linkedJob = jobCosts.find(item => item.jobCostId === removed?.jobCostId); setSales(p => p.filter(item => item.invoiceId !== id)); if (removed?.jobCostId) setJobCosts(p => p.filter(item => item.jobCostId !== removed.jobCostId)); if (linkedJob?.inquiryId) setInquiries(p => p.map(i => i.inquiryId === linkedJob.inquiryId ? { ...i, status: "Pending" } : i)); })} />}
-        {tab === "JOB_COSTING" && <JobCostingView jobCosts={jobCosts} inquiries={inquiries} inventory={inventory} selectedInquiryId={selectedInquiryForCosting} clearSelectedInquiry={() => setSelectedInquiryForCosting(null)} onAdd={j => { setJobCosts(p => [j, ...p]); if (j.sale) setSales(p => [j.sale!, ...p.filter(s => s.invoiceId !== j.sale!.invoiceId)]); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Approved" } : i)); }} onUpdate={j => { setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? j : item)); if (j.sale) setSales(p => p.map(s => s.invoiceId === j.sale!.invoiceId ? j.sale! : s)); }} onDelete={j => deleteFromApi("job-cost", j.jobCostId, () => { setJobCosts(p => p.filter(item => item.jobCostId !== j.jobCostId)); setSales(p => p.filter(s => s.invoiceId !== j.invoiceId)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Pending" } : i)); })} onApprove={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/approve`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Costing could not be approved."); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Costing could not be approved."); } }} onReady={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/ready`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Item could not be marked ready."); const reason = data.notification?.sent ? (data.notification.reason ?? "Customer notification sent.") : (data.notification?.reason ?? "Customer notification could not be sent."); alert(`Marked ready for pickup. ${reason}`); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Item could not be marked ready."); } }} onFinish={async (j, materials) => { const response = await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(j.invoiceId)}/finish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ invoiceId: j.invoiceId, clientName: j.clientName, materials }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Sale could not be finished."); const sale = normalizeSale(data); setSales(p => [sale, ...p.filter(item => item.invoiceId !== sale.invoiceId)]); setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? { ...item, status: "Finished", sale } : item)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Finished" } : i)); setReloadKey(k => k + 1); notify("Sale completed."); }} />}
+        {tab === "JOB_COSTING" && <JobCostingView goldRate={goldRate} jobCosts={jobCosts} inquiries={inquiries} inventory={inventory} selectedInquiryId={selectedInquiryForCosting} clearSelectedInquiry={() => setSelectedInquiryForCosting(null)} onAdd={j => { setReloadKey(k => k + 1); setJobCosts(p => [j, ...p]); if (j.sale) setSales(p => [j.sale!, ...p.filter(s => s.invoiceId !== j.sale!.invoiceId)]); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Approved" } : i)); }} onUpdate={j => { setReloadKey(k => k + 1); setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? j : item)); if (j.sale) setSales(p => p.map(s => s.invoiceId === j.sale!.invoiceId ? j.sale! : s)); }} onDelete={j => deleteFromApi("job-cost", j.jobCostId, () => { setJobCosts(p => p.filter(item => item.jobCostId !== j.jobCostId)); setSales(p => p.filter(s => s.invoiceId !== j.invoiceId)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Pending" } : i)); })} onApprove={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/approve`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Costing could not be approved."); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Costing could not be approved."); } }} onReady={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/ready`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Item could not be marked ready."); const reason = data.notification?.sent ? (data.notification.reason ?? "Customer notification sent.") : (data.notification?.reason ?? "Customer notification could not be sent."); alert(`Marked ready for pickup. ${reason}`); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Item could not be marked ready."); } }} onFinish={async (j, materials) => { const response = await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(j.invoiceId)}/finish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ invoiceId: j.invoiceId, clientName: j.clientName, materials }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Sale could not be finished."); const sale = normalizeSale(data); setSales(p => [sale, ...p.filter(item => item.invoiceId !== sale.invoiceId)]); setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? { ...item, status: "Finished", sale } : item)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Finished" } : i)); setReloadKey(k => k + 1); notify("Sale completed."); }} />}
         {tab === "INVENTORY" && <GoldInventoryView inventory={inventory} goldRate={goldRate} onAdd={e => { setInventory(p => [...p, e]); setReloadKey(k => k + 1); }} onUpdate={e => { setInventory(p => p.map(item => item.id === e.id ? e : item)); setReloadKey(k => k + 1); }} onDelete={id => deleteFromApi("inventory", id, () => { setInventory(p => p.filter(item => item.id !== id)); setReloadKey(k => k + 1); })} />}
         {tab === "INQUIRIES" && <InquiriesView inquiries={inquiries} onAdd={i => setInquiries(p => [i, ...p])} onUpdate={i => setInquiries(p => p.map(item => item.inquiryId === i.inquiryId ? i : item))} onDelete={id => deleteFromApi("inquiries", id, () => setInquiries(p => p.filter(item => item.inquiryId !== id)))} onStartCosting={id => { setSelectedInquiryForCosting(id); setTab("JOB_COSTING"); }} />}
         {tab === "EXPENSES" && <ExpensesView expenses={expenses} onAdd={e => setExpenses(p => [e, ...p])} onUpdate={e => setExpenses(p => p.map(item => item.expenseId === e.expenseId ? e : item))} onDelete={id => deleteFromApi("expenses", id, () => setExpenses(p => p.filter(item => item.expenseId !== id)))} />}
