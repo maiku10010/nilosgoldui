@@ -5,16 +5,17 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { PageHeader } from './PageHeader';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem } from './ui/dropdown-menu';
+import { DateRangePicker } from './DateRangePicker';
 
 const money = (n: number, decimals = 2) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(n);
-const displayDate = (date: string, month = false) => new Date(date + (month ? '-01T00:00:00' : 'T00:00:00')).toLocaleDateString('en-PH', { month: 'long', ...(month ? {} : { day: 'numeric' }), year: 'numeric' });
+const displayDate = (date: string, month = false) => new Date(date + (month ? '-01T00:00:00' : 'T00:00:00')).toLocaleDateString('en-PH', { month: 'short', ...(month ? {} : { day: 'numeric' }), year: 'numeric' });
 export function ExpensesLedger({ expenses, onAdd, onEdit, onDelete }: { expenses: ExpenseRecord[]; onAdd: () => void; onEdit: (row: ExpenseRecord) => void; onDelete: (id: string) => void }) {
   const [query, setQuery] = useState('');
   const [categories, setCategories] = useState<string[]>([]);
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
   const [page, setPage] = useState(1);
-  const [size, setSize] = useState(20);
+  const [size, setSize] = useState(25);
   const invalidRange = !!start && !!end && start > end;
   const filtered = useMemo(() => selectExpenses(expenses, { query, categories, start, end }), [expenses, query, categories, start, end]);
   const monthly = useMemo(() => expenseTotals(filtered), [filtered]);
@@ -30,12 +31,11 @@ export function ExpensesLedger({ expenses, onAdd, onEdit, onDelete }: { expenses
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   return <div className="space-y-4">
-    <PageHeader title="Expenses" description="Track operating costs and workshop spending." action={<div className="flex items-center gap-3"><span className="expense-total-pill" title={`Filtered total: ${money(total)}`}>Total {money(total, 0)}</span><Button onClick={onAdd}><Plus size={16} />Add Expense</Button></div>} />
+    <PageHeader title="Expenses" description="Track operating costs and workshop spending." action={<div className="flex items-center gap-3"><span className="expense-total-pill" title={`Filtered total: ${money(total)}`}>Total {money(total, 0)}</span><Button onClick={onAdd}><Plus size={16} />Add expense</Button></div>} />
     <div className="expense-filters">
       <label className="expense-search"><Search size={16} aria-hidden="true" /><input type="search" aria-label="Search expenses" placeholder="Search expenses…" value={query} onChange={event => { setQuery(event.target.value); setPage(1); }} /></label>
       <DropdownMenu><DropdownMenuTrigger asChild><Button variant="secondary">{categories.length ? `Categories (${categories.length})` : 'All categories'}<ChevronDown size={14} /></Button></DropdownMenuTrigger><DropdownMenuContent align="start">{options.map(category => <DropdownMenuCheckboxItem key={category} checked={categories.includes(category)} onSelect={event => event.preventDefault()} onCheckedChange={checked => { setCategories(previous => checked ? [...previous, category] : previous.filter(value => value !== category)); setPage(1); }}>{category}</DropdownMenuCheckboxItem>)}</DropdownMenuContent></DropdownMenu>
-      <label className="expense-date">From<input type="date" aria-label="From date" value={start} max={end || undefined} onChange={event => { setStart(event.target.value); setPage(1); }} /></label>
-      <label className="expense-date">To<input type="date" aria-label="To date" value={end} min={start || undefined} onChange={event => { setEnd(event.target.value); setPage(1); }} /></label>
+      <DateRangePicker startDate={start} endDate={end} onChange={(from, to) => { setStart(from); setEnd(to); setPage(1); }} label="Expense date range" />
       {(query || categories.length > 0 || start || end) && <Button variant="ghost" onClick={() => { setQuery(''); setCategories([]); setStart(''); setEnd(''); setPage(1); }}>Clear filters</Button>}
       <Button variant="secondary" className="ml-auto" onClick={download} disabled={!filtered.length || invalidRange}><Download size={16} />Export CSV</Button>
     </div>
@@ -50,6 +50,6 @@ export function ExpensesLedger({ expenses, onAdd, onEdit, onDelete }: { expenses
         {!visible.length && <tr><td colSpan={5} className="expense-empty">{expenses.length ? 'No expenses match your filters.' : 'No expenses yet. Add your first expense to get started.'}</td></tr>}
       </tbody></table>
     </div>
-    <div className="expense-pagination"><p>{filtered.length ? `${(current - 1) * size + 1}–${Math.min(current * size, filtered.length)} of ${filtered.length} expenses` : '0 expenses'}</p><span className="text-xs text-muted-foreground">Daily subtotals include all matching expenses for that date.</span><label>Rows per page <select aria-label="Rows per page" value={size} onChange={event => { setSize(Number(event.target.value)); setPage(1); }}>{[20, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}</select></label><Button variant="secondary" disabled={current <= 1} onClick={() => setPage(current - 1)}>Previous</Button><span>Page {current} of {pages}</span><Button variant="secondary" disabled={current >= pages} onClick={() => setPage(current + 1)}>Next</Button></div>
+    <div className="expense-pagination"><p>{filtered.length ? `${(current - 1) * size + 1}–${Math.min(current * size, filtered.length)} of ${filtered.length} expenses` : '0 expenses'}</p><span className="text-xs text-muted-foreground">Daily subtotals include all matching expenses for that date.</span><label>Rows per page <select aria-label="Rows per page" value={size} onChange={event => { setSize(Number(event.target.value)); setPage(1); }}>{[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}</select></label><Button variant="secondary" disabled={current <= 1} onClick={() => setPage(current - 1)}>Previous</Button><span>Page {current} of {pages}</span><Button variant="secondary" disabled={current >= pages} onClick={() => setPage(current + 1)}>Next</Button></div>
   </div>;
 }

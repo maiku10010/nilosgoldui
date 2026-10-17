@@ -26,7 +26,7 @@ export function JobsTable<T extends JobTableRecord>({ jobs, onEdit, onDelete, on
   const [filter, setFilter] = useState<JobFilter>("all");
   const [sort, setSort] = useState<{ key: JobSortKey; direction: 1 | -1 }>({ key: "jobId", direction: -1 });
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(25);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const result = useMemo(() => selectJobs(jobs, { query, filter, sortKey: sort.key, direction: sort.direction, page, pageSize }), [jobs, query, filter, sort, page, pageSize]);
   const toggleSort = (key: JobSortKey) => {
@@ -81,8 +81,8 @@ export function JobsTable<T extends JobTableRecord>({ jobs, onEdit, onDelete, on
               <td className="text-right">{job.totalCost === 0 ? <span className="text-muted-foreground">No cost recorded</span> : <Badge variant={job.marginPct >= 50 ? "success" : job.marginPct >= 25 ? "warning" : "danger"}>{job.marginPct.toFixed(2)}%</Badge>}</td>
               <td><Badge status={job.status} className="min-w-24 whitespace-nowrap" /></td>
               <td><div className="flex items-center gap-1">
-                <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" aria-label={`Edit job ${id}`} onClick={() => onEdit(job)}><PenSquare size={16} /></Button></TooltipTrigger><TooltipContent>Edit job</TooltipContent></Tooltip>
-                <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="text-danger hover:bg-danger-tint" aria-label={`Delete job ${id}`} onClick={() => onDelete(job)}><Trash2 size={16} /></Button></TooltipTrigger><TooltipContent>Delete job</TooltipContent></Tooltip>
+                <div className="table-row-actions"><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" aria-label={`Edit job ${id}`} onClick={() => onEdit(job)}><PenSquare size={16} /></Button></TooltipTrigger><TooltipContent>Edit job</TooltipContent></Tooltip>
+                <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="row-action-delete" aria-label={`Delete job ${id}`} onClick={() => onDelete(job)}><Trash2 size={16} /></Button></TooltipTrigger><TooltipContent>Delete job</TooltipContent></Tooltip></div>
                 {job.status === "Pending" && <Button variant="secondary" size="sm" onClick={() => onApprove(job)}>Approve</Button>}
                 {["Approved", "In Progress"].includes(job.status) && <Button variant="secondary" size="sm" onClick={() => onReady(job)}>Mark ready</Button>}
                 {job.status === "Ready for Pickup" && <Button variant="secondary" size="sm" onClick={() => onFinish(job)}>Finish sale</Button>}
@@ -102,7 +102,7 @@ export function JobsTable<T extends JobTableRecord>({ jobs, onEdit, onDelete, on
         })}{!result.total && <tr><td colSpan={9} className="py-12 text-center text-muted-foreground">No jobs match these filters.</td></tr>}</tbody>
       </table>
     </div>
-    <div className="flex items-center justify-between gap-4 text-xs text-muted-foreground">
+    <div className="jobs-pagination flex items-center justify-between gap-4 text-xs text-muted-foreground">
       <p role="status" aria-live="polite">{result.total ? `${result.start + 1}–${result.start + result.rows.length} of ${result.total} jobs` : "0 jobs"}</p>
       <div className="flex items-center gap-4">
         <label className="flex items-center gap-2 text-xs">Rows per page<select value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1); }} className="h-9 rounded-md border border-border bg-card px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring">{[10, 25, 50].map(size => <option key={size}>{size}</option>)}</select></label>

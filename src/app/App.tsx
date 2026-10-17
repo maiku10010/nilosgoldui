@@ -5,6 +5,7 @@ import { Dashboard } from "./components/Dashboard";
 import { Button } from "./components/ui/button";
 import { Badge, sentenceCase } from "./components/ui/badge";
 import { PageHeader } from "./components/PageHeader";
+import { DateRangePicker } from "./components/DateRangePicker";
 import { roundTwo } from "../rounding";
 import { Fragment, useState, useEffect, useMemo, useRef, createContext, useContext } from "react";
 import goldsmithLogo from "../assets/nilosgold_logo.jpg";
@@ -72,7 +73,7 @@ const php = (n: number) =>
 const pct = (n: number) => n.toFixed(2) + "%";
 const fmtDate = (d: string) =>
   new Date(d + "T00:00:00").toLocaleDateString("en-PH", {
-    month: "short", day: "2-digit", year: "numeric",
+    month: "short", day: "numeric", year: "numeric",
   });
 const todayISO = () => {
   const now = new Date();
@@ -339,7 +340,7 @@ function DailySalesView({ sales, onUpdate, onDelete }: { sales: Sale[]; onUpdate
   const [endDate, setEndDate] = useState("");
   const [typeFilter, setTypeFilter] = useState("All");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(25);
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const toggleSort = (key: string) => setSort(s => ({ key, direction: s.key === key ? (s.direction === 1 ? -1 : 1) : 1 }));
   const [open, setOpen] = useState(false);
@@ -400,8 +401,7 @@ function DailySalesView({ sales, onUpdate, onDelete }: { sales: Sale[]; onUpdate
 
   return <div className="space-y-4">
       <PageHeader title="Sales" description="Sales appear here after an approved job costing is finished" action={<div className="expense-filters">
-        <label className="expense-date">From<input type="date" aria-label="Sales from date" value={startDate} max={endDate || undefined} onChange={event => { setStartDate(event.target.value); setPage(1); }} /></label>
-        <label className="expense-date">To<input type="date" aria-label="Sales to date" value={endDate} min={startDate || undefined} onChange={event => { setEndDate(event.target.value); setPage(1); }} /></label>
+        <DateRangePicker startDate={startDate} endDate={endDate} onChange={(start, end) => { setStartDate(start); setEndDate(end); setPage(1); }} label="Sales date range" />
         <Button variant="secondary" onClick={downloadCsv} disabled={!filtered.length || invalidRange}><Download size={16} />Export CSV</Button>
       </div>} />
       {invalidRange && <p role="alert" className="text-sm text-danger">The end date must be on or after the start date.</p>}
@@ -419,10 +419,10 @@ function DailySalesView({ sales, onUpdate, onDelete }: { sales: Sale[]; onUpdate
         <tbody>{visibleSales.map(s => <TRow key={s.id} onClick={() => setSelectedSale(s)}>
           <td className={tdc + " h-11 !py-1"}>{fmtDate(s.date)}</td><td className={tdc + " h-11 !py-1 text-muted-foreground"}>{s.invoiceId}</td><td className={tdc + " h-11 !py-1 font-medium"}>{s.clientName}</td><td className={tdc + " h-11 !py-1 text-muted-foreground"}>{formatContact(s.contactNum)}</td>
           <td className={tdc + " h-11 !py-1"}><Badge variant="neutral">{sentenceCase(s.serviceType)}</Badge></td><td className={tdr + " h-11 !py-1"}>{php(s.price)}</td><td className={tdr + " h-11 !py-1"}>{php(s.payment)}</td><td className={tdr + " h-11 !py-1"}>{php(s.balance)}</td><td className={tdc + " h-11 !py-1"}><Badge status={s.status} /></td>
-          <td className={tdc + " h-11 !py-1"}><div className="flex items-center gap-2"><Button variant="secondary" size="icon" aria-label="Edit sale" type="button" onClick={event => { event.stopPropagation(); setEditingId(s.invoiceId); setForm({ invoiceId: s.invoiceId, date: s.date, clientName: s.clientName, contactNum: s.contactNum, email: s.email ?? "", serviceType: s.serviceType, price: String(s.price), payment: String(s.payment) }); setOpen(true); }} title="Edit"><PenSquare size={13} /></Button><Button variant="danger" size="icon" aria-label="Delete sale" type="button" onClick={event => { event.stopPropagation(); onDelete(s.id); }} title="Delete"><Trash2 size={13} /></Button></div></td>
+          <td className={tdc + " h-11 !py-1"}><div className="table-row-actions"><Button variant="ghost" size="icon" aria-label="Edit sale" type="button" onClick={event => { event.stopPropagation(); setEditingId(s.invoiceId); setForm({ invoiceId: s.invoiceId, date: s.date, clientName: s.clientName, contactNum: s.contactNum, email: s.email ?? "", serviceType: s.serviceType, price: String(s.price), payment: String(s.payment) }); setOpen(true); }} title="Edit"><PenSquare size={16} /></Button><Button variant="ghost" size="icon" className="row-action-delete" aria-label="Delete sale" type="button" onClick={event => { event.stopPropagation(); onDelete(s.id); }} title="Delete"><Trash2 size={16} /></Button></div></td>
         </TRow>)}{!visibleSales.length && <EmptyRow cols={10} />}</tbody>
       </table></div>
-      <div className="expense-pagination"><p>{filtered.length ? `${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, filtered.length)} of ${filtered.length} invoices` : "0 invoices"}</p><label>Rows per page <select aria-label="Rows per page" value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1); }}>{[10, 20, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}</select></label><Button variant="secondary" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Previous</Button><span>Page {currentPage} of {pages}</span><Button variant="secondary" disabled={currentPage >= pages} onClick={() => setPage(currentPage + 1)}>Next</Button></div>
+      <div className="expense-pagination"><p>{filtered.length ? `${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, filtered.length)} of ${filtered.length} invoices` : "0 invoices"}</p><label>Rows per page <select aria-label="Rows per page" value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1); }}>{[10, 25, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}</select></label><Button variant="secondary" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Previous</Button><span>Page {currentPage} of {pages}</span><Button variant="secondary" disabled={currentPage >= pages} onClick={() => setPage(currentPage + 1)}>Next</Button></div>
       <Sheet open={!!selectedSale} onOpenChange={open => { if (!open) setSelectedSale(null); }}><SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
         {selectedSale && <><SheetHeader className="border-b border-border pb-4 pr-10"><SheetTitle>Invoice {selectedSale.invoiceId}</SheetTitle><SheetDescription>{fmtDate(selectedSale.date)} · {sentenceCase(selectedSale.serviceType)}</SheetDescription></SheetHeader><div className="space-y-6 px-1">
           <section><h3 className="text-sm font-semibold">Client information</h3><dl className="mt-3 space-y-3 text-sm"><div><dt className="text-xs text-muted-foreground">Client</dt><dd>{selectedSale.clientName || "—"}</dd></div><div><dt className="text-xs text-muted-foreground">Contact</dt><dd>{formatContact(selectedSale.contactNum)}</dd></div><div><dt className="text-xs text-muted-foreground">Email</dt><dd className="break-all">{selectedSale.email || "—"}</dd></div></dl></section>
@@ -431,7 +431,7 @@ function DailySalesView({ sales, onUpdate, onDelete }: { sales: Sale[]; onUpdate
         </div></>}
       </SheetContent></Sheet>
       {open && (
-        <Modal title="Edit Finished Sale" onClose={closeModal} onSubmit={submit} submitLabel="Update Sale" isSubmitting={isSubmitting}>
+        <Modal title="Edit finished sale" onClose={closeModal} onSubmit={submit} submitLabel="Update sale" isSubmitting={isSubmitting}>
           <div className="grid grid-cols-2 gap-4">
             <FF label="Invoice #"><input className={ic} value={form.invoiceId} readOnly /></FF>
             <FF label="Date"><input type="date" max={todayISO()} className={ic} value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required /></FF>
@@ -536,7 +536,7 @@ function JobCostingView({ jobCosts, inquiries, inventory, selectedInquiryId, cle
       <JobsTable jobs={jobCosts} onEdit={editJob} onDelete={onDelete} onApprove={onApprove} onReady={onReady} onFinish={finishJob} />
 
       {finishTarget && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-overlay p-4" role="dialog" aria-modal="true"><div className="w-full max-w-lg rounded-xl border border-border bg-card p-5"><h2 className="font-semibold">Materials used for {finishTarget.invoiceId}</h2><p className="mt-1 text-xs text-muted-foreground">Select packaging or optional materials and enter the quantities used.</p><select aria-label="Extra inventory material" className={ic + " mt-4"} value={finishMaterialId} onChange={e => setFinishMaterialId(e.target.value)}><option value="">Select an inventory item</option>{inventory.filter(item => item.balance > 0 && item.category !== "GOLD" && item.category !== "TOOLS").map(item => <option key={item.referenceId} value={item.referenceId}>{item.itemName} · {item.category} · {item.balance} {item.unit} available</option>)}</select><div className="mt-3 max-h-64 space-y-2 overflow-auto">{inventory.filter(item => item.balance > 0 && item.category !== "GOLD" && item.category !== "TOOLS" && (!finishMaterialId || item.referenceId === finishMaterialId)).map(item => <label key={item.referenceId} className="grid grid-cols-[1fr_6rem] items-center gap-3 rounded border border-border p-2 text-sm"><span>{item.itemName} <small className="text-muted-foreground">({item.category}, {item.balance} {item.unit} available)</small></span><input aria-label={`Quantity of ${item.itemName}`} type="number" min="0" max={item.balance} step="0.01" className={ic} value={finishQuantities[item.referenceId] ?? ""} onChange={e => setFinishQuantities(v => ({ ...v, [item.referenceId]: e.target.value }))} /></label>)}{!inventory.some(item => item.balance > 0 && item.category !== "GOLD" && item.category !== "TOOLS") && <p className="text-sm text-muted-foreground">No packaging or optional material stock is available.</p>}</div><div className="mt-5 flex justify-end gap-2"><Button variant="secondary" className="text-sm" onClick={() => setFinishTarget(null)}>Cancel</Button><Button variant="primary" className="text-sm" onClick={() => { const materials = Object.entries(finishQuantities).filter(([, q]) => Number(q) > 0).map(([referenceId, q]) => ({ referenceId, quantity: Number(q) })); onFinish(finishTarget, materials); setFinishTarget(null) }}>Finish Sale</Button></div></div></div>}
-      {open && <Modal title={editingId ? "Edit Job Costing" : "Cost a Pending Inquiry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update Costing" : "Save Pending Costing"} isSubmitting={isSubmitting}>
+      {open && <Modal title={editingId ? "Edit job costing" : "Cost a pending inquiry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update costing" : "Save pending costing"} isSubmitting={isSubmitting}>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {!editingId && <FF label="Pending Inquiry"><select className={ic} value={form.inquiryId} onChange={e => selectInquiry(e.target.value)} required><option value="">Select an inquiry</option>{pendingInquiries.map(i => <option key={i.inquiryId} value={i.inquiryId}>{i.customerName} · {i.category} · {i.inquiryId}</option>)}</select></FF>}
           {editingId && <FF label="Invoice #"><input className={ic} value={form.invoiceId} readOnly /></FF>}
@@ -628,11 +628,11 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
           <td className={tdc}><AddStockChangeButton compact onClick={() => addMovement(product.key)} /></td>
         </tr>
         {expanded.has(product.key) && <tr className="inventory-child-header"><th colSpan={3}>Movement</th><th>In ({product.unit === "grams" ? "g" : product.unit})</th><th>Out ({product.unit === "grams" ? "g" : product.unit})</th><th>Loss ({product.unit === "grams" ? "g" : product.unit})</th><th>Balance ({product.unit === "grams" ? "g" : product.unit})</th><th>Actions</th></tr>}
-        {expanded.has(product.key) && product.movements.map(e => <TRow key={e.id} onClick={()=>edit(e)}><td className={tdc} colSpan={3}>{fmtDate(e.date)} · <span className="text-primary-text/80">{e.referenceId}</span></td><td className={tdr}>{e.quantityIn ? `+${e.quantityIn}` : "—"}</td><td className={tdr}>{e.quantityOut ? `-${e.quantityOut}` : "—"}</td><td className={tdr}>{e.quantityLoss || "—"}</td><td className={tdr+" text-primary-text font-semibold"}>{e.balance}</td><td className={tdc}><div className="flex items-center gap-2"><Button variant="secondary" size="icon" aria-label="Edit" type="button" onClick={event=>{event.stopPropagation();edit(e);}} title="Edit"><PenSquare size={13}/></Button><Button variant="danger" size="icon" aria-label="Delete" type="button" onClick={event=>{event.stopPropagation();onDelete(e.id);}} title="Delete"><Trash2 size={13}/></Button></div></td></TRow>)}
+        {expanded.has(product.key) && product.movements.map(e => <TRow key={e.id} onClick={()=>edit(e)}><td className={tdc} colSpan={3}>{fmtDate(e.date)} · <span className="text-primary-text/80">{e.referenceId}</span></td><td className={tdr}>{e.quantityIn ? `+${e.quantityIn}` : "—"}</td><td className={tdr}>{e.quantityOut ? `-${e.quantityOut}` : "—"}</td><td className={tdr}>{e.quantityLoss || "—"}</td><td className={tdr+" text-primary-text font-semibold"}>{e.balance}</td><td className={tdc}><div className="table-row-actions"><Button variant="ghost" size="icon" aria-label="Edit inventory entry" type="button" onClick={event=>{event.stopPropagation();edit(e);}} title="Edit"><PenSquare size={16}/></Button><Button variant="ghost" size="icon" className="row-action-delete" aria-label="Delete inventory entry" type="button" onClick={event=>{event.stopPropagation();onDelete(e.id);}} title="Delete"><Trash2 size={16}/></Button></div></td></TRow>)}
       </Fragment>)}{!visibleProducts.length && <EmptyRow cols={10}/>}</tbody>
   </TableWrap></section>
   {
-    open && <Modal title={editingId ? "Edit Inventory Entry" : "Add Stock Change"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update Entry" : "Save Entry"} isSubmitting={isSubmitting}>
+    open && <Modal title={editingId ? "Edit inventory entry" : "Add stock change"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update entry" : "Save entry"} isSubmitting={isSubmitting}>
       {!editingId && <FF label="Product"><select className={ic+" mb-4"} aria-label="Inventory product" value={selectedProduct} onChange={e => selectProduct(e.target.value)}><option value="">Create a new product</option>{products.map(product => <option key={product.key} value={product.key}>{product.itemName} · {product.category} · {product.unit}</option>)}</select></FF>}
       <div className="grid grid-cols-2 gap-4"><FF label="Date"><input type="date" max={todayISO()} className={ic} value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required /></FF><FF label="Reference"><input className={ic} value={form.referenceId} readOnly placeholder="Assigned when saved" /></FF>
         <FF label="Category"><select disabled={!!selectedProduct} className={ic} value={form.category} onChange={e => { const category = e.target.value; setForm(f => ({ ...f, category, goldKarat: category === "GOLD" ? f.goldKarat : "", unit: INVENTORY_UNITS[category][0] })); }}>{INVENTORY_CATEGORIES.map(c => <option key={c} value={c}>{c[0] + c.slice(1).toLowerCase()}</option>)}</select></FF>{form.category === "GOLD" && <FF label="Karat"><select disabled={!!selectedProduct} className={ic} value={form.goldKarat} onChange={e => setForm(f => ({ ...f, goldKarat: e.target.value }))} required><option value="">Select karat</option>{Array.from({ length: 15 }, (_, i) => i + 10).map(karat => <option key={karat} value={karat}>{karat}K</option>)}</select></FF>}<FF label="Unit"><select disabled={!!selectedProduct} className={ic} value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}>{units.map(u => <option key={u}>{u}</option>)}</select></FF>
@@ -739,8 +739,7 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
           <td className={tdc}><Badge status={i.status} /></td>
           <td className={tdc + " text-right"}><div className="flex items-center justify-end gap-1">
             {i.status === "Pending" && <Button variant="secondary" type="button" onClick={event => { event.stopPropagation(); onStartCosting(i.inquiryId); }} className="whitespace-nowrap text-xs">Convert to job</Button>}
-            {i.status === "Pending" && <Button variant="ghost" size="icon" aria-label="Edit inquiry" type="button" onClick={event => { event.stopPropagation(); setEditingId(i.inquiryId); setForm({ customerName: i.customerName, contactInfo: i.contactInfo, email: i.email, details: i.details, category: i.category, quotedPrice: String(i.quotedPrice), isFullyPaid: i.isFullyPaid, status: i.status }); setOpen(true); }} title="Edit"><PenSquare size={14} /></Button>}
-            {i.status === "Pending" && <Button variant="ghost" size="icon" aria-label="Delete inquiry" type="button" onClick={event => { event.stopPropagation(); onDelete(i.inquiryId); }} title="Delete"><Trash2 size={14} /></Button>}
+            {i.status === "Pending" && <div className="table-row-actions"><Button variant="ghost" size="icon" aria-label="Edit inquiry" type="button" onClick={event => { event.stopPropagation(); setEditingId(i.inquiryId); setForm({ customerName: i.customerName, contactInfo: i.contactInfo, email: i.email, details: i.details, category: i.category, quotedPrice: String(i.quotedPrice), isFullyPaid: i.isFullyPaid, status: i.status }); setOpen(true); }} title="Edit"><PenSquare size={16} /></Button><Button variant="ghost" size="icon" className="row-action-delete" aria-label="Delete inquiry" type="button" onClick={event => { event.stopPropagation(); onDelete(i.inquiryId); }} title="Delete"><Trash2 size={16} /></Button></div>}
           </div></td>
         </TRow>)}</tbody>
       </table>
@@ -766,7 +765,7 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
       </SheetContent>
     </Sheet>
       { open && (
-        <Modal title={editingId ? "Edit Inquiry" : "Add New Inquiry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update Entry" : "Save Entry"} isSubmitting={isSubmitting}>
+        <Modal title={editingId ? "Edit inquiry" : "Add new inquiry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update entry" : "Save entry"} isSubmitting={isSubmitting}>
           <div className="grid grid-cols-2 gap-4">
             <FF label="Customer Name"><input className={ic} value={form.customerName} onChange={e => setForm(f => ({ ...f, customerName: e.target.value }))} placeholder="Full name" required /></FF>
             <FF label="Contact Info"><ContactInput className={ic} value={form.contactInfo} onChange={contactInfo => setForm(f => ({ ...f, contactInfo }))} required /></FF>
@@ -952,11 +951,10 @@ function ProfitAnalysisView({ sales, jobCosts, expenses }: { sales: Sale[]; jobC
 
       <div className="grid grid-cols-12 gap-5">
         <section aria-label="Monthly revenue and cost" className={cardCls + " col-span-12 min-w-0 xl:col-span-7"}>
-          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-            <div><h2 className="text-sm font-medium">Monthly Revenue vs. Cost</h2><p className="mt-1 text-xs text-muted-foreground">{rangeLabel}</p></div>
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+            <div><h2 className="text-sm font-medium">Monthly revenue vs. cost</h2><p className="mt-1 text-xs text-muted-foreground">{rangeLabel}</p></div>
             <div className="expense-filters">
-              <label className="expense-date">From<input type="date" aria-label="From date" value={startDate} max={endDate || undefined} onChange={event => setStartDate(event.target.value)} /></label>
-              <label className="expense-date">To<input type="date" aria-label="To date" value={endDate} min={startDate || undefined} onChange={event => setEndDate(event.target.value)} /></label>
+              <DateRangePicker startDate={startDate} endDate={endDate} onChange={(start, end) => { setStartDate(start); setEndDate(end); }} label="Report date range" />
               {(startDate || endDate) && <Button variant="ghost" onClick={() => { setStartDate(""); setEndDate(""); }}>Clear filters</Button>}
               {invalidRange && <p role="alert" className="text-sm text-danger">The end date must be on or after the start date.</p>}
             </div>
@@ -1140,7 +1138,7 @@ function ApprovalQueueView({ onResolved }: { onResolved: () => void }) {
     if (completed > 1) notify(`${completed} requests approved.`);
   };
   return <div className="space-y-4">
-    <PageHeader title="Approvals" description="Staff edits and archive requests leave records unchanged until approved." action={<Button onClick={load}>Refresh</Button>} />
+    <PageHeader title="Approvals" description="Staff edits and archive requests leave records unchanged until approved." action={<Button variant="secondary" onClick={load}>Refresh</Button>} />
     {error && <p className="rounded-lg bg-danger-tint p-3 text-sm text-danger">{error}</p>}
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border">
       <div role="tablist" aria-label="Approval status" className="flex gap-1">{(["PENDING", "APPROVED", "REJECTED"] as const).map(status => <button key={status} role="tab" aria-selected={activeTab === status} onClick={() => { setActiveTab(status); setSelected(new Set()); }} className={`approval-tab ${activeTab === status ? "approval-tab-active" : ""}`}>{sentenceCase(status)} <span>{counts[status]}</span></button>)}</div>
@@ -1178,7 +1176,7 @@ function AuditLogsView() {
   const [showAuthEvents, setShowAuthEvents] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(25);
   const load = () => apiFetch(BASE_URL + "/audit-logs?limit=200").then(async response => {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error ?? "Audit logs could not be loaded.");
@@ -1237,8 +1235,7 @@ function AuditLogsView() {
       <select className={ic + " w-auto"} aria-label="Filter by role" value={roleFilter} onChange={event => { setRoleFilter(event.target.value); setPage(1); }}><option>All</option>{roles.map(role => <option key={role}>{role}</option>)}</select>
       <select className={ic + " w-auto"} aria-label="Filter by action type" value={actionFilter} onChange={event => { setActionFilter(event.target.value); setPage(1); }}><option>All</option>{actions.map(action => <option key={action}>{action}</option>)}</select>
       <select className={ic + " w-auto"} aria-label="Filter by record type" value={recordFilter} onChange={event => { setRecordFilter(event.target.value); setPage(1); }}><option>All</option>{recordTypes.map(type => <option key={type} value={type}>{recordNames[type] ?? sentenceCase(type)}</option>)}</select>
-      <label className="expense-date">From<input type="date" aria-label="Audit from date" value={startDate} max={endDate || undefined} onChange={event => { setStartDate(event.target.value); setPage(1); }} /></label>
-      <label className="expense-date">To<input type="date" aria-label="Audit to date" value={endDate} min={startDate || undefined} onChange={event => { setEndDate(event.target.value); setPage(1); }} /></label>
+      <DateRangePicker startDate={startDate} endDate={endDate} onChange={(start, end) => { setStartDate(start); setEndDate(end); setPage(1); }} label="Audit date range" />
       <label className="ml-auto inline-flex items-center gap-2 text-sm text-muted-foreground"><input type="checkbox" checked={showAuthEvents} onChange={event => { setShowAuthEvents(event.target.checked); setPage(1); }} />Show auth events</label>
     </div>
     <div className="overflow-x-auto rounded-xl border border-border"><table className="w-full min-w-[850px] text-xs font-sans"><thead className="sticky top-0 z-10"><tr>{["When", "User", "Role", "Action", "Record"].map(label => <th key={label} className={thc}>{label}</th>)}</tr></thead><tbody>
@@ -1257,7 +1254,7 @@ function AuditLogsView() {
       })}
       {!visible.length && !error && <EmptyRow cols={5} />}
     </tbody></table></div>
-    <div className="expense-pagination"><p>{filtered.length ? `${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, filtered.length)} of ${filtered.length} events` : "0 events"}</p><label>Rows per page <select aria-label="Audit rows per page" value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1); }}>{[10, 20, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}</select></label><Button variant="secondary" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Previous</Button><span>Page {currentPage} of {pages}</span><Button variant="secondary" disabled={currentPage >= pages} onClick={() => setPage(currentPage + 1)}>Next</Button></div>
+    <div className="expense-pagination"><p>{filtered.length ? `${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, filtered.length)} of ${filtered.length} events` : "0 events"}</p><label>Rows per page <select aria-label="Audit rows per page" value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1); }}>{[10, 25, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}</select></label><Button variant="secondary" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Previous</Button><span>Page {currentPage} of {pages}</span><Button variant="secondary" disabled={currentPage >= pages} onClick={() => setPage(currentPage + 1)}>Next</Button></div>
   </div>;
 }
 
@@ -1488,7 +1485,7 @@ function AppContent() {
         <main className="dashboard-main" key={tab}>
           <div className="dashboard-content">
 
-          {tab === "PROFIT_ANALYSIS" && <PageHeader title="Reports" description="Understand revenue, costs, and profitability over time." action={<Button onClick={() => setReloadKey(k => k + 1)}>Refresh report</Button>} />}
+          {tab === "PROFIT_ANALYSIS" && <PageHeader title="Reports" description="Understand revenue, costs, and profitability over time." action={<Button variant="secondary" onClick={() => setReloadKey(k => k + 1)}>Refresh report</Button>} />}
         {tab === "DASHBOARD" && <Dashboard sales={sales} jobCosts={jobCosts} expenses={expenses} loading={dataLoading} error={dataError} isAdmin={isAdmin} goldRate={goldRate} goldStock={goldStock} goldLoading={goldLoading} goldStale={goldInfo?.stale ?? true} loadApprovals={loadDashboardApprovals} onJobs={() => setTab("JOB_COSTING")} onApprovals={() => setTab("APPROVALS")} onRetry={() => setReloadKey(k => k + 1)} onView={(title, record) => setViewRecord({ title, record })} />}
         {tab === "DAILY_SALES" && <DailySalesView sales={sales.filter(isCompletedSale)} onUpdate={s => setSales(p => p.map(item => item.invoiceId === s.invoiceId ? s : s.clientId && item.clientId === s.clientId ? { ...item, email: s.email } : item))} onDelete={id => deleteFromApi("sales", id, () => { const removed = sales.find(item => item.invoiceId === id); const linkedJob = jobCosts.find(item => item.jobCostId === removed?.jobCostId); setSales(p => p.filter(item => item.invoiceId !== id)); if (removed?.jobCostId) setJobCosts(p => p.filter(item => item.jobCostId !== removed.jobCostId)); if (linkedJob?.inquiryId) setInquiries(p => p.map(i => i.inquiryId === linkedJob.inquiryId ? { ...i, status: "Pending" } : i)); })} />}
         {tab === "JOB_COSTING" && <JobCostingView jobCosts={jobCosts} inquiries={inquiries} inventory={inventory} selectedInquiryId={selectedInquiryForCosting} clearSelectedInquiry={() => setSelectedInquiryForCosting(null)} onAdd={j => { setJobCosts(p => [j, ...p]); if (j.sale) setSales(p => [j.sale!, ...p.filter(s => s.invoiceId !== j.sale!.invoiceId)]); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Approved" } : i)); }} onUpdate={j => { setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? j : item)); if (j.sale) setSales(p => p.map(s => s.invoiceId === j.sale!.invoiceId ? j.sale! : s)); }} onDelete={j => deleteFromApi("job-cost", j.jobCostId, () => { setJobCosts(p => p.filter(item => item.jobCostId !== j.jobCostId)); setSales(p => p.filter(s => s.invoiceId !== j.invoiceId)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Pending" } : i)); })} onApprove={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/approve`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Costing could not be approved."); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Costing could not be approved."); } }} onReady={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/ready`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Item could not be marked ready."); const reason = data.notification?.sent ? (data.notification.reason ?? "Customer notification sent.") : (data.notification?.reason ?? "Customer notification could not be sent."); alert(`Marked ready for pickup. ${reason}`); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Item could not be marked ready."); } }} onFinish={async (j, materials) => { try { const response = await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(j.invoiceId)}/finish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ invoiceId: j.invoiceId, clientName: j.clientName, materials }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Sale could not be finished."); const sale = normalizeSale(data); setSales(p => [sale, ...p.filter(item => item.invoiceId !== sale.invoiceId)]); setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? { ...item, status: "Finished", sale } : item)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Finished" } : i)); alert("Sale completed. Confirm receipt sending from Daily Sales when ready."); } catch (error) { alert(error instanceof Error ? error.message : "Sale could not be finished."); } }} />}
