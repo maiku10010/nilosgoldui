@@ -7,11 +7,14 @@ import { Button } from "./components/ui/button";
 import { Badge, sentenceCase } from "./components/ui/badge";
 import { PageHeader } from "./components/PageHeader";
 import { DateRangePicker } from "./components/DateRangePicker";
+import { DatePicker } from "./components/DatePicker";
+import { CurrencyInput } from "./components/CurrencyInput";
+import { salePaymentSummary } from "../moneyInput";
 import { roundTwo } from "../rounding";
 import { Children, Fragment, isValidElement, useState, useEffect, useMemo, useRef, createContext, useContext } from "react";
 import goldsmithLogo from "../assets/nilosgold_logo.jpg";
 import {
-  Search, Plus, X, Crown, TrendingDown, Download,
+  Search, Plus, X, Crown, TrendingDown, Download, Info,
   Package, BarChart3, DollarSign, Gem, Sun, Moon, PenSquare, Trash2,
   ArrowUpDown, ChevronUp, ChevronDown, LayoutDashboard, BriefcaseBusiness,
   Receipt, ShieldCheck, ScrollText, PanelLeftClose, PanelLeftOpen, UserRound, LogOut, MessageSquare,
@@ -169,9 +172,9 @@ type Tab = (typeof TABS)[number];
 
 // ── shared ui primitives ────────────────────────────────────────────────────
 
-function Modal({ title, onClose, onSubmit, children, submitLabel = "Save entry", isSubmitting = false, submitDisabled = false, className = "", formClassName = "" }: {
+function Modal({ title, onClose, onSubmit, children, submitLabel = "Save entry", isSubmitting = false, submitDisabled = false, className = "", formClassName = "", footerNote }: {
   title: string; onClose: () => void; onSubmit: (e: React.FormEvent) => void; children: React.ReactNode;
-  submitLabel?: string; isSubmitting?: boolean; submitDisabled?: boolean; className?: string; formClassName?: string;
+  submitLabel?: string; isSubmitting?: boolean; submitDisabled?: boolean; className?: string; formClassName?: string; footerNote?: React.ReactNode;
 }) {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const handleFieldChange = (event: React.FormEvent<HTMLFormElement>) => {
@@ -223,6 +226,7 @@ function Modal({ title, onClose, onSubmit, children, submitLabel = "Save entry",
               {isSubmitting ? "Saving..." : submitLabel}
             </Button>
           </div>
+          {footerNote && <div className="modal-footer-note">{footerNote}</div>}
         </form>
       </div>
     </div>
@@ -376,7 +380,7 @@ const ChartTip = ({ active, payload, label }: any) => {
 
 // ── dashboard view ─────────────────────────────────────────────────────────
 // ── daily sales ─────────────────────────────────────────────────────────────
-function DailySalesView({ sales, jobCosts, onUpdate, onDelete, onJobs }: { sales: Sale[]; jobCosts: JobCost[]; onUpdate: (s: Sale) => void; onDelete: (id: string) => void; onJobs: () => void }) {
+function DailySalesView({ sales, jobCosts, onUpdate, onDelete, onJobs, isAdmin }: { sales: Sale[]; jobCosts: JobCost[]; onUpdate: (s: Sale) => void; onDelete: (id: string) => void; onJobs: () => void; isAdmin: boolean }) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortSpec>({ key: "date", direction: -1 });
   const [startDate, setStartDate] = useState("");
@@ -391,6 +395,22 @@ function DailySalesView({ sales, jobCosts, onUpdate, onDelete, onJobs }: { sales
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const [form, setForm] = useState({ invoiceId: "", date: "", clientName: "", contactNum: "", email: "", serviceType: "Custom" as ServiceType, price: "", payment: "" });
+  const paymentSummary = salePaymentSummary(form.price, form.payment);
+  const [lastUpdate, setLastUpdate] = useState<{ actorRole: string; createdAt: string } | null>(null);
+  const [lastUpdateLoading, setLastUpdateLoading] = useState(false);
+  const [lastUpdateError, setLastUpdateError] = useState(false);
+  useEffect(() => {
+    if (!open || !editingId) return;
+    let active = true;
+    setLastUpdate(null); setLastUpdateLoading(true); setLastUpdateError(false);
+    apiFetch(`${BASE_URL}/sales/${encodeURIComponent(editingId)}/last-update`).then(async response => {
+      if (!response.ok) throw new Error("Last update unavailable.");
+      const data = await response.json();
+      if (active) setLastUpdate(data.lastUpdate ?? null);
+    }).catch(() => { if (active) setLastUpdateError(true); })
+      .finally(() => { if (active) setLastUpdateLoading(false); });
+    return () => { active = false; };
+  }, [open, editingId]);
 
   const invalidRange = !!startDate && !!endDate && startDate > endDate;
   const filtered = sortRecords(useMemo(() => sales.filter(s =>
@@ -483,19 +503,28 @@ function DailySalesView({ sales, jobCosts, onUpdate, onDelete, onJobs }: { sales
         </div></>}
       </SheetContent></Sheet>
       {open && (
-        <Modal title="Edit finished sale" onClose={closeModal} onSubmit={submit} submitLabel="Update sale" isSubmitting={isSubmitting}>
-          <div className="grid grid-cols-2 gap-4">
-            <FF label="Invoice #"><input className={ic} value={form.invoiceId} readOnly /></FF>
-            <FF label="Date"><input type="date" max={todayISO()} className={ic} value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required /></FF>
-            <FF label="Client Name"><input className={ic} value={form.clientName} readOnly /></FF>
-            <FF label="Contact #"><ContactInput className={ic} value={form.contactNum} onChange={contactNum => setForm(f => ({ ...f, contactNum }))} required /></FF>
-            <FF label="Service Type">
-              <select className={ic} value={form.serviceType} onChange={e => setForm(f => ({ ...f, serviceType: e.target.value as ServiceType }))}>
+        <Modal title="Edit finished sale" onClose={closeModal} onSubmit={submit} submitLabel={isAdmin ? "Update sale" : "Request update"} isSubmitting={isSubmitting} submitDisabled={!paymentSummary.valid || !form.date}
+          footerNote={lastUpdateLoading ? "Loading last update…" : lastUpdateError ? "Last update unavailable" : lastUpdate ? <time dateTime={lastUpdate.createdAt} title={new Date(lastUpdate.createdAt).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "medium" })}>Last updated by {lastUpdate.actorRole.toLowerCase()} · {relativeTime(lastUpdate.createdAt)}</time> : "No update recorded"}>
+          {!isAdmin && <p className="sale-approval-banner" role="note"><Info size={16} aria-hidden="true" />Changes will be sent to an admin for approval</p>}
+          <fieldset className="sale-edit-group" disabled={isSubmitting}><legend>Client</legend>
+            <div className="grid grid-cols-2 gap-4">
+              <FF label="Invoice #"><input aria-label="Invoice number" className={ic} value={form.invoiceId} readOnly /></FF>
+              <FF label="Client name"><input aria-label="Client name" className={ic} value={form.clientName} readOnly /></FF>
+              <div className="col-span-2"><FF label="Contact #"><ContactInput aria-label="Contact number" className={ic} value={form.contactNum} onChange={contactNum => setForm(f => ({ ...f, contactNum }))} required /></FF></div>
+            </div>
+          </fieldset>
+          <fieldset className="sale-edit-group" disabled={isSubmitting}><legend>Payment</legend>
+            <div className="grid grid-cols-2 gap-4">
+              <FF label="Service type"><select aria-label="Service type" className={ic} value={form.serviceType} onChange={e => setForm(f => ({ ...f, serviceType: e.target.value as ServiceType }))}>
                 {(["Custom", "Repair", "Resize", "Cleaning"] as ServiceType[]).map(t => <option key={t}>{t}</option>)}
-              </select>
-            </FF>
-            <FF label="Total Price (₱)"><input type="number" min="0.01" step="0.01" className={ic} value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} placeholder="0.00" required /></FF>
-            <FF label="Payment (₱)"><input type="number" min="0" max={form.price || undefined} step="0.01" className={ic} value={form.payment} onChange={e => setForm(f => ({ ...f, payment: e.target.value }))} placeholder="0.00" /></FF>
+              </select></FF>
+              <FF label="Date"><DatePicker value={form.date} max={todayISO()} onChange={date => setForm(f => ({ ...f, date }))} label="Sale date" disabled={isSubmitting} /></FF>
+              <FF label="Total price"><CurrencyInput aria-label="Total price" className={ic} value={form.price} onChange={price => setForm(f => ({ ...f, price }))} placeholder="0.00" required />{form.price && Number(form.price) <= 0 && <p className="field-error" role="alert">Total price must be greater than zero.</p>}</FF>
+              <FF label="Payment"><CurrencyInput aria-label="Payment" className={ic} value={form.payment} onChange={payment => setForm(f => ({ ...f, payment }))} placeholder="0.00" aria-invalid={!!paymentSummary.paymentError} aria-describedby={paymentSummary.paymentError ? "sale-payment-error" : undefined} />{paymentSummary.paymentError && <p id="sale-payment-error" className="field-error" role="alert">{paymentSummary.paymentError}</p>}</FF>
+            </div>
+          </fieldset>
+          <div role="status" aria-live="polite" className={`sale-balance-summary ${paymentSummary.valid ? paymentSummary.balance > 0 ? "sale-balance-unpaid" : "sale-balance-paid" : ""}`}>
+            {paymentSummary.valid ? <>Balance <strong>{php(paymentSummary.balance)}</strong><span aria-hidden="true"> · </span>{paymentSummary.balance > 0 ? "Unpaid" : "Paid in full"}</> : "Enter a valid total price and payment to see the balance."}
           </div>
         </Modal>
       )}
@@ -1551,7 +1580,7 @@ function AppContent() {
           <div className="dashboard-content">
 
         {tab === "DASHBOARD" && <Dashboard sales={sales} jobCosts={jobCosts} expenses={expenses} loading={dataLoading} error={dataError} isAdmin={isAdmin} goldRate={goldRate} goldStock={goldStock} goldLoading={goldLoading} goldStale={goldInfo?.stale ?? true} loadApprovals={loadDashboardApprovals} onJobs={() => setTab("JOB_COSTING")} onApprovals={() => setTab("APPROVALS")} onRetry={() => setReloadKey(k => k + 1)} onView={(title, record) => setViewRecord({ title, record })} />}
-        {tab === "DAILY_SALES" && <DailySalesView sales={sales.filter(isCompletedSale)} jobCosts={jobCosts} onJobs={() => setTab("JOB_COSTING")} onUpdate={s => setSales(p => p.map(item => item.invoiceId === s.invoiceId ? s : s.clientId && item.clientId === s.clientId ? { ...item, email: s.email } : item))} onDelete={id => deleteFromApi("sales", id, () => { const removed = sales.find(item => item.invoiceId === id); const linkedJob = jobCosts.find(item => item.jobCostId === removed?.jobCostId); setSales(p => p.filter(item => item.invoiceId !== id)); if (removed?.jobCostId) setJobCosts(p => p.filter(item => item.jobCostId !== removed.jobCostId)); if (linkedJob?.inquiryId) setInquiries(p => p.map(i => i.inquiryId === linkedJob.inquiryId ? { ...i, status: "Pending" } : i)); })} />}
+        {tab === "DAILY_SALES" && <DailySalesView isAdmin={isAdmin} sales={sales.filter(isCompletedSale)} jobCosts={jobCosts} onJobs={() => setTab("JOB_COSTING")} onUpdate={s => setSales(p => p.map(item => item.invoiceId === s.invoiceId ? s : s.clientId && item.clientId === s.clientId ? { ...item, email: s.email } : item))} onDelete={id => deleteFromApi("sales", id, () => { const removed = sales.find(item => item.invoiceId === id); const linkedJob = jobCosts.find(item => item.jobCostId === removed?.jobCostId); setSales(p => p.filter(item => item.invoiceId !== id)); if (removed?.jobCostId) setJobCosts(p => p.filter(item => item.jobCostId !== removed.jobCostId)); if (linkedJob?.inquiryId) setInquiries(p => p.map(i => i.inquiryId === linkedJob.inquiryId ? { ...i, status: "Pending" } : i)); })} />}
         {tab === "JOB_COSTING" && <JobCostingView jobCosts={jobCosts} inquiries={inquiries} inventory={inventory} selectedInquiryId={selectedInquiryForCosting} clearSelectedInquiry={() => setSelectedInquiryForCosting(null)} onAdd={j => { setJobCosts(p => [j, ...p]); if (j.sale) setSales(p => [j.sale!, ...p.filter(s => s.invoiceId !== j.sale!.invoiceId)]); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Approved" } : i)); }} onUpdate={j => { setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? j : item)); if (j.sale) setSales(p => p.map(s => s.invoiceId === j.sale!.invoiceId ? j.sale! : s)); }} onDelete={j => deleteFromApi("job-cost", j.jobCostId, () => { setJobCosts(p => p.filter(item => item.jobCostId !== j.jobCostId)); setSales(p => p.filter(s => s.invoiceId !== j.invoiceId)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Pending" } : i)); })} onApprove={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/approve`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Costing could not be approved."); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Costing could not be approved."); } }} onReady={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/ready`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Item could not be marked ready."); const reason = data.notification?.sent ? (data.notification.reason ?? "Customer notification sent.") : (data.notification?.reason ?? "Customer notification could not be sent."); alert(`Marked ready for pickup. ${reason}`); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Item could not be marked ready."); } }} onFinish={async (j, materials) => { const response = await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(j.invoiceId)}/finish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ invoiceId: j.invoiceId, clientName: j.clientName, materials }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Sale could not be finished."); const sale = normalizeSale(data); setSales(p => [sale, ...p.filter(item => item.invoiceId !== sale.invoiceId)]); setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? { ...item, status: "Finished", sale } : item)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Finished" } : i)); setReloadKey(k => k + 1); notify("Sale completed."); }} />}
         {tab === "INVENTORY" && <GoldInventoryView inventory={inventory} goldRate={goldRate} onAdd={e => { setInventory(p => [...p, e]); setReloadKey(k => k + 1); }} onUpdate={e => { setInventory(p => p.map(item => item.id === e.id ? e : item)); setReloadKey(k => k + 1); }} onDelete={id => deleteFromApi("inventory", id, () => { setInventory(p => p.filter(item => item.id !== id)); setReloadKey(k => k + 1); })} />}
         {tab === "INQUIRIES" && <InquiriesView inquiries={inquiries} onAdd={i => setInquiries(p => [i, ...p])} onUpdate={i => setInquiries(p => p.map(item => item.inquiryId === i.inquiryId ? i : item))} onDelete={id => deleteFromApi("inquiries", id, () => setInquiries(p => p.filter(item => item.inquiryId !== id)))} onStartCosting={id => { setSelectedInquiryForCosting(id); setTab("JOB_COSTING"); }} />}
