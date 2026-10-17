@@ -170,6 +170,34 @@ function Modal({ title, onClose, onSubmit, children, submitLabel = "Save entry",
   submitLabel?: string; isSubmitting?: boolean; submitDisabled?: boolean; className?: string; formClassName?: string;
 }) {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const handleFieldChange = (event: React.FormEvent<HTMLFormElement>) => {
+    const control = event.target as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+    if (typeof control.checkValidity !== "function" || !control.willValidate) return;
+    const field = control.closest<HTMLElement>(".form-field");
+    if (!field?.dataset.field) return;
+    setFieldErrors(current => {
+      const next = { ...current };
+      if (control.validity.valid) delete next[field.dataset.field!];
+      else next[field.dataset.field!] = control.validationMessage;
+      return next;
+    });
+  };
+  const handleFormSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    const controls = Array.from(event.currentTarget.elements) as Array<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement>;
+    const invalid = controls.filter(control => control.willValidate && !control.validity.valid);
+    if (invalid.length) {
+      event.preventDefault();
+      const next: Record<string, string> = {};
+      for (const control of invalid) {
+        const field = control.closest<HTMLElement>(".form-field");
+        if (field?.dataset.field) next[field.dataset.field] = control.validationMessage;
+      }
+      setFieldErrors(next);
+      invalid[0].focus();
+      return;
+    }
+    onSubmit(event);
+  };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay backdrop-blur-sm">
       <div className={`bg-card border border-border rounded-xl w-full max-w-lg mx-4 shadow-2xl shadow-ink/30 max-h-[90vh] flex flex-col ${className}`}>
@@ -179,13 +207,7 @@ function Modal({ title, onClose, onSubmit, children, submitLabel = "Save entry",
             <X size={16} />
           </Button>
         </div>
-        <form onSubmit={onSubmit} onInvalidCapture={event => {
-          const field = (event.target as HTMLElement).closest<HTMLElement>(".form-field");
-          if (field?.dataset.field) setFieldErrors(current => ({ ...current, [field.dataset.field!]: (event.target as HTMLInputElement).validationMessage }));
-        }} onChangeCapture={event => {
-          const field = (event.target as HTMLElement).closest<HTMLElement>(".form-field");
-          if (field?.dataset.field) setFieldErrors(current => { const next = { ...current }; delete next[field.dataset.field!]; return next; });
-        }} className={`p-6 space-y-4 overflow-y-auto ${formClassName}`}>
+        <form noValidate onSubmit={handleFormSubmit} onChangeCapture={handleFieldChange} className={`p-6 space-y-4 overflow-y-auto ${formClassName}`}>
           <FieldErrorsContext.Provider value={fieldErrors}>{children}</FieldErrorsContext.Provider>
           <div className="flex gap-3 pt-2">
             <Button variant="secondary" type="button" onClick={onClose}

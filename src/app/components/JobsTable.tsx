@@ -14,6 +14,7 @@ const columns: { label: string; key: JobSortKey; numeric?: boolean }[] = [
 const filters: { label: string; value: JobFilter }[] = [
   { label: "All", value: "all" }, { label: "In progress", value: "inProgress" }, { label: "Finished", value: "finished" },
 ];
+const typeFilters = ["All types", "Repair", "Custom", "Cleaning", "Resize"];
 function Cost({ value }: { value: number }) {
   return value === 0 ? <span className="text-muted-foreground">—</span> : <>{currency(value)}</>;
 }
@@ -24,17 +25,19 @@ export function JobsTable<T extends JobTableRecord>({ jobs, onEdit, onDelete, on
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<JobFilter>("all");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [missingCostsOnly, setMissingCostsOnly] = useState(false);
   const [sort, setSort] = useState<{ key: JobSortKey; direction: 1 | -1 }>({ key: "jobId", direction: -1 });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const result = useMemo(() => selectJobs(jobs, { query, filter, sortKey: sort.key, direction: sort.direction, page, pageSize }), [jobs, query, filter, sort, page, pageSize]);
+  const result = useMemo(() => selectJobs(jobs, { query, filter, type: typeFilter, missingCostsOnly, sortKey: sort.key, direction: sort.direction, page, pageSize }), [jobs, query, filter, typeFilter, missingCostsOnly, sort, page, pageSize]);
   const toggleSort = (key: JobSortKey) => {
     setSort(current => ({ key, direction: current.key === key && current.direction === 1 ? -1 : 1 }));
     setPage(1);
   };
   return <div className="space-y-4">
-    <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="jobs-filter-row flex flex-wrap items-center gap-3">
       <div role="group" aria-label="Filter jobs by status" className="flex gap-2">
         {filters.map(item => <Button key={item.value} variant={filter === item.value ? "secondary" : "ghost"}
           aria-pressed={filter === item.value} onClick={() => { setFilter(item.value); setPage(1); }}
@@ -42,13 +45,17 @@ export function JobsTable<T extends JobTableRecord>({ jobs, onEdit, onDelete, on
           {item.label}<span className="rounded bg-muted px-1.5 text-xs tabular-nums">{result.counts[item.value]}</span>
         </Button>)}
       </div>
-      <div className="relative">
+      <div role="group" aria-label="Filter jobs by type" className="jobs-type-filters flex gap-1">
+        {typeFilters.map((label, index) => { const value = index === 0 ? "all" : label; return <Button key={value} variant={typeFilter === value ? "secondary" : "ghost"} aria-pressed={typeFilter === value} onClick={() => { setTypeFilter(value); setPage(1); }} className={typeFilter === value ? "bg-primary/10 border-primary/20" : ""}>{label}</Button>; })}
+      </div>
+      <div className="relative jobs-search">
         <Search size={16} aria-hidden="true" className="pointer-events-none absolute left-3 top-2.5 text-muted-foreground" />
         <input aria-label="Search jobs" placeholder="Search Job ID, client, or type…" value={query}
           onChange={event => { setQuery(event.target.value); setPage(1); }}
           className="h-9 w-72 rounded-md border border-border bg-card pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
       </div>
     </div>
+    {result.missingCostsCount > 0 && <div><Button variant="ghost" aria-pressed={missingCostsOnly} onClick={() => { setMissingCostsOnly(value => !value); setPage(1); }} className={`jobs-missing-toggle ${missingCostsOnly ? "jobs-missing-toggle-active" : ""}`}><span className="jobs-missing-dot" aria-hidden="true" />{result.missingCostsCount} jobs missing costs</Button></div>}
     <div className="jobs-table-scroll rounded-xl border border-border" role="region" aria-label="Jobs table" tabIndex={0}>
       <table className="jobs-table">
         <caption className="sr-only">Job costing. Expand a job to inspect its cost breakdown.</caption>
@@ -78,7 +85,7 @@ export function JobsTable<T extends JobTableRecord>({ jobs, onEdit, onDelete, on
               <td className="text-right">{currency(job.sellingPrice)}</td>
               <td className="text-right"><Cost value={job.totalCost} /></td>
               <td className={`text-right ${job.profit < 0 ? "text-danger" : "text-success"}`}>{currency(job.profit)}</td>
-              <td className="text-right">{job.totalCost === 0 ? <span className="text-muted-foreground">No cost recorded</span> : <Badge variant={job.marginPct >= 50 ? "success" : job.marginPct >= 25 ? "warning" : "danger"}>{job.marginPct.toFixed(2)}%</Badge>}</td>
+              <td className="text-right">{job.totalCost === 0 ? <span className="text-muted-foreground">—</span> : <Badge variant={job.marginPct >= 50 ? "success" : job.marginPct >= 25 ? "warning" : "danger"}>{job.marginPct.toFixed(2)}%</Badge>}</td>
               <td><Badge status={job.status} className="min-w-24 whitespace-nowrap" /></td>
               <td><div className="flex items-center gap-1">
                 <div className="table-row-actions"><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" aria-label={`Edit job ${id}`} onClick={() => onEdit(job)}><PenSquare size={16} /></Button></TooltipTrigger><TooltipContent>Edit job</TooltipContent></Tooltip>
@@ -89,12 +96,13 @@ export function JobsTable<T extends JobTableRecord>({ jobs, onEdit, onDelete, on
               </div></td>
             </tr>
             {isExpanded && <tr id={detailsId} className="jobs-breakdown-row"><td colSpan={9}>
-              <section aria-label={`Cost breakdown for ${id}`} className="max-w-4xl rounded-lg border border-border bg-muted/40 p-4">
-                <h2 className="mb-3 text-sm font-medium">Cost breakdown</h2>
-                <dl className="grid grid-cols-5 gap-5">
-                  <div><dt className="section-label">Gold g</dt><dd className="mt-1">{job.goldUsed === 0 ? <span className="text-muted-foreground">—</span> : `${job.goldUsed.toFixed(2)} g`}</dd></div>
-                  {[["Gold/g", job.goldCostPerG], ["Gold cost", job.goldCost], ["Stone", job.stoneCost], ["Labor", job.laborCost]].map(([label, value]) => <div key={label}><dt className="section-label">{label}</dt><dd className="mt-1"><Cost value={Number(value)} /></dd></div>)}
-                </dl>
+              <section aria-label={`Cost breakdown for ${id}`} className="jobs-breakdown-card">
+                <h2>Cost breakdown</h2>
+                <div className="jobs-breakdown-grid">
+                  <section><h3>Materials</h3><dl><div><dt>Gold used</dt><dd>{job.goldUsed === 0 ? <span className="text-muted-foreground">—</span> : `${job.goldUsed.toFixed(2)} g`}</dd></div><div><dt>Gold scrap</dt><dd>{!job.goldScrap ? <span className="text-muted-foreground">—</span> : `${job.goldScrap.toFixed(2)} g`}</dd></div><div><dt>Gold price / g</dt><dd><Cost value={job.goldCostPerG} /></dd></div><div><dt>Gold cost</dt><dd><Cost value={job.goldCost} /></dd></div></dl></section>
+                  <section><h3>Labor &amp; stone</h3><dl><div><dt>Labor</dt><dd><Cost value={job.laborCost} /></dd></div><div><dt>Stone</dt><dd><Cost value={job.stoneCost} /></dd></div><div><dt>Labor &amp; stone total</dt><dd><Cost value={job.laborCost + job.stoneCost} /></dd></div></dl></section>
+                  <section><h3>Pricing</h3><dl><div><dt>Selling price</dt><dd>{currency(job.sellingPrice)}</dd></div><div><dt>Total cost</dt><dd><Cost value={job.totalCost} /></dd></div><div><dt>Profit</dt><dd className={job.profit < 0 ? "text-danger" : "text-success"}>{currency(job.profit)}</dd></div><div><dt>Margin</dt><dd>{job.totalCost === 0 ? <span className="text-muted-foreground">—</span> : <Badge variant={job.marginPct >= 50 ? "success" : job.marginPct >= 25 ? "warning" : "danger"}>{job.marginPct.toFixed(2)}%</Badge>}</dd></div></dl></section>
+                </div>
                 {job.status === "Approved" && <Button variant="secondary" className="mt-4" onClick={() => onFinish(job)}>Finish sale</Button>}
               </section>
             </td></tr>}

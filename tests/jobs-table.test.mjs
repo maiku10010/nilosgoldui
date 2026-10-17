@@ -47,3 +47,17 @@ test('unrecorded margins stay last in both directions instead of masquerading as
   assert.deepEqual(selectJobs(jobs, { ...options, sortKey: 'marginPct' }).rows.map(jobId), ['JOB-2', 'JOB-3', 'JOB-1']);
   assert.deepEqual(selectJobs(jobs, { ...options, sortKey: 'marginPct', direction: -1 }).rows.map(jobId), ['JOB-3', 'JOB-2', 'JOB-1']);
 });
+
+test('type and missing-cost filters compose while reporting the missing-cost count', () => {
+  const jobs = [
+    job(1, { totalCost: 0, sale: { serviceType: 'Repair' } }),
+    job(2, { sale: { serviceType: 'Custom' } }),
+    job(3, { totalCost: 0, sale: { serviceType: 'Resize' } }),
+  ];
+  const result = selectJobs(jobs, { ...options, type: 'Resize', missingCostsOnly: true });
+  assert.equal(result.missingCostsCount, 1);
+  assert.deepEqual(result.rows.map(jobId), ['JOB-3']);
+  const byType = selectJobs(jobs, { ...options, type: 'custom' });
+  assert.equal(byType.total, 1);
+  assert.equal(byType.missingCostsCount, 0);
+});
