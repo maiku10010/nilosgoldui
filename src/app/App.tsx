@@ -21,7 +21,8 @@ import {
 } from "recharts";
 import { isValidEmail, isValidPHContact, normalizeContactInput } from "../validation";
 import { ContactInput } from "./components/ContactInput";
-import { summarizeInventory, groupInventory, sortInventoryStock } from "../inventorySummary";
+import { summarizeInventory, groupInventory, sortInventoryStock, sumGemstonePieces, estimateGoldValue } from "../inventorySummary";
+import { inquiryBucket, inquiryMatchesTab } from "../inquiryStatus";
 import { approvalChanges, approvalFieldLabel, approvalValue } from "../approvalDiff";
 import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "./components/ui/sheet";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuItem } from "./components/ui/dropdown-menu";
@@ -649,8 +650,8 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
   const visibleProducts = groupInventory(sortRecords(inventory, sort), filtered);
   const totalGold = products.filter(product => product.category === "GOLD").reduce((sum, product) => sum + Math.max(0, product.balance), 0);
   const totalSilver = products.filter(product => product.category === "SILVER").reduce((sum, product) => sum + Math.max(0, product.balance), 0);
-  const gemstones = products.filter(product => product.category === "GEMSTONES" && product.unit === "pieces").reduce((sum, product) => sum + Math.max(0, product.balance), 0);
-  const estimate = goldRate === null ? null : totalGold * goldRate;
+  const gemstones = sumGemstonePieces(products);
+  const estimate = goldRate === null ? null : estimateGoldValue(products, goldRate);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selectedProduct, setSelectedProduct] = useState("");
   const selectProduct = (key: string) => {
@@ -686,7 +687,7 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
   };
   return <div className="space-y-4">
     <PageHeader title="Inventory" description="Track stock, materials, and movement across your workshop." action={<AddStockChangeButton onClick={() => { setForm(blank()); setSelectedProduct(""); setEditingId(null); setMovementType("in"); setQuantity(""); setOpen(true); }} />} />
-    <div className="inventory-stats-grid">{[["Total gold on hand", `${totalGold.toLocaleString("en-PH", { maximumFractionDigits: 3 })} g`, "Gold across all karats"], ["Estimated value", estimate === null ? "Rate unavailable" : php(estimate), "Based on current 24K gold price × gold grams"], ["Silver", `${totalSilver.toLocaleString("en-PH", { maximumFractionDigits: 3 })} g`, "Silver on hand"], ["Gemstones", `${gemstones.toLocaleString("en-PH", { maximumFractionDigits: 3 })} pcs`, "Counted by piece"]].map(([label, value, note]) => <section key={label} className="inventory-stat"><p className="section-label">{label}</p><p className="inventory-stat-value">{value}</p><p className="inventory-stat-note">{note}</p></section>)}</div>
+    <div className="inventory-stats-grid">{[["Total gold on hand", `${totalGold.toLocaleString("en-PH", { maximumFractionDigits: 3 })} g`, "Gold across all karats"], ["Estimated value", estimate === null ? "Rate unavailable" : php(estimate), "24K gold quote adjusted by karat; unspecified karat excluded"], ["Silver", `${totalSilver.toLocaleString("en-PH", { maximumFractionDigits: 3 })} g`, "Silver on hand"], ["Gemstones", `${gemstones.toLocaleString("en-PH", { maximumFractionDigits: 3 })} pcs`, "All piece-unit gemstone stock"]].map(([label, value, note]) => <section key={label} className="inventory-stat"><p className="section-label">{label}</p><p className="inventory-stat-value">{value}</p><p className="inventory-stat-note">{note}</p></section>)}</div>
     <div className="inventory-filter-row"><SearchBar value={q} onChange={setQ} placeholder="Search material or item…" /><select className={ic + " inventory-category-select"} value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} aria-label="Filter inventory category"><option value="ALL">All categories</option>{INVENTORY_CATEGORIES.map(c => <option key={c} value={c}>{c[0] + c.slice(1).toLowerCase()}</option>)}</select><label className="inline-flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap"><input type="checkbox" checked={showLowStock} onChange={e => setShowLowStock(e.target.checked)} /> Show low stock only</label><span className="text-xs text-muted-foreground whitespace-nowrap">{filtered.length.toLocaleString()} movement records</span></div>
     <section aria-labelledby="stock-levels-heading"><div className="mb-3"><h2 id="stock-levels-heading" className="text-base font-semibold">Stock levels</h2><p className="mt-1 text-xs text-muted-foreground">Current material balance by category and karat.</p></div><div className="inventory-stock-grid">{stockCards.map(product => { const level = reorderLevel(product); const low = product.balance < level; const percent = Math.min(100, Math.max(0, product.balance / (level * 1.5) * 100)); const fillColor = product.balance <= level * .5 ? "inventory-progress-fill-danger" : low ? "inventory-progress-fill-warning" : "inventory-progress-fill-success"; return <article key={product.key} className="inventory-stock-card"><div className="flex items-start justify-between gap-2"><p className="font-medium">{product.itemName}</p>{low && <Badge variant="warning">Low stock</Badge>}</div><p className="mt-5 inventory-stock-value">{product.balance.toLocaleString("en-PH", { maximumFractionDigits: 3 })} <span>{product.unit === "grams" ? "g" : product.unit}</span></p><div className="inventory-progress"><span className={fillColor} style={{ width: `${percent}%` }} /><i aria-hidden="true" /></div><div className="mt-1 flex justify-between text-xs text-muted-foreground"><span>Reorder at {level} {product.unit === "grams" ? "g" : product.unit}</span><AddStockChangeButton compact onClick={() => addMovement(product.key)} /></div></article>})}{!stockCards.length && <p className="text-sm text-muted-foreground">No metal or gemstone stock matches these filters.</p>}</div></section>
   <section aria-labelledby="ledger-heading"><div className="mb-3"><h2 id="ledger-heading" className="text-base font-semibold">Inventory movement ledger</h2><p className="mt-1 text-xs text-muted-foreground">Movement records grouped by material.</p></div><TableWrap><thead><tr>{[["Date", "date"], ["Reference", "referenceId"], ["Item", "itemName"], ["In (units)", "quantityIn"], ["Out (units)", "quantityOut"], ["Loss (units)", "quantityLoss"], ["Balance (units)", "balance"]].map(([h, k]) => <SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}<th className={thc}>Actions</th></tr></thead>
@@ -728,13 +729,8 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const [form, setForm] = useState({ customerName: "", contactInfo: "", email: "", details: "", category: "", quotedPrice: "", isFullyPaid: false, status: "Pending" as InqStatus });
-  const statusForTab = (inquiry: Inquiry, tab: string) => {
-    if (tab === "All") return true;
-    if (tab === "Pending") return inquiry.status === "Pending" && inquiry.quotedPrice <= 0;
-    if (tab === "Quoted") return inquiry.status === "Pending" && inquiry.quotedPrice > 0;
-    if (tab === "Converted to job") return ["Approved", "Finished"].includes(inquiry.status);
-    return ["Rejected", "Cancelled"].includes(inquiry.status);
-  };
+  const inquiryStatus = (inquiry: Inquiry) => inquiryBucket(inquiry.status, inquiry.quotedPrice);
+  const statusForTab = (inquiry: Inquiry, tab: string) => inquiryMatchesTab(inquiry.status, inquiry.quotedPrice, tab);
   const tabs = ["All", "Pending", "Quoted", "Converted to job", "Closed"];
   const counts = Object.fromEntries(tabs.map(tab => [tab, inquiries.filter(inquiry => statusForTab(inquiry, tab)).length]));
   const filtered = sortRecords(useMemo(() => inquiries.filter(i =>
@@ -809,7 +805,7 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
           <td className={tdc + " truncate"} title={i.category}>{i.category}</td>
           <td className={tdr}>{php(i.quotedPrice)}</td>
           <td className={tdc}><Badge variant={i.isFullyPaid ? "success" : "neutral"} status={i.isFullyPaid ? "Fully Paid" : "Unpaid"} /></td>
-          <td className={tdc}><Badge status={i.status} /></td>
+          <td className={tdc}><Badge status={inquiryStatus(i)} /></td>
           <td className={tdc + " text-right"}><div className="flex items-center justify-end gap-1">
             {i.status === "Pending" && <Button variant="secondary" type="button" onClick={event => { event.stopPropagation(); onStartCosting(i.inquiryId); }} className="whitespace-nowrap text-xs">Convert to job</Button>}
             {i.status === "Pending" && <div className="table-row-actions"><Button variant="ghost" size="icon" aria-label="Edit inquiry" type="button" onClick={event => { event.stopPropagation(); setEditingId(i.inquiryId); setForm({ customerName: i.customerName, contactInfo: i.contactInfo, email: i.email, details: i.details, category: i.category, quotedPrice: String(i.quotedPrice), isFullyPaid: i.isFullyPaid, status: i.status }); setOpen(true); }} title="Edit"><PenSquare size={16} /></Button><Button variant="ghost" size="icon" className="row-action-delete" aria-label="Delete inquiry" type="button" onClick={event => { event.stopPropagation(); onDelete(i.inquiryId); }} title="Delete"><Trash2 size={16} /></Button></div>}
@@ -825,7 +821,7 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
             <SheetDescription>{selectedInquiry.category} · {fmtDate(selectedInquiry.date)}</SheetDescription>
           </SheetHeader>
           <div className="space-y-5 px-1">
-            <div className="flex flex-wrap gap-2"><Badge variant={selectedInquiry.isFullyPaid ? "success" : "neutral"} status={selectedInquiry.isFullyPaid ? "Fully Paid" : "Unpaid"} /><Badge status={selectedInquiry.status} /></div>
+            <div className="flex flex-wrap gap-2"><Badge variant={selectedInquiry.isFullyPaid ? "success" : "neutral"} status={selectedInquiry.isFullyPaid ? "Fully Paid" : "Unpaid"} /><Badge status={inquiryStatus(selectedInquiry)} /></div>
             <dl className="space-y-4">
               <div><dt className="text-xs text-muted-foreground">Contact</dt><dd className="mt-1 text-sm font-medium">{selectedInquiry.contactInfo || "—"}</dd></div>
               <div><dt className="text-xs text-muted-foreground">Email</dt><dd className="mt-1 break-all text-sm font-medium">{selectedInquiry.email || "—"}</dd></div>

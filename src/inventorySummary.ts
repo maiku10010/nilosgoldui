@@ -2,6 +2,21 @@ type Movement = { category: string; unit: string; itemName: string; goldKarat?: 
 const TROY_OUNCE_GRAMS = 31.1034768;
 const stockKey = (row: Movement) => row.category === "GOLD" ? `GOLD:${row.goldKarat ?? "unknown"}:grams` : JSON.stringify([row.category, row.unit, row.itemName.trim().toLowerCase()]);
 
+export const isPieceUnit = (unit: string) => /^(?:pc|pcs|piece|pieces)$/i.test(unit.trim());
+
+export function sumGemstonePieces(products: Array<Movement & { balance: number }>) {
+  return products
+    .filter(product => product.category === "GEMSTONES" && isPieceUnit(product.unit))
+    .reduce((total, product) => total + Math.max(0, product.balance), 0);
+}
+
+export function estimateGoldValue(products: Array<Movement & { balance: number }>, ratePerGram24k: number) {
+  return products.reduce((total, product) => {
+    if (product.category !== "GOLD" || !Number.isFinite(product.goldKarat) || !product.goldKarat) return total;
+    return total + Math.max(0, product.balance) * ratePerGram24k * product.goldKarat / 24;
+  }, 0);
+}
+
 export function summarizeInventory(all: Movement[], visible: Movement[]) {
   const products = new Map<string, { unit: string; quantity: number }>();
   for (const row of all) {

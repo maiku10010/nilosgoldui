@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeContactInput, isValidPHContact } from '../src/validation.ts';
-import { summarizeInventory } from '../src/inventorySummary.ts';
+import { estimateGoldValue, groupInventory, isPieceUnit, summarizeInventory, sumGemstonePieces } from '../src/inventorySummary.ts';
 const row = (data = {}) => ({ category: 'BOXES', unit: 'pieces', itemName: 'Ring box', quantityIn: 0, quantityOut: 0, quantityLoss: 0, ...data });
 test('contact typing/pasting removes non-digits, preserves zero, and caps at 11', () => {
   assert.equal(normalizeContactInput('abc09-123 456789xyz999'), '09123456789');
@@ -75,4 +75,22 @@ test('stock cards sort preferred gold karats before unspecified gold, silver and
     row({ category: 'GOLD', goldKarat: 24, itemName: 'Gold · 24K' }),
   ];
   assert.deepEqual(sortInventoryStock(products).map(product => product.itemName), ['Gold · 24K', 'Gold · 18K', 'Gold (karat unspecified)', 'Silver', 'Ruby']);
+});
+test('gemstone piece aliases count toward the piece tile', () => {
+  const rows = [
+    row({ category: 'GEMSTONES', unit: 'pcs', itemName: 'Moissanite', quantityIn: 2 }),
+    row({ category: 'GEMSTONES', unit: 'pieces', itemName: 'Moissanite', quantityIn: 2 }),
+    row({ category: 'GEMSTONES', unit: 'carats', itemName: 'Ruby', quantityIn: 1.5 }),
+  ];
+  assert.equal(sumGemstonePieces(groupInventory(rows)), 4);
+  assert.equal(isPieceUnit(' PCS '), true);
+});
+test('gold estimate adjusts the 24K rate for known karats and excludes unknown karat', () => {
+  const products = [
+    row({ category: 'GOLD', goldKarat: 24, unit: 'grams', balance: 2 }),
+    row({ category: 'GOLD', goldKarat: 18, unit: 'grams', balance: 10 }),
+    row({ category: 'GOLD', goldKarat: 14, unit: 'grams', balance: 8 }),
+    row({ category: 'GOLD', goldKarat: null, unit: 'grams', balance: 100 }),
+  ];
+  assert.ok(Math.abs(estimateGoldValue(products, 1000) - (2000 + 7500 + 8000 * 14 / 24)) < 0.000001);
 });

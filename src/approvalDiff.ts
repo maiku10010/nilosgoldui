@@ -37,13 +37,22 @@ export const approvalChanges = (
 ): ApprovalChange[] => {
   const currentValues = isPlainObject(current) ? current : {};
   const requestedValues = isPlainObject(requested) ? requested : {};
+  const currentClient = isPlainObject(currentValues.client) ? currentValues.client : {};
+  const salesClient = isPlainObject(currentValues.sales) && isPlainObject(currentValues.sales.client) ? currentValues.sales.client : {};
+  const currentInquiry = isPlainObject(currentValues.inquiry) ? currentValues.inquiry : {};
+  const relatedValues: Record<string, unknown> = {
+    clientName: currentClient.clientName ?? salesClient.clientName ?? currentInquiry.customerName,
+    contactNum: currentClient.contactNum ?? salesClient.contactNum,
+    contactInfo: currentClient.contactNum ?? salesClient.contactNum,
+    email: currentClient.email ?? salesClient.email,
+  };
 
   return Object.entries(requestedValues)
-    .filter(([key, editedValue]) => !valuesMatch(currentValues[key], editedValue))
+    .filter(([key, editedValue]) => !valuesMatch(currentValues[key] ?? relatedValues[key], editedValue))
     .map(([key, editedValue]) => ({
       key,
       label: approvalFieldLabel(key),
-      initialValue: currentValues[key],
+      initialValue: currentValues[key] ?? relatedValues[key],
       editedValue,
     }));
 };

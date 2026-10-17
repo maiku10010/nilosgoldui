@@ -25,6 +25,17 @@ test("treats empty and not-set values as unchanged", () => {
   assert.deepEqual(approvalChanges({ email: null }, { email: "Not set", contact: null }), []);
 });
 
+test("reads sale client before-values from the included client snapshot", () => {
+  const changes = approvalChanges(
+    { invoiceId: "SALE-1", client: { clientName: "Mia Santos", contactNum: "09123456789", email: "mia@example.com" } },
+    { clientName: "Mia Cruz", contactNum: "09987654321", email: "mia@example.com" },
+  );
+  assert.deepEqual(changes.map(({ key, initialValue }) => [key, initialValue]), [
+    ["clientName", "Mia Santos"],
+    ["contactNum", "09123456789"],
+  ]);
+});
+
 test("formats approval values for people instead of dumping JSON", () => {
   assert.equal(approvalValue("Test"), "Test");
   assert.equal(approvalValue(false), "No");
