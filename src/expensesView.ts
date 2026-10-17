@@ -1,9 +1,20 @@
 export type ExpenseRecord = { expenseId: string; expDate: string; category: string; description: string; amount: number };
 export const expenseCategories = ['Payroll', 'Metal purchase', 'Rent & utilities', 'Supplies', 'Tax & permits', 'Other'];
+export const expenseCategoryColors: Record<string, string> = {
+  Payroll: 'var(--category-payroll)',
+  'Metal purchase': 'var(--warning)',
+  'Rent & utilities': 'var(--info)',
+  Supplies: 'var(--success)',
+  'Tax & permits': 'var(--primary-text)',
+  Other: 'var(--muted-foreground)',
+};
 export function expenseCategory(value: string) {
   const key = value.trim().toLowerCase().replaceAll('_', ' ');
   const aliases: Record<string, string> = { 'staff salary': 'Payroll', salary: 'Payroll', payroll: 'Payroll', rent: 'Rent & utilities', utilities: 'Rent & utilities', 'rent & utilities': 'Rent & utilities', 'metal purchase': 'Metal purchase', 'gold purchase': 'Metal purchase', 'silver purchase': 'Metal purchase', supplies: 'Supplies', 'tax & permits': 'Tax & permits', other: 'Other' };
   return aliases[key] ?? (key.charAt(0).toUpperCase() + key.slice(1));
+}
+export function expenseCategoryColor(value: string) {
+  return expenseCategoryColors[expenseCategory(value)] ?? 'var(--muted-foreground)';
 }
 export function selectExpenses(rows: ExpenseRecord[], filters: { query: string; categories: string[]; start: string; end: string }) {
   const query = filters.query.trim().toLowerCase();

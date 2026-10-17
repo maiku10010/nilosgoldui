@@ -1,6 +1,7 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useMemo, useState, type CSSProperties } from 'react';
 import { ChevronDown, Download, PenSquare, Plus, Search, Trash2 } from 'lucide-react';
-import { expenseCategories, expenseCategory, expenseTotals, expensesCsv, selectExpenses, type ExpenseRecord } from '../../expensesView';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { expenseCategories, expenseCategory, expenseCategoryColor, expenseTotals, expensesCsv, selectExpenses, type ExpenseRecord } from '../../expensesView';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { PageHeader } from './PageHeader';
@@ -18,13 +19,25 @@ export function ExpensesLedger({ expenses, onAdd, onEdit, onDelete }: { expenses
   const [size, setSize] = useState(25);
   const invalidRange = !!start && !!end && start > end;
   const filtered = useMemo(() => selectExpenses(expenses, { query, categories, start, end }), [expenses, query, categories, start, end]);
-  const monthly = useMemo(() => expenseTotals(filtered), [filtered]);
   const daily = useMemo(() => expenseTotals(filtered, 10), [filtered]);
+  const chartExpenses = useMemo(() => selectExpenses(expenses, { query, categories, start: '', end: '' }), [expenses, query, categories]);
+  const monthly = useMemo(() => expenseTotals(chartExpenses), [chartExpenses]);
+  const monthKeys = useMemo(() => Array.from({ length: 12 }, (_, index) => {
+    const date = new Date(new Date().getFullYear(), new Date().getMonth() - 11 + index, 1);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  }), []);
+  const monthlyChart = monthKeys.map(key => ({ key, month: new Date(`${key}-01T00:00:00`).toLocaleDateString('en-PH', { month: 'short' }), amount: monthly.get(key) ?? 0 }));
+  const hasMonthlyChartData = monthlyChart.some(month => month.amount > 0);
   const total = filtered.reduce((sum, row) => sum + row.amount, 0);
   const pages = Math.max(1, Math.ceil(filtered.length / size));
   const current = Math.min(page, pages);
   const visible = filtered.slice((current - 1) * size, current * size);
   const options = [...new Set([...expenseCategories, ...expenses.map(row => expenseCategory(row.category))])];
+  const selectMonth = (key: string) => {
+    const [year, month] = key.split('-').map(Number);
+    const lastDay = new Date(year, month, 0).getDate();
+    setStart(`${key}-01`); setEnd(`${key}-${String(lastDay).padStart(2, '0')}`); setPage(1);
+  };
   const download = () => {
     const url = URL.createObjectURL(new Blob([expensesCsv(filtered)], { type: 'text/csv;charset=utf-8;' }));
     const link = document.createElement('a'); link.href = url; link.download = `expenses-${start || 'all'}-${end || 'dates'}.csv`; link.click();
@@ -40,12 +53,12 @@ export function ExpensesLedger({ expenses, onAdd, onEdit, onDelete }: { expenses
       <Button variant="secondary" className="ml-auto" onClick={download} disabled={!filtered.length || invalidRange}><Download size={16} />Export CSV</Button>
     </div>
     {invalidRange && <p role="alert" className="text-sm text-danger">The end date must be on or after the start date.</p>}
-    <section className="expense-months" aria-label="Monthly totals for current filters"><span className="section-label">Monthly totals · current filters</span>{monthly.size ? [...monthly].map(([month, amount]) => <div key={month}><span>{displayDate(month, true)}</span><strong>{money(amount)}</strong></div>) : <p className="text-sm text-muted-foreground">No expenses in this selection.</p>}</section>
-    <div className="expense-table-scroll" tabIndex={0} role="region" aria-label="Expenses grouped by date">
-      <table className="expense-table"><colgroup><col style={{ width: '18%' }} /><col style={{ width: '20%' }} /><col /><col style={{ width: '18%' }} /><col style={{ width: 100 }} /></colgroup><thead><tr><th scope="col">Expense ID</th><th scope="col">Category</th><th scope="col">Description</th><th scope="col" className="expense-number">Amount</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead><tbody>
-        {visible.map((row, index) => { const category = expenseCategory(row.category); const tone = expenseCategories.indexOf(category); return <Fragment key={row.expenseId}>
-          {(index === 0 || visible[index - 1].expDate !== row.expDate) && <tr className="expense-day"><th colSpan={5} scope="rowgroup"><div><span>{displayDate(row.expDate)}{index === 0 && current > 1 && filtered[(current - 1) * size - 1]?.expDate === row.expDate ? ' · continued' : ''}</span><span>Daily subtotal <strong>{money(daily.get(row.expDate) ?? 0)}</strong></span></div></th></tr>}
-          <tr className="expense-row"><td className="text-muted-foreground">{row.expenseId}</td><td><Badge className={`expense-category expense-category-${tone < 0 ? 5 : tone}`}>{category}</Badge></td><td>{row.description || '—'}</td><td className="expense-number font-medium">{money(row.amount)}</td><td><div className="expense-actions"><Button variant="ghost" size="icon" title="Edit expense" aria-label={`Edit expense ${row.expenseId}`} onClick={() => onEdit(row)}><PenSquare size={16} /></Button><Button variant="ghost" size="icon" title="Delete expense" aria-label={`Delete expense ${row.expenseId}`} onClick={() => onDelete(row.expenseId)}><Trash2 size={16} /></Button></div></td></tr>
+    <section className="expense-month-chart" aria-label="Monthly expense totals for the last 12 months"><div className="expense-month-chart-heading"><span className="section-label">Monthly totals · select a month</span><span className="text-xs text-muted-foreground">Last 12 months · categories and search applied</span></div>{!hasMonthlyChartData ? <p className="text-sm text-muted-foreground">No expenses in the last 12 months for these categories and search.</p> : <div className="expense-month-chart-plot"><ResponsiveContainer width="100%" height="100%"><BarChart data={monthlyChart} margin={{ top: 6, right: 8, left: 8, bottom: 0 }}><CartesianGrid vertical={false} stroke="var(--border)" /><XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }} /><YAxis hide /><Tooltip formatter={(value: number) => money(value)} labelFormatter={(_, payload) => payload?.[0]?.payload?.key ? displayDate(payload[0].payload.key, true) : ''} contentStyle={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)', borderRadius: 8, fontSize: 12 }} /><Bar dataKey="amount" name="Expenses" fill="var(--navy)" radius={[4, 4, 0, 0]} maxBarSize={32} cursor="pointer" onClick={(entry: any) => entry?.payload?.key && selectMonth(entry.payload.key)} /></BarChart></ResponsiveContainer></div>}</section>
+    <div className="expense-table-container" role="region" aria-label="Expenses grouped by date">
+      <table className="expense-table"><colgroup><col style={{ width: '12%' }} /><col style={{ width: '17%' }} /><col /><col style={{ width: '16%' }} /><col style={{ width: 80 }} /></colgroup><thead><tr><th scope="col">Expense ID</th><th scope="col">Category</th><th scope="col">Description</th><th scope="col" className="expense-number">Amount</th><th scope="col" className="expense-actions-heading"><span className="sr-only">Actions</span></th></tr></thead><tbody>
+        {visible.map((row, index) => { const category = expenseCategory(row.category); return <Fragment key={row.expenseId}>
+          {(index === 0 || visible[index - 1].expDate !== row.expDate) && <tr className="expense-day"><th colSpan={3} scope="rowgroup"><span>{displayDate(row.expDate)}{index === 0 && current > 1 && filtered[(current - 1) * size - 1]?.expDate === row.expDate ? ' · continued' : ''}</span></th><th scope="rowgroup" className="expense-number"><span>Daily subtotal</span><strong>{money(daily.get(row.expDate) ?? 0)}</strong></th><th scope="rowgroup" aria-hidden="true" /> </tr>}
+          <tr className="expense-row"><td className="expense-id">{row.expenseId}</td><td><Badge className="expense-category" style={{ '--expense-color': expenseCategoryColor(category) } as CSSProperties}>{category}</Badge></td><td className="expense-description">{row.description || '—'}</td><td className="expense-number font-medium">{money(row.amount)}</td><td className="expense-actions-cell"><div className="expense-actions"><Button variant="ghost" size="icon" title="Edit expense" aria-label={`Edit expense ${row.expenseId}`} onClick={() => onEdit(row)}><PenSquare size={16} /></Button><Button variant="ghost" size="icon" title="Delete expense" aria-label={`Delete expense ${row.expenseId}`} onClick={() => onDelete(row.expenseId)}><Trash2 size={16} /></Button></div></td></tr>
         </Fragment>; })}
         {!visible.length && <tr><td colSpan={5} className="expense-empty">{expenses.length ? 'No expenses match your filters.' : 'No expenses yet. Add your first expense to get started.'}</td></tr>}
       </tbody></table>

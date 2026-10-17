@@ -1,6 +1,6 @@
 import { JobsTable } from "./components/JobsTable";
 import { ExpensesLedger } from "./components/ExpensesLedger";
-import { expenseCategories } from "../expensesView";
+import { expenseCategories, expenseCategory, expenseCategoryColor } from "../expensesView";
 import { Dashboard } from "./components/Dashboard";
 import { Button } from "./components/ui/button";
 import { Badge, sentenceCase } from "./components/ui/badge";
@@ -918,7 +918,6 @@ function ExpensesView({ expenses, onAdd, onUpdate, onDelete }: { expenses: Expen
 
 // ── profit analysis ─────────────────────────────────────────────────────────
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const PIE_COLORS = ["var(--primary)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--foreground)"];
 
 function RecordDetails({ title, record, onClose }: { title: string; record: Record<string, unknown> | null; onClose: () => void }) {
   if (!record) return null;
@@ -978,17 +977,18 @@ function ProfitAnalysisView({ sales, jobCosts, expenses }: { sales: Sale[]; jobC
   const rangeLabel = startDate || endDate ? `${startDate ? fmtDate(startDate) : "Beginning"} – ${endDate ? fmtDate(endDate) : "Present"}` : "All dates";
 
   const rankedCategories = Object.entries(selectedExpenses.reduce((totals, expense) => {
-    totals[expense.category] = (totals[expense.category] ?? 0) + expense.amount;
+    const category = expenseCategory(expense.category);
+    totals[category] = (totals[category] ?? 0) + expense.amount;
     return totals;
   }, {} as Record<string, number>))
     .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
-  const topCategories = rankedCategories.slice(0, 5).map((category, index) => ({ ...category, color: PIE_COLORS[index] }));
+  const topCategories = rankedCategories.slice(0, 5).map(category => ({ ...category, color: expenseCategoryColor(category.name) }));
   const remainingCategories = rankedCategories.slice(5);
   const otherTotal = remainingCategories.reduce((sum, category) => sum + category.value, 0);
   const expenseDonut = [
     ...topCategories,
-    ...(remainingCategories.length ? [{ name: "Other", value: otherTotal, color: "var(--chart-5)" }] : []),
+    ...(remainingCategories.length ? [{ name: "Other", value: otherTotal, color: "var(--muted-foreground)" }] : []),
   ];
   const expenseShare = (value: number) => totalExp > 0 ? value / totalExp * 100 : 0;
 

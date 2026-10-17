@@ -317,18 +317,23 @@ small { font-size: 12px; }
 .date-range-presets { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
 .date-range-presets button { height: 32px; padding-inline: 10px; font-size: 12px; }
 .date-range-popover .rdp-months { gap: 16px; }
-.expense-months { display: flex; align-items: center; gap: 24px; overflow-x: auto; padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
-.expense-months > * { flex-shrink: 0; }
-.expense-months > div { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted-foreground); border-left: 1px solid var(--border); padding-left: 24px; }
-.expense-months strong { color: var(--foreground); font-size: 16px; font-weight: 600; white-space: nowrap; }
-.expense-table-scroll { max-height: 620px; overflow: auto; scrollbar-gutter: stable; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+.expense-month-chart { padding: 14px 16px 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+.expense-month-chart-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.expense-month-chart-plot { height: 112px; margin-top: 8px; }
+.expense-month-chart-plot .recharts-bar-rectangle { cursor: pointer; }
+.expense-table-container { overflow: visible; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
 .expense-table { width: 100%; min-width: 760px; border-collapse: separate; border-spacing: 0; font-size: 14px; }
 .expense-table thead th { position: sticky; top: 0; z-index: 3; background: var(--card); height: 44px; font-size: 12px; font-weight: 500; color: var(--muted-foreground); text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--border); }
-.expense-table td { padding: 10px 16px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.expense-table td { padding: 10px 16px; border-bottom: 1px solid var(--border); }
 .expense-table .expense-number { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--foreground); }
 .expense-day th { position: sticky; top: 44px; z-index: 2; padding: 10px 16px; background: var(--muted); border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 500; text-align: left; }
-.expense-day th > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.expense-day strong { margin-left: 12px; font-size: 14px; font-weight: 600; white-space: nowrap; }
+.expense-day th.expense-number { text-align: right; }
+.expense-day th.expense-number > span { margin-right: 12px; color: var(--muted-foreground); }
+.expense-day strong { font-size: 14px; font-weight: 600; white-space: nowrap; }
+.expense-table .expense-id { color: var(--muted-foreground); font-size: 12px; white-space: nowrap; }
+.expense-table .expense-description { min-width: 280px; }
+.expense-table .expense-actions-heading, .expense-table .expense-actions-cell { width: 80px; min-width: 80px; padding-inline: 8px; }
+.expense-actions { width: 64px; justify-content: flex-end; }
 .expense-row:hover { background: var(--background); }
 .expense-actions { display: flex; gap: 4px; opacity: 0; }
 .expense-actions button { width: 32px; height: 32px; color: var(--muted-foreground); }

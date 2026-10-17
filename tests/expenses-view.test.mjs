@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { expenseCategory, selectExpenses, expenseTotals, expensesCsv } from '../src/expensesView.ts';
+import { expenseCategory, expenseCategoryColor, selectExpenses, expenseTotals, expensesCsv } from '../src/expensesView.ts';
 const rows = [
   { expenseId: '1', expDate: '2026-10-10', category: 'Staff Salary', description: 'Workshop payroll', amount: 1000.50 },
   { expenseId: '2', expDate: '2026-10-10', category: 'Rent', description: 'Studio', amount: 2000 },
@@ -17,6 +17,11 @@ test('expense filters combine inclusive dates, multiple categories, and search w
 test('monthly and daily totals include all filtered records, not a page', () => {
   assert.deepEqual([...expenseTotals(rows)], [['2026-10', 3000.5], ['2026-09', 500]]);
   assert.equal(expenseTotals(rows, 10).get('2026-10-10'), 3000.5);
+});
+test('expense category colors are shared across aliases and unknown categories stay neutral', () => {
+  assert.equal(expenseCategoryColor('Staff Salary'), expenseCategoryColor('Payroll'));
+  assert.equal(expenseCategoryColor('Rent'), expenseCategoryColor('Rent & utilities'));
+  assert.equal(expenseCategoryColor('Unlisted fee'), 'var(--muted-foreground)');
 });
 test('CSV preserves decimals, quotes and newlines and neutralizes spreadsheet formulas', () => {
   const csv = expensesCsv([{ ...rows[0], description: '=SUM(1,2)\n"quoted"' }]);
