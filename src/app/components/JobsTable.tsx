@@ -14,7 +14,7 @@ const columns: { label: string; key: JobSortKey; numeric?: boolean }[] = [
 const filters: { label: string; value: JobFilter }[] = [
   { label: "All", value: "all" }, { label: "In progress", value: "inProgress" }, { label: "Finished", value: "finished" },
 ];
-const typeFilters = ["All types", "Repair", "Custom", "Cleaning", "Resize"];
+const typeFilters = ["Repair", "Custom", "Cleaning", "Resize"];
 function Cost({ value }: { value: number }) {
   return value === 0 ? <span className="text-muted-foreground">—</span> : <>{currency(value)}</>;
 }
@@ -37,22 +37,27 @@ export function JobsTable<T extends JobTableRecord>({ jobs, onEdit, onDelete, on
     setPage(1);
   };
   return <div className="space-y-4">
-    <div className="jobs-filter-row flex flex-wrap items-center gap-3">
-      <div role="group" aria-label="Filter jobs by status" className="flex gap-2">
-        {filters.map(item => <Button key={item.value} variant={filter === item.value ? "secondary" : "ghost"}
+    <div className="jobs-filter-row">
+      <div role="group" aria-label="Filter jobs by status" className="jobs-status-tabs">
+        {filters.map(item => <button key={item.value} type="button"
           aria-pressed={filter === item.value} onClick={() => { setFilter(item.value); setPage(1); }}
-          className={filter === item.value ? "bg-primary/10 border-primary/20" : ""}>
-          {item.label}<span className="rounded bg-muted px-1.5 text-xs tabular-nums">{result.counts[item.value]}</span>
-        </Button>)}
+          className={`approval-tab jobs-status-tab ${filter === item.value ? "approval-tab-active" : ""}`}>
+          {item.label}<span className="tabular-nums">{result.counts[item.value]}</span>
+        </button>)}
       </div>
-      <div role="group" aria-label="Filter jobs by type" className="jobs-type-filters flex gap-1">
-        {typeFilters.map((label, index) => { const value = index === 0 ? "all" : label; return <Button key={value} variant={typeFilter === value ? "secondary" : "ghost"} aria-pressed={typeFilter === value} onClick={() => { setTypeFilter(value); setPage(1); }} className={typeFilter === value ? "bg-primary/10 border-primary/20" : ""}>{label}</Button>; })}
-      </div>
-      <div className="relative jobs-search">
-        <Search size={16} aria-hidden="true" className="pointer-events-none absolute left-3 top-2.5 text-muted-foreground" />
-        <input aria-label="Search jobs" placeholder="Search Job ID, client, or type…" value={query}
-          onChange={event => { setQuery(event.target.value); setPage(1); }}
-          className="h-9 w-72 rounded-md border border-border bg-card pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+      <div className="jobs-filter-controls">
+        <label className="jobs-type-select"><span>Type:</span>
+          <select aria-label="Filter jobs by type" value={typeFilter} onChange={event => { setTypeFilter(event.target.value); setPage(1); }}>
+            <option value="all">All</option>
+            {typeFilters.map(type => <option key={type} value={type}>{type}</option>)}
+          </select>
+        </label>
+        <div className="relative jobs-search">
+          <Search size={16} aria-hidden="true" className="pointer-events-none absolute left-3 top-2.5 text-muted-foreground" />
+          <input aria-label="Search jobs" placeholder="Search Job ID, client, or type…" value={query}
+            onChange={event => { setQuery(event.target.value); setPage(1); }}
+            className="h-9 w-72 rounded-md border border-border bg-card pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+        </div>
       </div>
     </div>
     {result.missingCostsCount > 0 && <div><Button variant="ghost" aria-pressed={missingCostsOnly} onClick={() => { setMissingCostsOnly(value => !value); setPage(1); }} className={`jobs-missing-toggle ${missingCostsOnly ? "jobs-missing-toggle-active" : ""}`}><span className="jobs-missing-dot" aria-hidden="true" />{result.missingCostsCount} jobs missing costs</Button></div>}
