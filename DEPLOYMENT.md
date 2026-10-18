@@ -26,3 +26,12 @@ international +63 mobile numbers are normalized to local 09 format.
 Gold metadata shows the provider and quote timestamp. Backup quotes disclose
 daily FX conversion, and stale quotes are labeled. When no valid quote is
 available, automatic pricing is disabled and job costing accepts a manual rate.
+
+## Users and account passwords
+
+Deploy the backend user-management migration/API before this frontend. Admins
+have a Users navigation item for account creation, role changes, password resets,
+and deactivation/reactivation. Temporary passwords exist only in the open copy
+dialog state; closing the dialog clears them. Every account has Change password
+in the user menu. Temporary-password sessions display Set your password before
+navigation or business-data requests are enabled.

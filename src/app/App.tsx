@@ -1,3 +1,4 @@
+import { UsersPage, PasswordPage } from "./components/UserManagement";
 import { changeCostingService, optionalCostValue, applyInquiryToCosting } from "../costingForm";
 import { SERVICE_RULES, stripDisallowedFields, getInquiryServiceType, type ServiceType } from "../lib/serviceRules";
 import { JobsTable } from "./components/JobsTable";
@@ -174,7 +175,7 @@ interface Expense {
 
 const TABS = [
   "DASHBOARD", "DAILY_SALES", "JOB_COSTING", "INVENTORY",
-  "INQUIRIES", "EXPENSES", "PROFIT_ANALYSIS", "APPROVALS", "AUDIT_LOGS",
+  "INQUIRIES", "EXPENSES", "PROFIT_ANALYSIS", "APPROVALS", "AUDIT_LOGS", "USERS", "CHANGE_PASSWORD",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -1436,7 +1437,7 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    if (!user?.empId) {
+    if (!user?.empId || user.mustChangePassword) {
       setSales([]); setJobCosts([]); setInventory([]); setInquiries([]); setExpenses([]);
       return;
     }
@@ -1462,10 +1463,10 @@ function AppContent() {
         else setDataError("Dashboard data could not be loaded.");
       }).finally(() => { if (active) setDataLoading(false); });
     return () => { active = false; };
-  }, [user?.empId, reloadKey]);
+  }, [user?.empId, user?.mustChangePassword, reloadKey]);
 
   useEffect(() => {
-    if (!user?.empId) { setGoldRate(null); setGoldInfo(null); return; }
+    if (!user?.empId || user.mustChangePassword) { setGoldRate(null); setGoldInfo(null); return; }
     let active = true;
     const loadGoldRate = async () => {
       try {
@@ -1482,10 +1483,10 @@ function AppContent() {
     void loadGoldRate();
     const timer = window.setInterval(loadGoldRate, 5 * 60 * 1000);
     return () => { active = false; window.clearInterval(timer); };
-  }, [user?.empId]);
+  }, [user?.empId, user?.mustChangePassword]);
 
   useEffect(() => {
-    if (user && !isAdmin && ["PROFIT_ANALYSIS", "APPROVALS", "AUDIT_LOGS"].includes(tab)) setTab("DASHBOARD");
+    if (user && !isAdmin && ["PROFIT_ANALYSIS", "APPROVALS", "AUDIT_LOGS", "USERS"].includes(tab)) setTab("DASHBOARD");
   }, [user, isAdmin, tab]);
 
   const deleteFromApi = async (resource: string, id: string, remove: () => void) => {
@@ -1518,6 +1519,7 @@ function AppContent() {
 
   if (!authReady) return <div className="min-h-screen bg-background flex items-center justify-center text-sm text-muted-foreground">Restoring your secure session…</div>;
   if (!user) return <LoginScreen onLogin={foundUser => { setUser(foundUser); setAuthReady(true); }} />;
+  if (user.mustChangePassword) return <div className="min-h-screen bg-background p-6 flex items-center justify-center"><PasswordPage base={BASE_URL} forced onChanged={setUser} onCancel={() => { void signOut(); }} /></div>;
 
   const inTimeline = (date: string) => {
     const [year, month] = date.slice(0, 10).split("-").map(Number);
@@ -1545,13 +1547,13 @@ function AppContent() {
   const TAB_LABELS: Record<Tab, string> = {
     DASHBOARD: "Dashboard", DAILY_SALES: "Sales", JOB_COSTING: "Jobs",
     INVENTORY: "Inventory", INQUIRIES: "Inquiries", EXPENSES: "Expenses",
-    PROFIT_ANALYSIS: "Reports", APPROVALS: "Approvals", AUDIT_LOGS: "Audit Logs",
+    PROFIT_ANALYSIS: "Reports", APPROVALS: "Approvals", AUDIT_LOGS: "Audit Logs", USERS: "Users", CHANGE_PASSWORD: "Change password",
   };
 
   const NAV_ICONS = {
     DASHBOARD: LayoutDashboard, DAILY_SALES: DollarSign, JOB_COSTING: BriefcaseBusiness,
     EXPENSES: Receipt, PROFIT_ANALYSIS: BarChart3, INVENTORY: Package,
-    INQUIRIES: MessageSquare, APPROVALS: ShieldCheck, AUDIT_LOGS: ScrollText,
+    INQUIRIES: MessageSquare, APPROVALS: ShieldCheck, AUDIT_LOGS: ScrollText, USERS: UserRound, CHANGE_PASSWORD: ShieldCheck,
   };
   const renderNavItem = (destination: Tab) => {
     const Icon = NAV_ICONS[destination];
@@ -1580,6 +1582,7 @@ function AppContent() {
               <DropdownMenuLabel className="break-words">{user?.empName || user?.userName || "Account"}<span className="mt-1 block"><Badge status={user?.empRole ?? "Account"} /></span></DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => setDark(d => !d)}>{dark ? <Sun size={16} /> : <Moon size={16} />}{dark ? "Light appearance" : "Dark appearance"}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setTab("CHANGE_PASSWORD")}><ShieldCheck size={16} />Change password</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => { void signOut(); }}><LogOut size={16} />Sign out</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1608,6 +1611,7 @@ function AppContent() {
               {!sidebarCollapsed && <p className="section-label px-3 pb-2">Admin</p>}
               {renderNavItem("APPROVALS")}
               {renderNavItem("AUDIT_LOGS")}
+              {renderNavItem("USERS")}
             </div>}
           </nav>
         </aside>
@@ -1624,6 +1628,8 @@ function AppContent() {
         {tab === "PROFIT_ANALYSIS" && <ProfitAnalysisView sales={sales.filter(isCompletedSale)} jobCosts={jobCosts} expenses={expenses} onRefresh={() => setReloadKey(k => k + 1)} />}
         {tab === "APPROVALS" && isAdmin && <ApprovalQueueView onResolved={() => setReloadKey(k => k + 1)} />}
         {tab === "AUDIT_LOGS" && isAdmin && <AuditLogsView />}
+        {tab === "USERS" && isAdmin && <UsersPage base={BASE_URL} actorId={user.empId} />}
+        {tab === "CHANGE_PASSWORD" && <PasswordPage base={BASE_URL} onChanged={next => { setUser(next); setTab("DASHBOARD"); notify("Password changed."); }} onCancel={() => setTab("DASHBOARD")} />}
           </div>
         </main>
       </div>
