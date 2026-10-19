@@ -35,3 +35,7 @@ and deactivation/reactivation. Temporary passwords exist only in the open copy
 dialog state; closing the dialog clears them. Every account has Change password
 in the user menu. Temporary-password sessions display Set your password before
 navigation or business-data requests are enabled.
+
+Inventory unit prices may be blank when unknown. The API must have the
+`jewelry_inventory_unknown_prices` migration and nullable-price handling deployed
+before this UI. Unknown prices remain NULL and do not create purchase expenses.
