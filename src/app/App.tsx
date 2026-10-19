@@ -17,7 +17,7 @@ import { paymentStatus, isSalesRecord, pickupLabel } from "../saleStatus";
 import { costingSummary, goldStockError, goldStockSources, gramsToMilligrams, milligramsToGrams } from "../goldStock";
 import { roundTwo } from "../rounding";
 import { Children, Fragment, isValidElement, useState, useEffect, useMemo, useRef, createContext, useContext } from "react";
-import goldsmithLogo from "../assets/nilosgold_logo.jpg";
+import { brand } from "../brand";
 import {
   Search, Plus, X, Crown, TrendingDown, Download, Info,
   Package, BarChart3, DollarSign, Gem, Sun, Moon, PenSquare, Trash2,
@@ -38,10 +38,10 @@ import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle, SheetDescri
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuItem } from "./components/ui/dropdown-menu";
 
 // ── config ─────────────────────────────────────────────────────────────────
-const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "https://nilosgold.vercel.app").replace(/\/$/, "");
+const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/$/, "");
 const apiFetch = (input: RequestInfo | URL, init: RequestInit = {}) => fetch(input, { ...init, credentials: "include" });
 type ToastMessage = { message: string; actionLabel?: string; onAction?: () => void };
-const notify = (message: string | ToastMessage) => window.dispatchEvent(new CustomEvent("nilosgold:toast", { detail: typeof message === "string" ? { message } : message }));
+const notify = (message: string | ToastMessage) => window.dispatchEvent(new CustomEvent("goldsmith:toast", { detail: typeof message === "string" ? { message } : message }));
 // Keep existing call sites on the in-app toast surface instead of native dialogs.
 const alert = notify;
 
@@ -53,8 +53,8 @@ function ToastHost() {
       setToast(typeof detail === "string" ? { message: detail } : detail);
       window.setTimeout(() => setToast(null), 5000);
     };
-    window.addEventListener("nilosgold:toast", onToast);
-    return () => window.removeEventListener("nilosgold:toast", onToast);
+    window.addEventListener("goldsmith:toast", onToast);
+    return () => window.removeEventListener("goldsmith:toast", onToast);
   }, []);
   if (!toast) return null;
   return <div className="fixed bottom-5 right-5 z-[100] flex max-w-sm items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 text-sm text-card-foreground shadow-2xl" role="status" aria-live="polite"><span>{toast.message}</span>{toast.onAction && <Button variant="ghost" className="shrink-0" onClick={() => { toast.onAction?.(); setToast(null); }}>{toast.actionLabel ?? "Undo"}</Button>}</div>;
@@ -352,7 +352,7 @@ function BrandLogo({ className = "" }: { className?: string }) {
   const [failed, setFailed] = useState(false);
   return failed
     ? <div className={`rounded-xl bg-primary text-primary-foreground flex items-center justify-center ${className}`}><Crown size={20} /></div>
-    : <img src={goldsmithLogo} alt="Nilo's Goldsmith" onError={() => setFailed(true)} className={`rounded-xl object-contain bg-card ${className}`} />;
+    : <img src={brand.logo} alt={brand.name} onError={() => setFailed(true)} className={`rounded-xl object-contain bg-card ${className}`} />;
 }
 
 function TableWrap({ children }: { children: React.ReactNode }) {
@@ -1416,7 +1416,7 @@ function AppContent() {
   const [user, setUser] = useState<any>(null);
   const [authReady, setAuthReady] = useState(false);
   const [dark, setDark] = useState(() => {
-    try { return localStorage.getItem("nilo-theme-v2") === "dark"; }
+    try { return localStorage.getItem("goldsmith-theme-v2") === "dark"; }
     catch { return false; }
   });
   const [tab, setTab] = useState<Tab>("DASHBOARD");
@@ -1443,7 +1443,7 @@ function AppContent() {
   // Apply dark class and persist preference
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
-    try { localStorage.setItem("nilo-theme-v2", dark ? "dark" : "light"); } catch { }
+    try { localStorage.setItem("goldsmith-theme-v2", dark ? "dark" : "light"); } catch { }
   }, [dark]);
 
   // Restore the server-side session before loading any business data.
@@ -1615,7 +1615,7 @@ function AppContent() {
         <aside className="dashboard-sidebar">
           <div className="flex h-12 shrink-0 items-center gap-2 px-1">
             <BrandLogo className="h-10 w-10 shrink-0" />
-            {!sidebarCollapsed && <span className="font-serif text-base font-semibold">Nilo&apos;s Goldsmith</span>}
+            {!sidebarCollapsed && <span className="font-serif text-base font-semibold">{brand.name}</span>}
           </div>
           <Button variant="ghost" type="button" onClick={() => setSidebarCollapsed(value => !value)} aria-expanded={!sidebarCollapsed} aria-controls="primary-navigation" aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} className="sidebar-toggle">
             {sidebarCollapsed ? <PanelLeftOpen size={18} className="shrink-0" /> : <><PanelLeftClose size={18} className="shrink-0" /><span className="text-xs">Collapse sidebar</span></>}
@@ -1685,8 +1685,8 @@ function LoginScreen({ onLogin }: { onLogin: (user: any) => void }) {
   return <div className="min-h-screen bg-background flex items-center justify-center p-6">
     <form onSubmit={submit} className="w-full max-w-sm rounded-2xl border border-border bg-card p-8 shadow-2xl">
       <BrandLogo className="mx-auto mb-4 h-14 w-14 border border-border p-1" />
-      <h1 className="text-center font-serif text-2xl font-semibold text-foreground">Nilo&apos;s Goldsmith</h1>
-      <p className="text-center text-sm text-muted-foreground mt-1 mb-7">Goldsmith Accounting System</p>
+      <h1 className="text-center font-serif text-2xl font-semibold text-foreground">{brand.name}</h1>
+      <p className="text-center text-sm text-muted-foreground mt-1 mb-7">{brand.tagline}</p>
       <label className="block text-sm text-foreground mb-1">Username</label>
       <input value={userName} onChange={e => setUserName(e.target.value)} className={`${ic} mb-4`} autoComplete="username" />
       <label className="block text-sm text-foreground mb-1">Password</label>
