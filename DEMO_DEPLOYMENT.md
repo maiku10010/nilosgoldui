@@ -27,3 +27,10 @@ On 2026-10-20, GoldDemo was provisioned as a new Singapore Supabase project
 The older nilosgold-db was paused with the user's authorization to free a slot.
 The active nilosgold-db-singapore database and existing shop Vercel projects
 were left unchanged. All new deployment variables use only GoldDemo resources.
+
+Both deployments were created from explicit Git source commits. Automatic Git
+integration is not linked yet; connect the matching repository in each new
+project's Git settings and select feature/white-label-demo for automatic updates.
+Demo-branch builds reject inherited shop API settings even if its explicit pin
+is absent. Login details are saved privately in the API checkout at
+outputs/demo-login.txt, outside version control.

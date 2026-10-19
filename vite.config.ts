@@ -19,7 +19,7 @@ function figmaAssetResolver() {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  resolveApiBaseUrl(env.VITE_API_BASE_URL, env.VITE_DEMO_API_ORIGIN);
+  resolveApiBaseUrl(env.VITE_API_BASE_URL, env.VITE_DEMO_API_ORIGIN, env.VERCEL_GIT_COMMIT_REF);
   const escapeHtml = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]!));
   return {
   envPrefix: ['VITE_', 'NEXT_PUBLIC_'],

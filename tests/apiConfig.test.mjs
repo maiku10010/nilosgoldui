@@ -13,3 +13,8 @@ test('demo accepts its pinned backend and refuses shop or missing API configurat
 test('generic local development keeps a relative API fallback', () => {
   assert.equal(resolveApiBaseUrl(), '/api');
 });
+
+test('demo branch blocks inherited shop API settings even if its pin is missing', () => {
+  assert.throws(() => resolveApiBaseUrl('https://nilosgold.vercel.app', undefined, 'feature/white-label-demo'), /does not match/);
+  assert.throws(() => resolveApiBaseUrl(undefined, undefined, 'feature/white-label-demo'), /does not match/);
+});
