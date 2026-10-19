@@ -10,5 +10,5 @@ export function isSalesRecord(sale: { status: string; jobStatus?: string }) {
 }
 
 export function pickupLabel(status: string) {
-  return status === 'Released' ? 'Taken / Released' : status === 'Finished' ? 'Finished (pickup unconfirmed)' : status;
+  return status === 'Released' ? 'Taken / Released' : status === 'Finished' ? 'Finished' : status;
 }

@@ -7,7 +7,7 @@ test('payment and pickup statuses vary independently',()=>{
   assert.equal(paymentStatus(1000,1000),'Fully paid');
   assert.equal(paymentStatus(1000,1100),'Fully paid');
   assert.equal(pickupLabel('Released'),'Taken / Released');
-  assert.equal(pickupLabel('Finished'),'Finished (pickup unconfirmed)');
+  assert.equal(pickupLabel('Finished'),'Finished');
   assert.equal(isSalesRecord({status:'Partial',jobStatus:'Released'}),true);
   assert.equal(isSalesRecord({status:'Pending',jobStatus:'Released'}),true);
   assert.equal(isSalesRecord({status:'Pending',jobStatus:'APPROVED'}),false);
