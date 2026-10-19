@@ -105,6 +105,7 @@ const normalizeSale = (row: any): Sale => ({
   id: row.invoiceId,
   invoiceId: row.invoiceId,
   jobCostId: row.jobCostId ?? row.job?.jobCostId,
+  jobStatus: row.job?.status ? statusLabel(row.job.status) : undefined,
   date: apiDate(row.salesDate ?? row.date),
   clientId: row.clientId ?? row.client?.clientId,
   clientName: row.clientName ?? row.client?.clientName ?? "",
@@ -118,7 +119,7 @@ const normalizeSale = (row: any): Sale => ({
   receiptSentAt: row.receiptSentAt ? String(row.receiptSentAt) : null,
   status: statusLabel(row.status) as SaleStatus,
 });
-const selectedStatus = (sale: Sale, jobCosts: JobCost[]) => jobCosts.find(job => job.jobCostId === sale.jobCostId || job.invoiceId === sale.invoiceId)?.status ?? "Finished";
+const selectedStatus = (sale: Sale, jobCosts: JobCost[]) => sale.jobStatus ?? jobCosts.find(job => job.jobCostId === sale.jobCostId || job.invoiceId === sale.invoiceId)?.status ?? "Finished";
 const normalizeJobCost = (row: any): JobCost => {
   const sellingPrice = roundTwo(row.sellingPrice ?? row.sales?.price ?? row.sale?.price);
   const sale = row.sales ?? row.sale;
@@ -149,7 +150,7 @@ interface Sale {
   payments?: { amount: number; paidAt: string | null }[];
   id: string; invoiceId: string; date: string; clientId?: string; jobCostId?: string;
   clientName: string; contactNum: string; email?: string; serviceType: ServiceType;
-  price: number; payment: number; balance: number; status: SaleStatus; receiptSentAt?: string | null;
+  price: number; payment: number; balance: number; status: SaleStatus; jobStatus?: string; receiptSentAt?: string | null;
 }
 interface JobCost {
   serviceType: ServiceType;
@@ -398,6 +399,24 @@ function DailySalesView({ sales, jobCosts, onUpdate, onDelete, onJobs, isAdmin }
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
+  const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
+  const changeJobStatus = async (sale: Sale, jobStatus: string) => {
+    if (updatingStatus) return;
+    setUpdatingStatus(sale.invoiceId);
+    try {
+      const response = await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(sale.invoiceId)}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobStatus: jobStatus.toUpperCase().replaceAll(" ", "_") })
+      });
+      const saved = await response.json();
+      if (response.status === 202) { alert(saved.message); return; }
+      if (!response.ok) throw new Error(saved.error ?? "Job status could not be updated.");
+      const updated = normalizeSale(saved);
+      onUpdate(updated);
+      setSelectedSale(current => current?.invoiceId === updated.invoiceId ? updated : current);
+    } catch (error: any) { alert(error.message ?? "Job status could not be updated."); }
+    finally { setUpdatingStatus(null); }
+  };
+
   const toggleSort = (key: string) => setSort(s => ({ key, direction: s.key === key ? (s.direction === 1 ? -1 : 1) : 1 }));
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -498,7 +517,9 @@ function DailySalesView({ sales, jobCosts, onUpdate, onDelete, onJobs, isAdmin }
         </tr></thead>
         <tbody>{visibleSales.map(s => <TRow key={s.id} onClick={() => setSelectedSale(s)}>
           <td className={tdc + " h-11 !py-1"}>{fmtDate(s.date)}</td><td className={tdc + " h-11 !py-1 text-muted-foreground"}><Button variant="ghost" className="h-8 px-1 font-mono text-xs" onClick={event => { event.stopPropagation(); setSelectedSale(s); }}>{s.invoiceId}</Button></td><td className={tdc + " h-11 !py-1 font-medium"}>{s.clientName}</td><td className={tdc + " h-11 !py-1 text-muted-foreground"}>{formatContact(s.contactNum)}</td>
-          <td className={tdc + " h-11 !py-1"}><Badge variant="neutral">{sentenceCase(s.serviceType)}</Badge></td><td className={tdr + " h-11 !py-1"}>{php(s.price)}</td><td className={tdr + " h-11 !py-1"}>{php(s.payment)}</td><td className={tdr + " h-11 !py-1"}>{balanceValue(s.balance)}</td><td className={tdc + " h-11 !py-1"}><Badge status={selectedStatus(s, jobCosts)} /></td><td className={tdc + " h-11 !py-1"}><Badge variant={hasBalance(s.balance) ? "warning" : "success"}>{hasBalance(s.balance) ? "Balance due" : "Paid in full"}</Badge></td>
+          <td className={tdc + " h-11 !py-1"}><Badge variant="neutral">{sentenceCase(s.serviceType)}</Badge></td><td className={tdr + " h-11 !py-1"}>{php(s.price)}</td><td className={tdr + " h-11 !py-1"}>{php(s.payment)}</td><td className={tdr + " h-11 !py-1"}>{balanceValue(s.balance)}</td><td className={tdc + " h-11 !py-1"}><select aria-label={`Job status for ${s.invoiceId}`} className="rounded border border-border bg-card px-2 py-1 text-xs" value={selectedStatus(s, jobCosts)} disabled={updatingStatus !== null || !s.jobCostId} onClick={event => event.stopPropagation()} onChange={event => changeJobStatus(s, event.target.value)}>
+            <option value="In Progress">In progress</option><option value="Ready for Pickup">Ready for pickup</option><option value="Finished">Finished</option>
+          </select></td><td className={tdc + " h-11 !py-1"}><Badge variant={hasBalance(s.balance) ? "warning" : "success"}>{hasBalance(s.balance) ? "Balance due" : "Paid in full"}</Badge></td>
           <td className={tdc + " h-11 !py-1"}><div className="table-row-actions"><Button variant="ghost" size="icon" aria-label="Edit sale" type="button" onClick={event => { event.stopPropagation(); setEditingId(s.invoiceId); setForm({ invoiceId: s.invoiceId, date: s.date, clientName: s.clientName, contactNum: s.contactNum, email: s.email ?? "", serviceType: s.serviceType, price: String(s.price), payment: String(s.payment) }); setOpen(true); }} title="Edit"><PenSquare size={16} /></Button><Button variant="ghost" size="icon" className="row-action-delete" aria-label="Delete sale" type="button" onClick={event => { event.stopPropagation(); onDelete(s.id); }} title="Delete"><Trash2 size={16} /></Button></div></td>
         </TRow>)}{!visibleSales.length && <EmptyRow cols={11} />}</tbody>
       </table></div>
@@ -1620,7 +1641,7 @@ function AppContent() {
           <div className="dashboard-content">
 
         {tab === "DASHBOARD" && <Dashboard sales={sales} jobCosts={jobCosts} expenses={expenses} loading={dataLoading} error={dataError} isAdmin={isAdmin} goldRate={goldRate} goldStock={goldStock} goldLoading={goldLoading} goldStale={goldInfo?.stale ?? true} loadApprovals={loadDashboardApprovals} onJobs={() => setTab("JOB_COSTING")} onApprovals={() => setTab("APPROVALS")} onRetry={() => setReloadKey(k => k + 1)} onView={(title, record) => setViewRecord({ title, record })} />}
-        {tab === "DAILY_SALES" && <DailySalesView isAdmin={isAdmin} sales={sales.filter(isCompletedSale)} jobCosts={jobCosts} onJobs={() => setTab("JOB_COSTING")} onUpdate={s => setSales(p => p.map(item => item.invoiceId === s.invoiceId ? s : s.clientId && item.clientId === s.clientId ? { ...item, email: s.email } : item))} onDelete={id => deleteFromApi("sales", id, () => { const removed = sales.find(item => item.invoiceId === id); const linkedJob = jobCosts.find(item => item.jobCostId === removed?.jobCostId); setSales(p => p.filter(item => item.invoiceId !== id)); if (removed?.jobCostId) setJobCosts(p => p.filter(item => item.jobCostId !== removed.jobCostId)); if (linkedJob?.inquiryId) setInquiries(p => p.map(i => i.inquiryId === linkedJob.inquiryId ? { ...i, status: "Pending" } : i)); })} />}
+        {tab === "DAILY_SALES" && <DailySalesView isAdmin={isAdmin} sales={sales.filter(isCompletedSale)} jobCosts={jobCosts} onJobs={() => setTab("JOB_COSTING")} onUpdate={s => { setSales(p => p.map(item => item.invoiceId === s.invoiceId ? s : s.clientId && item.clientId === s.clientId ? { ...item, email: s.email } : item)); setReloadKey(k => k + 1); }} onDelete={id => deleteFromApi("sales", id, () => { const removed = sales.find(item => item.invoiceId === id); const linkedJob = jobCosts.find(item => item.jobCostId === removed?.jobCostId); setSales(p => p.filter(item => item.invoiceId !== id)); if (removed?.jobCostId) setJobCosts(p => p.filter(item => item.jobCostId !== removed.jobCostId)); if (linkedJob?.inquiryId) setInquiries(p => p.map(i => i.inquiryId === linkedJob.inquiryId ? { ...i, status: "Pending" } : i)); })} />}
         {tab === "JOB_COSTING" && <JobCostingView goldRate={goldRate} jobCosts={jobCosts} inquiries={inquiries} inventory={inventory} selectedInquiryId={selectedInquiryForCosting} clearSelectedInquiry={() => setSelectedInquiryForCosting(null)} onAdd={j => { setReloadKey(k => k + 1); setJobCosts(p => [j, ...p]); if (j.sale) setSales(p => [j.sale!, ...p.filter(s => s.invoiceId !== j.sale!.invoiceId)]); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Approved" } : i)); }} onUpdate={j => { setReloadKey(k => k + 1); setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? j : item)); if (j.sale) setSales(p => p.map(s => s.invoiceId === j.sale!.invoiceId ? j.sale! : s)); }} onDelete={j => deleteFromApi("job-cost", j.jobCostId, () => { setJobCosts(p => p.filter(item => item.jobCostId !== j.jobCostId)); setSales(p => p.filter(s => s.invoiceId !== j.invoiceId)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Pending" } : i)); })} onApprove={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/approve`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Costing could not be approved."); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Costing could not be approved."); } }} onReady={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/ready`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Item could not be marked ready."); const reason = data.notification?.sent ? (data.notification.reason ?? "Customer notification sent.") : (data.notification?.reason ?? "Customer notification could not be sent."); alert(`Marked ready for pickup. ${reason}`); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Item could not be marked ready."); } }} onFinish={async (j, materials) => { const response = await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(j.invoiceId)}/finish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ invoiceId: j.invoiceId, clientName: j.clientName, materials }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Sale could not be finished."); const sale = normalizeSale(data); setSales(p => [sale, ...p.filter(item => item.invoiceId !== sale.invoiceId)]); setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? { ...item, status: "Finished", sale } : item)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Finished" } : i)); setReloadKey(k => k + 1); notify("Sale completed."); }} />}
         {tab === "INVENTORY" && <GoldInventoryView inventory={inventory} goldRate={goldRate} onAdd={e => { setInventory(p => [...p, e]); setReloadKey(k => k + 1); }} onUpdate={e => { setInventory(p => p.map(item => item.id === e.id ? e : item)); setReloadKey(k => k + 1); }} onDelete={id => deleteFromApi("inventory", id, () => { setInventory(p => p.filter(item => item.id !== id)); setReloadKey(k => k + 1); })} />}
         {tab === "INQUIRIES" && <InquiriesView inquiries={inquiries} onAdd={i => setInquiries(p => [i, ...p])} onUpdate={i => setInquiries(p => p.map(item => item.inquiryId === i.inquiryId ? i : item))} onDelete={id => deleteFromApi("inquiries", id, () => setInquiries(p => p.filter(item => item.inquiryId !== id)))} onStartCosting={id => { setSelectedInquiryForCosting(id); setTab("JOB_COSTING"); }} />}
