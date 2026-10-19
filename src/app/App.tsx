@@ -18,6 +18,7 @@ import { costingSummary, goldStockError, goldStockSources, gramsToMilligrams, mi
 import { roundTwo } from "../rounding";
 import { Children, Fragment, isValidElement, useState, useEffect, useMemo, useRef, createContext, useContext } from "react";
 import { brand } from "../brand";
+import { resolveApiBaseUrl } from "../apiConfig";
 import {
   Search, Plus, X, Crown, TrendingDown, Download, Info,
   Package, BarChart3, DollarSign, Gem, Sun, Moon, PenSquare, Trash2,
@@ -38,7 +39,7 @@ import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle, SheetDescri
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuItem } from "./components/ui/dropdown-menu";
 
 // ── config ─────────────────────────────────────────────────────────────────
-const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/$/, "");
+const BASE_URL = resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL, import.meta.env.VITE_DEMO_API_ORIGIN);
 const apiFetch = (input: RequestInfo | URL, init: RequestInit = {}) => fetch(input, { ...init, credentials: "include" });
 type ToastMessage = { message: string; actionLabel?: string; onAction?: () => void };
 const notify = (message: string | ToastMessage) => window.dispatchEvent(new CustomEvent("goldsmith:toast", { detail: typeof message === "string" ? { message } : message }));
