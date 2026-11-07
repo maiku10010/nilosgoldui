@@ -499,66 +499,66 @@ function DailySalesView({ sales, jobCosts, onUpdate, onDelete, onJobs, isAdmin }
   };
 
   return <div className="space-y-4">
-      <PageHeader title="Sales" description="Sales appear here after an approved job costing is finished" action={<div className="expense-filters">
-        <DateRangePicker startDate={startDate} endDate={endDate} onChange={(start, end) => { setStartDate(start); setEndDate(end); setPage(1); }} label="Sales date range" />
-        <Button variant="secondary" onClick={downloadCsv} disabled={!filtered.length || invalidRange}><Download size={16} />Export CSV</Button>
-      </div>} />
-      {invalidRange && <p role="alert" className="text-sm text-danger">The end date must be on or after the start date.</p>}
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Sales summary for current filters">
-        {[{ label: "Total sales", value: totalSales }, { label: "Collected", value: collected }].map(item => <div key={item.label} className="rounded-xl border border-border bg-card p-4"><div className="text-xs text-muted-foreground">{item.label}</div><div className="mt-1 text-xl font-semibold tabular-nums">{php(item.value)}</div></div>)}
-        <div className="rounded-xl border border-border bg-card p-4"><div className="text-xs text-muted-foreground">Outstanding balance</div><div className="mt-1 text-xl font-semibold tabular-nums">{balanceValue(outstanding)}</div></div>
-        <div className="rounded-xl border border-border bg-card p-4"><div className="text-xs text-muted-foreground">Number of invoices</div><div className="mt-1 text-xl font-semibold tabular-nums">{filtered.length.toLocaleString()}</div></div>
-      </section>
-      <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap gap-2" role="group" aria-label="Filter sales by type">{["All", "Repair", "Custom", "Cleaning", "Resize"].map(type => <Button key={type} variant={typeFilter === type ? "secondary" : "ghost"} aria-pressed={typeFilter === type} onClick={() => { setTypeFilter(type); setPage(1); }} className="text-sm">{type}<span className="ml-1 rounded bg-muted px-1.5 text-xs tabular-nums">{typeCounts[type] ?? 0}</span></Button>)}</div><SearchBar value={q} onChange={value => { setQ(value); setPage(1); }} placeholder="Search client, invoice, type…" /></div>
-      <div className="sales-table-scroll rounded-xl border border-border"><table className="w-full min-w-[1080px] text-xs font-sans">
-        <thead className="sticky top-0 z-10"><tr>
-          {[["Date", "date"], ["Invoice #", "invoiceId"], ["Client", "clientName"], ["Contact", "contactNum"], ["Type", "serviceType"]].map(([h, k]) => <SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}
-          {[["Total price", "price"], ["Collected", "payment"], ["Balance", "balance"]].map(([h, k]) => <SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} align="right" />)}
-          <th className={thc}>Job status</th><th className={thc}>Payment</th><th className={thc}>Actions</th>
-        </tr></thead>
-        <tbody>{visibleSales.map(s => <TRow key={s.id} onClick={() => setSelectedSale(s)}>
-          <td className={tdc + " h-11 !py-1"}>{fmtDate(s.date)}</td><td className={tdc + " h-11 !py-1 text-muted-foreground"}><Button variant="ghost" className="h-8 px-1 font-mono text-xs" onClick={event => { event.stopPropagation(); setSelectedSale(s); }}>{s.invoiceId}</Button></td><td className={tdc + " h-11 !py-1 font-medium"}>{s.clientName}</td><td className={tdc + " h-11 !py-1 text-muted-foreground"}>{formatContact(s.contactNum)}</td>
-          <td className={tdc + " h-11 !py-1"}><Badge variant="neutral">{sentenceCase(s.serviceType)}</Badge></td><td className={tdr + " h-11 !py-1"}>{php(s.price)}</td><td className={tdr + " h-11 !py-1"}>{php(s.payment)}</td><td className={tdr + " h-11 !py-1"}>{balanceValue(s.balance)}</td><td className={tdc + " h-11 !py-1"}><span className="relative inline-flex rounded-md focus-within:ring-2 focus-within:ring-ring"><Badge variant={["Finished", "Released"].includes(selectedStatus(s, jobCosts)) ? "success" : "warning"}>{pickupLabel(selectedStatus(s, jobCosts))}</Badge><select aria-label={`Job status for ${s.invoiceId}`} title="Change job status" className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-default" value={selectedStatus(s, jobCosts)} disabled={updatingStatus !== null || !s.jobCostId} onClick={event => event.stopPropagation()} onChange={event => changeJobStatus(s, event.target.value)}>
-            <option value="In Progress">In progress</option><option value="Ready for Pickup">Ready for pickup</option><option value="Released">Taken / Released</option><option value="Finished">Finished</option>
-          </select></span></td><td className={tdc + " h-11 !py-1"}><Badge variant={hasBalance(s.balance) ? "warning" : "success"}>{paymentStatus(s.price, s.payment)}</Badge></td>
-          <td className={tdc + " h-11 !py-1"}><div className="table-row-actions"><Button variant="ghost" size="icon" aria-label="Edit sale" type="button" onClick={event => { event.stopPropagation(); setEditingId(s.invoiceId); setForm({ invoiceId: s.invoiceId, date: s.date, clientName: s.clientName, contactNum: s.contactNum, email: s.email ?? "", serviceType: s.serviceType, price: String(s.price), payment: String(s.payment) }); setOpen(true); }} title="Edit"><PenSquare size={16} /></Button><Button variant="ghost" size="icon" className="row-action-delete" aria-label="Delete sale" type="button" onClick={event => { event.stopPropagation(); onDelete(s.id); }} title="Delete"><Trash2 size={16} /></Button></div></td>
-        </TRow>)}{!visibleSales.length && <EmptyRow cols={11} />}</tbody>
-      </table></div>
-      <div className="expense-pagination"><p>{filtered.length ? `${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, filtered.length)} of ${filtered.length} invoices` : "0 invoices"}</p><label>Rows per page <select aria-label="Rows per page" value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1); }}>{[10, 25, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}</select></label><Button variant="secondary" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Previous</Button><span>Page {currentPage} of {pages}</span><Button variant="secondary" disabled={currentPage >= pages} onClick={() => setPage(currentPage + 1)}>Next</Button></div>
-      <Sheet open={!!selectedSale} onOpenChange={open => { if (!open) setSelectedSale(null); }}><SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
-        {selectedSale && <><SheetHeader className="border-b border-border pb-4 pr-10"><SheetTitle>Invoice {selectedSale.invoiceId}</SheetTitle><SheetDescription>{fmtDate(selectedSale.date)} · {sentenceCase(selectedSale.serviceType)}</SheetDescription></SheetHeader><div className="space-y-6 px-1">
-          <section><h3 className="text-sm font-semibold">Client information</h3><dl className="mt-3 space-y-3 text-sm"><div><dt className="text-xs text-muted-foreground">Client</dt><dd>{selectedSale.clientName || "—"}</dd></div><div><dt className="text-xs text-muted-foreground">Contact</dt><dd>{formatContact(selectedSale.contactNum)}</dd></div><div><dt className="text-xs text-muted-foreground">Email</dt><dd className="break-all">{selectedSale.email || "—"}</dd></div></dl></section>
-          <section><h3 className="text-sm font-semibold">Invoice summary</h3><dl className="mt-3 space-y-3 text-sm"><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Total</dt><dd className="tabular-nums">{php(selectedSale.price)}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Collected</dt><dd className="tabular-nums">{php(selectedSale.payment)}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Balance</dt><dd>{balanceValue(selectedSale.balance)}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Job status</dt><dd><Badge variant={["Finished", "Released"].includes(selectedStatus(selectedSale, jobCosts)) ? "success" : "warning"}>{pickupLabel(selectedStatus(selectedSale, jobCosts))}</Badge></dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Payment</dt><dd><Badge variant={hasBalance(selectedSale.balance) ? "warning" : "success"}>{paymentStatus(selectedSale.price, selectedSale.payment)}</Badge></dd></div></dl></section>
-          <section><h3 className="text-sm font-semibold">Payment history</h3>{(selectedSale.payments?.length ? selectedSale.payments : selectedSale.payment > 0 ? [{ amount: selectedSale.payment, paidAt: selectedSale.date }] : []).length ? <ul className="mt-3 divide-y divide-border">{(selectedSale.payments?.length ? selectedSale.payments : selectedSale.payment > 0 ? [{ amount: selectedSale.payment, paidAt: selectedSale.date }] : []).map((payment, index) => <li key={`${payment.paidAt ?? "undated"}-${index}`} className="flex justify-between gap-3 py-3 text-sm"><span>{payment.paidAt ? fmtDate(payment.paidAt) : "Date unavailable"}</span><span className="font-medium tabular-nums">{php(payment.amount)}</span></li>)}</ul> : <p className="mt-3 text-sm text-muted-foreground">No payments recorded yet.</p>}</section>
-          <section><div className="flex items-center justify-between gap-3"><h3 className="text-sm font-semibold">Linked job costing</h3>{selectedJob && <Button variant="ghost" onClick={onJobs}>Open jobs</Button>}</div>{selectedJob ? <dl className="mt-3 space-y-3 rounded-lg border border-border bg-muted/30 p-3 text-sm"><div><dt className="text-xs text-muted-foreground">Job ID</dt><dd className="font-mono">{selectedJob.jobCostId}</dd></div><div><dt className="text-xs text-muted-foreground">Item</dt><dd>{selectedJob.itemName || "—"}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Job cost</dt><dd className="tabular-nums">{php(selectedJob.totalCost)}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Profit</dt><dd className="tabular-nums">{php(selectedJob.profit)}</dd></div></dl> : <p className="mt-3 text-sm text-muted-foreground">No linked job costing record.</p>}</section>
-        </div></>}
-      </SheetContent></Sheet>
-      {open && (
-        <Modal title="Edit finished sale" onClose={closeModal} onSubmit={submit} submitLabel={isAdmin ? "Update sale" : "Request update"} isSubmitting={isSubmitting} submitDisabled={!paymentSummary.valid || !form.date}
-          footerNote={lastUpdateLoading ? "Loading last update…" : lastUpdateError ? "Last update unavailable" : lastUpdate ? <time dateTime={lastUpdate.createdAt} title={new Date(lastUpdate.createdAt).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "medium" })}>Last updated by {lastUpdate.actorRole.toLowerCase()} · {relativeTime(lastUpdate.createdAt)}</time> : "No update recorded"}>
-          {!isAdmin && <p className="sale-approval-banner" role="note"><Info size={16} aria-hidden="true" />Changes will be sent to an admin for approval</p>}
-          <fieldset className="sale-edit-group" disabled={isSubmitting}><legend>Client</legend>
-            <div className="grid grid-cols-2 gap-4">
-              <FF label="Invoice #"><input aria-label="Invoice number" className={ic} value={form.invoiceId} readOnly /></FF>
-              <FF label="Client name"><input aria-label="Client name" className={ic} value={form.clientName} readOnly /></FF>
-              <div className="col-span-2"><FF label="Contact #"><ContactInput aria-label="Contact number" className={ic} value={form.contactNum} onChange={contactNum => setForm(f => ({ ...f, contactNum }))} required /></FF></div>
-            </div>
-          </fieldset>
-          <fieldset className="sale-edit-group" disabled={isSubmitting}><legend>Payment</legend>
-            <div className="grid grid-cols-2 gap-4">
-              <FF label="Service type"><select aria-label="Service type" className={ic} value={form.serviceType} onChange={e => setForm(f => ({ ...f, serviceType: e.target.value as ServiceType }))}>
-                {(Object.keys(SERVICE_RULES) as ServiceType[]).map(t => <option key={t}>{t}</option>)}
-              </select></FF>
-              <FF label="Date"><DatePicker value={form.date} max={todayISO()} onChange={date => setForm(f => ({ ...f, date }))} label="Sale date" disabled={isSubmitting} /></FF>
-              <FF label="Total price"><CurrencyInput aria-label="Total price" className={ic} value={form.price} onChange={price => setForm(f => ({ ...f, price }))} placeholder="0.00" required />{form.price && Number(form.price) <= 0 && <p className="field-error" role="alert">Total price must be greater than zero.</p>}</FF>
-              <FF label="Payment"><CurrencyInput aria-label="Payment" className={ic} value={form.payment} onChange={payment => setForm(f => ({ ...f, payment }))} placeholder="0.00" aria-invalid={!!paymentSummary.paymentError} aria-describedby={paymentSummary.paymentError ? "sale-payment-error" : undefined} />{paymentSummary.paymentError && <p id="sale-payment-error" className="field-error" role="alert">{paymentSummary.paymentError}</p>}</FF>
-            </div>
-          </fieldset>
-          <div role="status" aria-live="polite" className={`sale-balance-summary ${paymentSummary.valid ? paymentSummary.balance > 0 ? "sale-balance-unpaid" : "sale-balance-paid" : ""}`}>
-            {paymentSummary.valid ? <>Balance <strong>{php(paymentSummary.balance)}</strong><span aria-hidden="true"> · </span>{paymentSummary.balance > 0 ? "Unpaid" : "Paid in full"}</> : "Enter a valid total price and payment to see the balance."}
+    <PageHeader title="Sales" description="Sales appear here after an approved job costing is finished" action={<div className="expense-filters">
+      <DateRangePicker startDate={startDate} endDate={endDate} onChange={(start, end) => { setStartDate(start); setEndDate(end); setPage(1); }} label="Sales date range" />
+      <Button variant="secondary" onClick={downloadCsv} disabled={!filtered.length || invalidRange}><Download size={16} />Export CSV</Button>
+    </div>} />
+    {invalidRange && <p role="alert" className="text-sm text-danger">The end date must be on or after the start date.</p>}
+    <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Sales summary for current filters">
+      {[{ label: "Total sales", value: totalSales }, { label: "Collected", value: collected }].map(item => <div key={item.label} className="rounded-xl border border-border bg-card p-4"><div className="text-xs text-muted-foreground">{item.label}</div><div className="mt-1 text-xl font-semibold tabular-nums">{php(item.value)}</div></div>)}
+      <div className="rounded-xl border border-border bg-card p-4"><div className="text-xs text-muted-foreground">Outstanding balance</div><div className="mt-1 text-xl font-semibold tabular-nums">{balanceValue(outstanding)}</div></div>
+      <div className="rounded-xl border border-border bg-card p-4"><div className="text-xs text-muted-foreground">Number of invoices</div><div className="mt-1 text-xl font-semibold tabular-nums">{filtered.length.toLocaleString()}</div></div>
+    </section>
+    <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap gap-2" role="group" aria-label="Filter sales by type">{["All", "Repair", "Custom", "Cleaning", "Resize"].map(type => <Button key={type} variant={typeFilter === type ? "secondary" : "ghost"} aria-pressed={typeFilter === type} onClick={() => { setTypeFilter(type); setPage(1); }} className="text-sm">{type}<span className="ml-1 rounded bg-muted px-1.5 text-xs tabular-nums">{typeCounts[type] ?? 0}</span></Button>)}</div><SearchBar value={q} onChange={value => { setQ(value); setPage(1); }} placeholder="Search client, invoice, type…" /></div>
+    <div className="sales-table-scroll rounded-xl border border-border"><table className="w-full min-w-[1080px] text-xs font-sans">
+      <thead className="sticky top-0 z-10"><tr>
+        {[["Date", "date"], ["Invoice #", "invoiceId"], ["Client", "clientName"], ["Contact", "contactNum"], ["Type", "serviceType"]].map(([h, k]) => <SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}
+        {[["Total price", "price"], ["Collected", "payment"], ["Balance", "balance"]].map(([h, k]) => <SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} align="right" />)}
+        <th className={thc}>Job status</th><th className={thc}>Payment</th><th className={thc}>Actions</th>
+      </tr></thead>
+      <tbody>{visibleSales.map(s => <TRow key={s.id} onClick={() => setSelectedSale(s)}>
+        <td className={tdc + " h-11 !py-1"}>{fmtDate(s.date)}</td><td className={tdc + " h-11 !py-1 text-muted-foreground"}><Button variant="ghost" className="h-8 px-1 font-mono text-xs" onClick={event => { event.stopPropagation(); setSelectedSale(s); }}>{s.invoiceId}</Button></td><td className={tdc + " h-11 !py-1 font-medium"}>{s.clientName}</td><td className={tdc + " h-11 !py-1 text-muted-foreground"}>{formatContact(s.contactNum)}</td>
+        <td className={tdc + " h-11 !py-1"}><Badge variant="neutral">{sentenceCase(s.serviceType)}</Badge></td><td className={tdr + " h-11 !py-1"}>{php(s.price)}</td><td className={tdr + " h-11 !py-1"}>{php(s.payment)}</td><td className={tdr + " h-11 !py-1"}>{balanceValue(s.balance)}</td><td className={tdc + " h-11 !py-1"}><span className="relative inline-flex rounded-md focus-within:ring-2 focus-within:ring-ring"><Badge variant={["Finished", "Released"].includes(selectedStatus(s, jobCosts)) ? "success" : "warning"}>{pickupLabel(selectedStatus(s, jobCosts))}</Badge><select aria-label={`Job status for ${s.invoiceId}`} title="Change job status" className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-default" value={selectedStatus(s, jobCosts)} disabled={updatingStatus !== null || !s.jobCostId} onClick={event => event.stopPropagation()} onChange={event => changeJobStatus(s, event.target.value)}>
+          <option value="In Progress">In progress</option><option value="Ready for Pickup">Ready for pickup</option><option value="Released">Taken / Released</option><option value="Finished">Finished</option>
+        </select></span></td><td className={tdc + " h-11 !py-1"}><Badge variant={hasBalance(s.balance) ? "warning" : "success"}>{paymentStatus(s.price, s.payment)}</Badge></td>
+        <td className={tdc + " h-11 !py-1"}><div className="table-row-actions"><Button variant="ghost" size="icon" aria-label="Edit sale" type="button" onClick={event => { event.stopPropagation(); setEditingId(s.invoiceId); setForm({ invoiceId: s.invoiceId, date: s.date, clientName: s.clientName, contactNum: s.contactNum, email: s.email ?? "", serviceType: s.serviceType, price: String(s.price), payment: String(s.payment) }); setOpen(true); }} title="Edit"><PenSquare size={16} /></Button><Button variant="ghost" size="icon" className="row-action-delete" aria-label="Delete sale" type="button" onClick={event => { event.stopPropagation(); onDelete(s.id); }} title="Delete"><Trash2 size={16} /></Button></div></td>
+      </TRow>)}{!visibleSales.length && <EmptyRow cols={11} />}</tbody>
+    </table></div>
+    <div className="expense-pagination"><p>{filtered.length ? `${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, filtered.length)} of ${filtered.length} invoices` : "0 invoices"}</p><label>Rows per page <select aria-label="Rows per page" value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1); }}>{[10, 25, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}</select></label><Button variant="secondary" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Previous</Button><span>Page {currentPage} of {pages}</span><Button variant="secondary" disabled={currentPage >= pages} onClick={() => setPage(currentPage + 1)}>Next</Button></div>
+    <Sheet open={!!selectedSale} onOpenChange={open => { if (!open) setSelectedSale(null); }}><SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
+      {selectedSale && <><SheetHeader className="border-b border-border pb-4 pr-10"><SheetTitle>Invoice {selectedSale.invoiceId}</SheetTitle><SheetDescription>{fmtDate(selectedSale.date)} · {sentenceCase(selectedSale.serviceType)}</SheetDescription></SheetHeader><div className="space-y-6 px-1">
+        <section><h3 className="text-sm font-semibold">Client information</h3><dl className="mt-3 space-y-3 text-sm"><div><dt className="text-xs text-muted-foreground">Client</dt><dd>{selectedSale.clientName || "—"}</dd></div><div><dt className="text-xs text-muted-foreground">Contact</dt><dd>{formatContact(selectedSale.contactNum)}</dd></div><div><dt className="text-xs text-muted-foreground">Email</dt><dd className="break-all">{selectedSale.email || "—"}</dd></div></dl></section>
+        <section><h3 className="text-sm font-semibold">Invoice summary</h3><dl className="mt-3 space-y-3 text-sm"><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Total</dt><dd className="tabular-nums">{php(selectedSale.price)}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Collected</dt><dd className="tabular-nums">{php(selectedSale.payment)}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Balance</dt><dd>{balanceValue(selectedSale.balance)}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Job status</dt><dd><Badge variant={["Finished", "Released"].includes(selectedStatus(selectedSale, jobCosts)) ? "success" : "warning"}>{pickupLabel(selectedStatus(selectedSale, jobCosts))}</Badge></dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Payment</dt><dd><Badge variant={hasBalance(selectedSale.balance) ? "warning" : "success"}>{paymentStatus(selectedSale.price, selectedSale.payment)}</Badge></dd></div></dl></section>
+        <section><h3 className="text-sm font-semibold">Payment history</h3>{(selectedSale.payments?.length ? selectedSale.payments : selectedSale.payment > 0 ? [{ amount: selectedSale.payment, paidAt: selectedSale.date }] : []).length ? <ul className="mt-3 divide-y divide-border">{(selectedSale.payments?.length ? selectedSale.payments : selectedSale.payment > 0 ? [{ amount: selectedSale.payment, paidAt: selectedSale.date }] : []).map((payment, index) => <li key={`${payment.paidAt ?? "undated"}-${index}`} className="flex justify-between gap-3 py-3 text-sm"><span>{payment.paidAt ? fmtDate(payment.paidAt) : "Date unavailable"}</span><span className="font-medium tabular-nums">{php(payment.amount)}</span></li>)}</ul> : <p className="mt-3 text-sm text-muted-foreground">No payments recorded yet.</p>}</section>
+        <section><div className="flex items-center justify-between gap-3"><h3 className="text-sm font-semibold">Linked job costing</h3>{selectedJob && <Button variant="ghost" onClick={onJobs}>Open jobs</Button>}</div>{selectedJob ? <dl className="mt-3 space-y-3 rounded-lg border border-border bg-muted/30 p-3 text-sm"><div><dt className="text-xs text-muted-foreground">Job ID</dt><dd className="font-mono">{selectedJob.jobCostId}</dd></div><div><dt className="text-xs text-muted-foreground">Item</dt><dd>{selectedJob.itemName || "—"}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Job cost</dt><dd className="tabular-nums">{php(selectedJob.totalCost)}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Profit</dt><dd className="tabular-nums">{php(selectedJob.profit)}</dd></div></dl> : <p className="mt-3 text-sm text-muted-foreground">No linked job costing record.</p>}</section>
+      </div></>}
+    </SheetContent></Sheet>
+    {open && (
+      <Modal title="Edit finished sale" onClose={closeModal} onSubmit={submit} submitLabel={isAdmin ? "Update sale" : "Request update"} isSubmitting={isSubmitting} submitDisabled={!paymentSummary.valid || !form.date}
+        footerNote={lastUpdateLoading ? "Loading last update…" : lastUpdateError ? "Last update unavailable" : lastUpdate ? <time dateTime={lastUpdate.createdAt} title={new Date(lastUpdate.createdAt).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "medium" })}>Last updated by {lastUpdate.actorRole.toLowerCase()} · {relativeTime(lastUpdate.createdAt)}</time> : "No update recorded"}>
+        {!isAdmin && <p className="sale-approval-banner" role="note"><Info size={16} aria-hidden="true" />Changes will be sent to an admin for approval</p>}
+        <fieldset className="sale-edit-group" disabled={isSubmitting}><legend>Client</legend>
+          <div className="grid grid-cols-2 gap-4">
+            <FF label="Invoice #"><input aria-label="Invoice number" className={ic} value={form.invoiceId} readOnly /></FF>
+            <FF label="Client name"><input aria-label="Client name" className={ic} value={form.clientName} readOnly /></FF>
+            <div className="col-span-2"><FF label="Contact #"><ContactInput aria-label="Contact number" className={ic} value={form.contactNum} onChange={contactNum => setForm(f => ({ ...f, contactNum }))} required /></FF></div>
           </div>
-        </Modal>
-      )}
+        </fieldset>
+        <fieldset className="sale-edit-group" disabled={isSubmitting}><legend>Payment</legend>
+          <div className="grid grid-cols-2 gap-4">
+            <FF label="Service type"><select aria-label="Service type" className={ic} value={form.serviceType} onChange={e => setForm(f => ({ ...f, serviceType: e.target.value as ServiceType }))}>
+              {(Object.keys(SERVICE_RULES) as ServiceType[]).map(t => <option key={t}>{t}</option>)}
+            </select></FF>
+            <FF label="Date"><DatePicker value={form.date} max={todayISO()} onChange={date => setForm(f => ({ ...f, date }))} label="Sale date" disabled={isSubmitting} /></FF>
+            <FF label="Total price"><CurrencyInput aria-label="Total price" className={ic} value={form.price} onChange={price => setForm(f => ({ ...f, price }))} placeholder="0.00" required />{form.price && Number(form.price) <= 0 && <p className="field-error" role="alert">Total price must be greater than zero.</p>}</FF>
+            <FF label="Payment"><CurrencyInput aria-label="Payment" className={ic} value={form.payment} onChange={payment => setForm(f => ({ ...f, payment }))} placeholder="0.00" aria-invalid={!!paymentSummary.paymentError} aria-describedby={paymentSummary.paymentError ? "sale-payment-error" : undefined} />{paymentSummary.paymentError && <p id="sale-payment-error" className="field-error" role="alert">{paymentSummary.paymentError}</p>}</FF>
+          </div>
+        </fieldset>
+        <div role="status" aria-live="polite" className={`sale-balance-summary ${paymentSummary.valid ? paymentSummary.balance > 0 ? "sale-balance-unpaid" : "sale-balance-paid" : ""}`}>
+          {paymentSummary.valid ? <>Balance <strong>{php(paymentSummary.balance)}</strong><span aria-hidden="true"> · </span>{paymentSummary.balance > 0 ? "Unpaid" : "Paid in full"}</> : "Enter a valid total price and payment to see the balance."}
+        </div>
+      </Modal>
+    )}
   </div>;
 }
 
@@ -791,38 +791,38 @@ function GoldInventoryView({ inventory, goldRate, onAdd, onUpdate, onDelete }: {
           </div>
           <p className="mt-5 inventory-stock-value">{product.balance.toLocaleString("en-PH", { maximumFractionDigits: 3 })} <span>{product.unit === "grams" ? "g" : product.unit}</span></p>
           {product.category === "SCRAP" ? <p className="mt-4 text-xs text-muted-foreground">Combined scrap. Source karat is recorded on each movement.</p> : <><div className="inventory-progress"><span className={fillColor} style={{ width: `${percent}%` }} /><i aria-hidden="true" /></div>
-          <div className="inventory-stock-footer"><span>Reorder at {level} {product.unit === "grams" ? "g" : product.unit}</span></div></>}
+            <div className="inventory-stock-footer"><span>Reorder at {level} {product.unit === "grams" ? "g" : product.unit}</span></div></>}
         </article>;
       })}{!stockCards.length && <p className="text-sm text-muted-foreground">No metal or gemstone stock matches these filters.</p>}</div>
     </section>
-  <section aria-labelledby="ledger-heading"><div className="mb-3"><h2 id="ledger-heading" className="text-base font-semibold">Inventory movement ledger</h2><p className="mt-1 text-xs text-muted-foreground">Movement records grouped by material.</p></div><TableWrap><thead><tr>{[["Date", "date"], ["Reference", "referenceId"], ["Item", "itemName"], ["In (units)", "quantityIn"], ["Out (units)", "quantityOut"], ["Loss (units)", "quantityLoss"], ["Balance (units)", "balance"]].map(([h, k]) => <SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}<th className={thc}>Actions</th></tr></thead>
+    <section aria-labelledby="ledger-heading"><div className="mb-3"><h2 id="ledger-heading" className="text-base font-semibold">Inventory movement ledger</h2><p className="mt-1 text-xs text-muted-foreground">Movement records grouped by material.</p></div><TableWrap><thead><tr>{[["Date", "date"], ["Reference", "referenceId"], ["Item", "itemName"], ["In (units)", "quantityIn"], ["Out (units)", "quantityOut"], ["Loss (units)", "quantityLoss"], ["Balance (units)", "balance"]].map(([h, k]) => <SortableHeader key={h} label={h} sortKey={k} sort={sort} onSort={toggleSort} />)}<th className={thc}>Actions</th></tr></thead>
       <tbody>{visibleProducts.map(product => <Fragment key={product.key}>
         <tr className="border-b border-border bg-muted/30">
           <td className={tdc} colSpan={3}><Button variant="ghost" type="button" className="flex items-center gap-2 text-left" aria-expanded={expanded.has(product.key)} onClick={() => setExpanded(previous => { const next = new Set(previous); if (next.has(product.key)) next.delete(product.key); else next.add(product.key); return next; })}>
-            {expanded.has(product.key) ? <ChevronUp size={15}/> : <ChevronDown size={15}/>}<span>{product.itemName}</span>
+            {expanded.has(product.key) ? <ChevronUp size={15} /> : <ChevronDown size={15} />}<span>{product.itemName}</span>
           </Button></td>
           <td /><td /><td />
-          <td className={tdr+" text-primary-text font-semibold"}>{product.balance.toLocaleString("en-PH", { maximumFractionDigits:3 })}</td>
+          <td className={tdr + " text-primary-text font-semibold"}>{product.balance.toLocaleString("en-PH", { maximumFractionDigits: 3 })}</td>
           <td className={tdc}><AddStockChangeButton compact onClick={() => addMovement(product.key)} /></td>
         </tr>
         {expanded.has(product.key) && <tr className="inventory-child-header"><th colSpan={3}>Movement</th><th>In ({product.unit === "grams" ? "g" : product.unit})</th><th>Out ({product.unit === "grams" ? "g" : product.unit})</th><th>Loss ({product.unit === "grams" ? "g" : product.unit})</th><th>Balance ({product.unit === "grams" ? "g" : product.unit})</th><th>Actions</th></tr>}
-        {expanded.has(product.key) && product.movements.map(e => <TRow key={e.id} onClick={e.jobCostId && ["GOLD", "SCRAP"].includes(e.category) ? undefined : ()=>edit(e)}><td className={tdc} colSpan={3}>{fmtDate(e.date)} · <span className="text-primary-text/80">{e.category === "SCRAP" && e.jobCostId ? e.jobCostId : e.referenceId}</span>{e.category === "SCRAP" && <Badge variant="neutral" className="ml-2">{e.goldKarat == null ? "Source karat unknown" : `${e.goldKarat}K source`}</Badge>}</td><td className={tdr}>{e.quantityIn ? `+${e.quantityIn}` : "—"}</td><td className={tdr}>{e.quantityOut ? `-${e.quantityOut}` : "—"}</td><td className={tdr}>{e.quantityLoss || "—"}</td><td className={tdr+" text-primary-text font-semibold"}>{e.balance}</td><td className={tdc}>{e.jobCostId && ["GOLD", "SCRAP"].includes(e.category) ? <span className="text-xs text-muted-foreground" title="Edit the linked job costing to adjust this movement">From job costing</span> : <div className="table-row-actions"><Button variant="ghost" size="icon" aria-label="Edit inventory entry" type="button" onClick={event=>{event.stopPropagation();edit(e);}} title="Edit"><PenSquare size={16}/></Button><Button variant="ghost" size="icon" className="row-action-delete" aria-label="Delete inventory entry" type="button" onClick={event=>{event.stopPropagation();onDelete(e.id);}} title="Delete"><Trash2 size={16}/></Button></div>}</td></TRow>)}
-      </Fragment>)}{!visibleProducts.length && <EmptyRow cols={10}/>}</tbody>
-  </TableWrap></section>
-  {
-    open && <Modal title={editingId ? "Edit inventory entry" : "Add stock change"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update entry" : "Save entry"} isSubmitting={isSubmitting}>
-      {!editingId && <FF label="Product"><select className={ic+" mb-4"} aria-label="Inventory product" value={selectedProduct} onChange={e => selectProduct(e.target.value)}><option value="">Create a new product</option>{products.map(product => <option key={product.key} value={product.key}>{product.itemName} · {product.category} · {product.unit}</option>)}</select></FF>}
-      <div className="grid grid-cols-2 gap-4"><FF label="Date"><input type="date" max={todayISO()} className={ic} value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required /></FF><FF label="Reference"><input className={`${ic} read-only-field`} value={form.referenceId} readOnly placeholder="Assigned when saved" /></FF>
-        <FF label="Category"><select disabled={!!selectedProduct} className={ic} value={form.category} onChange={e => { const category = e.target.value; setForm(f => ({ ...f, category, goldKarat: ["GOLD", "SCRAP"].includes(category) ? f.goldKarat : "", unit: INVENTORY_UNITS[category][0] })); }}>{INVENTORY_CATEGORIES.map(c => <option key={c} value={c}>{c[0] + c.slice(1).toLowerCase()}</option>)}</select></FF>{["GOLD", "SCRAP"].includes(form.category) && <FF label="Karat"><select disabled={!!selectedProduct} className={ic} value={form.goldKarat} onChange={e => setForm(f => ({ ...f, goldKarat: e.target.value }))} required={form.category === "GOLD"}><option value="">Select karat</option>{Array.from({ length: 15 }, (_, i) => i + 10).map(karat => <option key={karat} value={karat}>{karat}K</option>)}</select></FF>}<FF label="Unit"><select disabled={!!selectedProduct} className={ic} value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}>{units.map(u => <option key={u}>{u}</option>)}</select></FF>
-        <div className="col-span-2"><FF label="Item Description"><input readOnly={!!selectedProduct} className={ic} value={form.itemName} onChange={e => setForm(f => ({ ...f, itemName: e.target.value }))} placeholder="e.g. 18k chain, gemstone, ring box" required /></FF></div>
-        <div className="col-span-2 inventory-movement-toggle" role="group" aria-label="Stock movement type">{([{ value: "in", label: "Stock in" }, { value: "out", label: "Stock out" }, { value: "loss", label: "Loss/scrap" }] as const).map(option => <Button key={option.value} type="button" variant={movementType === option.value ? "secondary" : "ghost"} aria-pressed={movementType === option.value} onClick={() => setMovementType(option.value)}>{option.label}</Button>)}</div>
-        <FF label={`Quantity (${form.unit})`}><input type="number" min="0.01" step="0.01" className={ic} value={quantity} onChange={e => setQuantity(e.target.value)} required /></FF>{movementType === "in" && <FF label={`Unit Price (₱ / ${form.unit})`}><input type="number" min="0.01" step="0.01" className={ic} value={form.unitPrice} onChange={e => setForm(f => ({ ...f, unitPrice: e.target.value }))} placeholder="Unknown" /><p className="mt-1 text-xs text-muted-foreground">Leave blank if unknown. Unpriced stock is excluded from purchase expenses until a price is entered.</p></FF>}
-          </div><p className="text-xs text-muted-foreground">Stock balance is calculated for each category, item, and unit.</p>
-        </Modal>}
-      </div>;
+        {expanded.has(product.key) && product.movements.map(e => <TRow key={e.id} onClick={e.jobCostId && ["GOLD", "SCRAP"].includes(e.category) ? undefined : () => edit(e)}><td className={tdc} colSpan={3}>{fmtDate(e.date)} · <span className="text-primary-text/80">{e.category === "SCRAP" && e.jobCostId ? e.jobCostId : e.referenceId}</span>{e.category === "SCRAP" && <Badge variant="neutral" className="ml-2">{e.goldKarat == null ? "Source karat unknown" : `${e.goldKarat}K source`}</Badge>}</td><td className={tdr}>{e.quantityIn ? `+${e.quantityIn}` : "—"}</td><td className={tdr}>{e.quantityOut ? `-${e.quantityOut}` : "—"}</td><td className={tdr}>{e.quantityLoss || "—"}</td><td className={tdr + " text-primary-text font-semibold"}>{e.balance}</td><td className={tdc}>{e.jobCostId && ["GOLD", "SCRAP"].includes(e.category) ? <span className="text-xs text-muted-foreground" title="Edit the linked job costing to adjust this movement">From job costing</span> : <div className="table-row-actions"><Button variant="ghost" size="icon" aria-label="Edit inventory entry" type="button" onClick={event => { event.stopPropagation(); edit(e); }} title="Edit"><PenSquare size={16} /></Button><Button variant="ghost" size="icon" className="row-action-delete" aria-label="Delete inventory entry" type="button" onClick={event => { event.stopPropagation(); onDelete(e.id); }} title="Delete"><Trash2 size={16} /></Button></div>}</td></TRow>)}
+      </Fragment>)}{!visibleProducts.length && <EmptyRow cols={10} />}</tbody>
+    </TableWrap></section>
+    {
+      open && <Modal title={editingId ? "Edit inventory entry" : "Add stock change"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update entry" : "Save entry"} isSubmitting={isSubmitting}>
+        {!editingId && <FF label="Product"><select className={ic + " mb-4"} aria-label="Inventory product" value={selectedProduct} onChange={e => selectProduct(e.target.value)}><option value="">Create a new product</option>{products.map(product => <option key={product.key} value={product.key}>{product.itemName} · {product.category} · {product.unit}</option>)}</select></FF>}
+        <div className="grid grid-cols-2 gap-4"><FF label="Date"><input type="date" max={todayISO()} className={ic} value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required /></FF><FF label="Reference"><input className={`${ic} read-only-field`} value={form.referenceId} readOnly placeholder="Assigned when saved" /></FF>
+          <FF label="Category"><select disabled={!!selectedProduct} className={ic} value={form.category} onChange={e => { const category = e.target.value; setForm(f => ({ ...f, category, goldKarat: ["GOLD", "SCRAP"].includes(category) ? f.goldKarat : "", unit: INVENTORY_UNITS[category][0] })); }}>{INVENTORY_CATEGORIES.map(c => <option key={c} value={c}>{c[0] + c.slice(1).toLowerCase()}</option>)}</select></FF>{["GOLD", "SCRAP"].includes(form.category) && <FF label="Karat"><select disabled={!!selectedProduct} className={ic} value={form.goldKarat} onChange={e => setForm(f => ({ ...f, goldKarat: e.target.value }))} required={form.category === "GOLD"}><option value="">Select karat</option>{Array.from({ length: 15 }, (_, i) => i + 10).map(karat => <option key={karat} value={karat}>{karat}K</option>)}</select></FF>}<FF label="Unit"><select disabled={!!selectedProduct} className={ic} value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}>{units.map(u => <option key={u}>{u}</option>)}</select></FF>
+          <div className="col-span-2"><FF label="Item Description"><input readOnly={!!selectedProduct} className={ic} value={form.itemName} onChange={e => setForm(f => ({ ...f, itemName: e.target.value }))} placeholder="e.g. 18k chain, gemstone, ring box" required /></FF></div>
+          <div className="col-span-2 inventory-movement-toggle" role="group" aria-label="Stock movement type">{([{ value: "in", label: "Stock in" }, { value: "out", label: "Stock out" }, { value: "loss", label: "Loss/scrap" }] as const).map(option => <Button key={option.value} type="button" variant={movementType === option.value ? "secondary" : "ghost"} aria-pressed={movementType === option.value} onClick={() => setMovementType(option.value)}>{option.label}</Button>)}</div>
+          <FF label={`Quantity (${form.unit})`}><input type="number" min="0.01" step="0.01" className={ic} value={quantity} onChange={e => setQuantity(e.target.value)} required /></FF>{movementType === "in" && <FF label={`Unit Price (₱ / ${form.unit})`}><input type="number" min="0.01" step="0.01" className={ic} value={form.unitPrice} onChange={e => setForm(f => ({ ...f, unitPrice: e.target.value }))} placeholder="Unknown" /><p className="mt-1 text-xs text-muted-foreground">Leave blank if unknown. Unpriced stock is excluded from purchase expenses until a price is entered.</p></FF>}
+        </div><p className="text-xs text-muted-foreground">Stock balance is calculated for each category, item, and unit.</p>
+      </Modal>}
+  </div>;
 }
 
-      // ── inquiries ───────────────────────────────────────────────────────────────
+// ── inquiries ───────────────────────────────────────────────────────────────
 function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }: { inquiries: Inquiry[]; onAdd: (i: Inquiry) => void; onUpdate: (i: Inquiry) => void; onDelete: (id: string) => void; onStartCosting: (id: string) => void }) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortSpec>({ key: "date", direction: -1 });
@@ -842,44 +842,44 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
     statusForTab(i, activeStatus) && [i.customerName, i.category, i.details, i.email, i.inquiryId].some(v => v.toLowerCase().includes(q.toLowerCase()))
   ), [inquiries, q, activeStatus]), sort);
 
-  const resetForm = () => setForm({customerName: "", contactInfo: "", email: "", details: "", category: "", quotedPrice: "", isFullyPaid: false, status: "Pending" });
-  const closeModal = () => {setOpen(false); setEditingId(null); resetForm(); };
+  const resetForm = () => setForm({ customerName: "", contactInfo: "", email: "", details: "", category: "", quotedPrice: "", isFullyPaid: false, status: "Pending" });
+  const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
 
   const submit = async (e: React.FormEvent) => {
-          e.preventDefault();
-        if (submittingRef.current) return;
-        submittingRef.current = true;
-        setIsSubmitting(true);
-        const entry: Inquiry = {
-          inquiryId: editingId ?? "",
+    e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setIsSubmitting(true);
+    const entry: Inquiry = {
+      inquiryId: editingId ?? "",
       date: editingId ? (inquiries.find(i => i.inquiryId === editingId)?.date ?? todayISO()) : todayISO(), customerName: form.customerName,
-        contactInfo: form.contactInfo, email: form.email, details: form.details, category: form.category,
-        quotedPrice: parseFloat(form.quotedPrice) || 0, isFullyPaid: form.isFullyPaid, status: form.status
+      contactInfo: form.contactInfo, email: form.email, details: form.details, category: form.category,
+      quotedPrice: parseFloat(form.quotedPrice) || 0, isFullyPaid: form.isFullyPaid, status: form.status
     };
-        try {
+    try {
       if (!isValidPHContact(form.contactInfo)) throw new Error("Enter a valid Philippine contact number (11 digits starting with 09).");
-        if (form.email && !isValidEmail(form.email)) throw new Error("Enter a valid email address.");
-        const response = await apiFetch(`${BASE_URL}/inquiries${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, {
-          method: editingId ? "PUT" : "POST", headers: {"Content-Type": "application/json" },
+      if (form.email && !isValidEmail(form.email)) throw new Error("Enter a valid email address.");
+      const response = await apiFetch(`${BASE_URL}/inquiries${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, {
+        method: editingId ? "PUT" : "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           date: entry.date, customerName: entry.customerName,
-        contactInfo: entry.contactInfo, email: entry.email, details: entry.details, category: entry.category,
-        quotedPrice: entry.quotedPrice, isFullyPaid: entry.isFullyPaid
+          contactInfo: entry.contactInfo, email: entry.email, details: entry.details, category: entry.category,
+          quotedPrice: entry.quotedPrice, isFullyPaid: entry.isFullyPaid
         })
       });
-        const data = await response.json();
-        if (response.status === 202) {alert(data.message); closeModal(); setIsSubmitting(false); submittingRef.current = false; return; }
-        if (!response.ok) throw new Error(data.error ?? "Inquiry could not be saved");
-        Object.assign(entry, normalizeInquiry(data));
-    } catch (error) {alert(error instanceof Error ? error.message : "Inquiry could not be saved"); setIsSubmitting(false); submittingRef.current = false; return; }
-        if (editingId) {
-          onUpdate(entry);
+      const data = await response.json();
+      if (response.status === 202) { alert(data.message); closeModal(); setIsSubmitting(false); submittingRef.current = false; return; }
+      if (!response.ok) throw new Error(data.error ?? "Inquiry could not be saved");
+      Object.assign(entry, normalizeInquiry(data));
+    } catch (error) { alert(error instanceof Error ? error.message : "Inquiry could not be saved"); setIsSubmitting(false); submittingRef.current = false; return; }
+    if (editingId) {
+      onUpdate(entry);
     } else {
-          onAdd(entry);
+      onAdd(entry);
     }
-        closeModal();
-        setIsSubmitting(false);
-        submittingRef.current = false;
+    closeModal();
+    setIsSubmitting(false);
+    submittingRef.current = false;
   };
 
   return <div className="space-y-4">
@@ -938,25 +938,25 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
         </>}
       </SheetContent>
     </Sheet>
-      { open && (
-        <Modal title={editingId ? "Edit inquiry" : "Add new inquiry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update entry" : "Save entry"} isSubmitting={isSubmitting}>
-          <div className="grid grid-cols-2 gap-4">
-            <FF label="Customer Name"><input className={ic} value={form.customerName} onChange={e => setForm(f => ({ ...f, customerName: e.target.value }))} placeholder="Full name" required /></FF>
-            <FF label="Contact Info"><ContactInput className={ic} value={form.contactInfo} onChange={contactInfo => setForm(f => ({ ...f, contactInfo }))} required /></FF>
-            <FF label="Email for receipt / pickup"><input type="email" className={ic} value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="customer@example.com" /></FF>
-            <FF label="Service Type">
-              <select className={ic} aria-label="Service Type" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} required>
-                <option value="" disabled>Select service type</option>
-                {form.category && !["Custom", "Repair", "Resize", "Cleaning"].includes(form.category) && <option value={form.category}>{form.category} (existing)</option>}
-                {["Custom", "Repair", "Resize", "Cleaning"].map(type => <option key={type} value={type}>{type}</option>)}
-              </select>
-            </FF>
-            <FF label="Quoted Price (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.quotedPrice} onChange={e => setForm(f => ({ ...f, quotedPrice: e.target.value }))} placeholder="0.00" required /></FF>
-            <label className="flex items-center gap-2 self-end pb-2 text-sm"><input type="checkbox" checked={form.isFullyPaid} onChange={e => setForm(f => ({ ...f, isFullyPaid: e.target.checked }))} /> Fully Paid</label><div className="col-span-2"><FF label="Details / Notes"><textarea className={ic + " h-20 resize-none"} value={form.details} onChange={e => setForm(f => ({ ...f, details: e.target.value }))} placeholder="Describe the customer's request…" /></FF></div>
-            <p className="self-end text-xs text-muted-foreground">Status changes automatically as the inquiry moves through costing and sales.</p>
-          </div >
-        </Modal >
-      )}
+    {open && (
+      <Modal title={editingId ? "Edit inquiry" : "Add new inquiry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Update entry" : "Save entry"} isSubmitting={isSubmitting}>
+        <div className="grid grid-cols-2 gap-4">
+          <FF label="Customer Name"><input className={ic} value={form.customerName} onChange={e => setForm(f => ({ ...f, customerName: e.target.value }))} placeholder="Full name" required /></FF>
+          <FF label="Contact Info"><ContactInput className={ic} value={form.contactInfo} onChange={contactInfo => setForm(f => ({ ...f, contactInfo }))} required /></FF>
+          <FF label="Email for receipt / pickup"><input type="email" className={ic} value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="customer@example.com" /></FF>
+          <FF label="Service Type">
+            <select className={ic} aria-label="Service Type" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} required>
+              <option value="" disabled>Select service type</option>
+              {form.category && !["Custom", "Repair", "Resize", "Cleaning"].includes(form.category) && <option value={form.category}>{form.category} (existing)</option>}
+              {["Custom", "Repair", "Resize", "Cleaning"].map(type => <option key={type} value={type}>{type}</option>)}
+            </select>
+          </FF>
+          <FF label="Quoted Price (₱)"><input type="number" min="0" step="0.01" className={ic} value={form.quotedPrice} onChange={e => setForm(f => ({ ...f, quotedPrice: e.target.value }))} placeholder="0.00" required /></FF>
+          <label className="flex items-center gap-2 self-end pb-2 text-sm"><input type="checkbox" checked={form.isFullyPaid} onChange={e => setForm(f => ({ ...f, isFullyPaid: e.target.checked }))} /> Fully Paid</label><div className="col-span-2"><FF label="Details / Notes"><textarea className={ic + " h-20 resize-none"} value={form.details} onChange={e => setForm(f => ({ ...f, details: e.target.value }))} placeholder="Describe the customer's request…" /></FF></div>
+          <p className="self-end text-xs text-muted-foreground">Status changes automatically as the inquiry moves through costing and sales.</p>
+        </div >
+      </Modal >
+    )}
   </div>;
 }
 
@@ -1308,7 +1308,7 @@ function ApprovalQueueView({ onResolved }: { onResolved: () => void }) {
           <div className="flex min-w-0 gap-3">
             {row.status === "PENDING" && <input aria-label={`Select ${row.entityId}`} type="checkbox" checked={selected.has(row.requestId)} onChange={() => toggleSelection(row.requestId)} className="mt-1" />}
             <div><div className="flex flex-wrap items-center gap-2"><Badge variant={row.action === "DELETE" ? "danger" : "neutral"}>{sentenceCase(row.action)}</Badge><a href={`#record-${encodeURIComponent(row.entityId)}`} className="font-medium text-primary-text underline underline-offset-2">{sentenceCase(String(row.entityType))} · {row.entityId}</a><Badge status={row.status}>{sentenceCase(row.status)}</Badge></div>
-            <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground"><span className="approval-avatar" aria-hidden="true">{requester.slice(0, 1).toUpperCase()}</span><span>{requester}</span><span aria-hidden="true">·</span><time dateTime={row.createdAt} title={new Date(row.createdAt).toLocaleString("en-PH")}>{relativeTime(row.createdAt)}</time></div></div>
+              <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground"><span className="approval-avatar" aria-hidden="true">{requester.slice(0, 1).toUpperCase()}</span><span>{requester}</span><span aria-hidden="true">·</span><time dateTime={row.createdAt} title={new Date(row.createdAt).toLocaleString("en-PH")}>{relativeTime(row.createdAt)}</time></div></div>
           </div>
           {row.status === "PENDING" && <div className="flex gap-2"><Button variant="secondary" type="button" onClick={() => { setRejecting(row); setRejectReason(""); }} className="text-sm">Reject</Button><Button variant="primary" type="button" onClick={() => void resolve(row, "approve")} className="text-sm">Approve</Button></div>}
         </div>
@@ -1589,27 +1589,27 @@ function AppContent() {
   return (
     <div className="dashboard-shell bg-background text-foreground" data-collapsed={sidebarCollapsed}>
       <div className="dashboard-workspace">
-      <header className="dashboard-topbar">
-        <div className="flex h-full items-center gap-6 px-8">
-          <span className="text-xs text-muted-foreground">{today}</span>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" type="button" aria-label="Open user menu" className="ml-auto flex shrink-0 items-center gap-3 text-sm">
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary-text"><UserRound size={17} aria-hidden="true" /></span>
-                <span className="hidden max-w-40 truncate text-left sm:block">{user?.empName || user?.userName || "Account"}</span>
-                <ChevronDown size={14} aria-hidden="true" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel className="break-words">{user?.empName || user?.userName || "Account"}<span className="mt-1 block"><Badge status={user?.empRole ?? "Account"} /></span></DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => setDark(d => !d)}>{dark ? <Sun size={16} /> : <Moon size={16} />}{dark ? "Light appearance" : "Dark appearance"}</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setTab("CHANGE_PASSWORD")}><ShieldCheck size={16} />Change password</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => { void signOut(); }}><LogOut size={16} />Sign out</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </header>
+        <header className="dashboard-topbar">
+          <div className="flex h-full items-center gap-6 px-8">
+            <span className="text-xs text-muted-foreground">{today}</span>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" type="button" aria-label="Open user menu" className="ml-auto flex shrink-0 items-center gap-3 text-sm">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary-text"><UserRound size={17} aria-hidden="true" /></span>
+                  <span className="hidden max-w-40 truncate text-left sm:block">{user?.empName || user?.userName || "Account"}</span>
+                  <ChevronDown size={14} aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel className="break-words">{user?.empName || user?.userName || "Account"}<span className="mt-1 block"><Badge status={user?.empRole ?? "Account"} /></span></DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => setDark(d => !d)}>{dark ? <Sun size={16} /> : <Moon size={16} />}{dark ? "Light appearance" : "Dark appearance"}</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setTab("CHANGE_PASSWORD")}><ShieldCheck size={16} />Change password</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => { void signOut(); }}><LogOut size={16} />Sign out</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </header>
 
 
         <aside className="dashboard-sidebar">
@@ -1641,17 +1641,17 @@ function AppContent() {
         <main className="dashboard-main" key={tab}>
           <div className="dashboard-content">
 
-        {tab === "DASHBOARD" && <Dashboard sales={sales} jobCosts={jobCosts} expenses={expenses} loading={dataLoading} error={dataError} isAdmin={isAdmin} goldRate={goldRate} goldStock={goldStock} goldLoading={goldLoading} goldStale={goldInfo?.stale ?? true} loadApprovals={loadDashboardApprovals} onJobs={() => setTab("JOB_COSTING")} onApprovals={() => setTab("APPROVALS")} onRetry={() => setReloadKey(k => k + 1)} onView={(title, record) => setViewRecord({ title, record })} />}
-        {tab === "DAILY_SALES" && <DailySalesView isAdmin={isAdmin} sales={sales.filter(isSalesRecord)} jobCosts={jobCosts} onJobs={() => setTab("JOB_COSTING")} onUpdate={s => { setSales(p => p.map(item => item.invoiceId === s.invoiceId ? s : s.clientId && item.clientId === s.clientId ? { ...item, email: s.email } : item)); setReloadKey(k => k + 1); }} onDelete={id => deleteFromApi("sales", id, () => { const removed = sales.find(item => item.invoiceId === id); const linkedJob = jobCosts.find(item => item.jobCostId === removed?.jobCostId); setSales(p => p.filter(item => item.invoiceId !== id)); if (removed?.jobCostId) setJobCosts(p => p.filter(item => item.jobCostId !== removed.jobCostId)); if (linkedJob?.inquiryId) setInquiries(p => p.map(i => i.inquiryId === linkedJob.inquiryId ? { ...i, status: "Pending" } : i)); })} />}
-        {tab === "JOB_COSTING" && <JobCostingView goldRate={goldRate} jobCosts={jobCosts} inquiries={inquiries} inventory={inventory} selectedInquiryId={selectedInquiryForCosting} clearSelectedInquiry={() => setSelectedInquiryForCosting(null)} onAdd={j => { setReloadKey(k => k + 1); setJobCosts(p => [j, ...p]); if (j.sale) setSales(p => [j.sale!, ...p.filter(s => s.invoiceId !== j.sale!.invoiceId)]); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Approved" } : i)); }} onUpdate={j => { setReloadKey(k => k + 1); setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? j : item)); if (j.sale) setSales(p => p.map(s => s.invoiceId === j.sale!.invoiceId ? j.sale! : s)); }} onDelete={j => deleteFromApi("job-cost", j.jobCostId, () => { setJobCosts(p => p.filter(item => item.jobCostId !== j.jobCostId)); setSales(p => p.filter(s => s.invoiceId !== j.invoiceId)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Pending" } : i)); })} onApprove={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/approve`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Costing could not be approved."); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Costing could not be approved."); } }} onReady={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/ready`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Item could not be marked ready."); const reason = data.notification?.sent ? (data.notification.reason ?? "Customer notification sent.") : (data.notification?.reason ?? "Customer notification could not be sent."); alert(`Marked ready for pickup. ${reason}`); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Item could not be marked ready."); } }} onFinish={async (j, materials) => { const response = await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(j.invoiceId)}/finish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ invoiceId: j.invoiceId, clientName: j.clientName, materials }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Sale could not be finished."); const sale = normalizeSale(data); setSales(p => [sale, ...p.filter(item => item.invoiceId !== sale.invoiceId)]); setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? { ...item, status: "Finished", sale } : item)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Finished" } : i)); setReloadKey(k => k + 1); notify("Sale completed."); }} />}
-        {tab === "INVENTORY" && <GoldInventoryView inventory={inventory} goldRate={goldRate} onAdd={e => { setInventory(p => [...p, e]); setReloadKey(k => k + 1); }} onUpdate={e => { setInventory(p => p.map(item => item.id === e.id ? e : item)); setReloadKey(k => k + 1); }} onDelete={id => deleteFromApi("inventory", id, () => { setInventory(p => p.filter(item => item.id !== id)); setReloadKey(k => k + 1); })} />}
-        {tab === "INQUIRIES" && <InquiriesView inquiries={inquiries} onAdd={i => setInquiries(p => [i, ...p])} onUpdate={i => setInquiries(p => p.map(item => item.inquiryId === i.inquiryId ? i : item))} onDelete={id => deleteFromApi("inquiries", id, () => setInquiries(p => p.filter(item => item.inquiryId !== id)))} onStartCosting={id => { setSelectedInquiryForCosting(id); setTab("JOB_COSTING"); }} />}
-        {tab === "EXPENSES" && <ExpensesView expenses={expenses} onAdd={e => setExpenses(p => [e, ...p])} onUpdate={e => setExpenses(p => p.map(item => item.expenseId === e.expenseId ? e : item))} onDelete={id => deleteFromApi("expenses", id, () => setExpenses(p => p.filter(item => item.expenseId !== id)))} />}
-        {tab === "PROFIT_ANALYSIS" && <ProfitAnalysisView sales={sales.filter(isCompletedSale)} jobCosts={jobCosts} expenses={expenses} onRefresh={() => setReloadKey(k => k + 1)} />}
-        {tab === "APPROVALS" && isAdmin && <ApprovalQueueView onResolved={() => setReloadKey(k => k + 1)} />}
-        {tab === "AUDIT_LOGS" && isAdmin && <AuditLogsView />}
-        {tab === "USERS" && isAdmin && <UsersPage base={BASE_URL} actorId={user.empId} />}
-        {tab === "CHANGE_PASSWORD" && <PasswordPage base={BASE_URL} onChanged={next => { setUser(next); setTab("DASHBOARD"); notify("Password changed."); }} onCancel={() => setTab("DASHBOARD")} />}
+            {tab === "DASHBOARD" && <Dashboard sales={sales} jobCosts={jobCosts} expenses={expenses} loading={dataLoading} error={dataError} isAdmin={isAdmin} goldRate={goldRate} goldStock={goldStock} goldLoading={goldLoading} goldStale={goldInfo?.stale ?? true} loadApprovals={loadDashboardApprovals} onJobs={() => setTab("JOB_COSTING")} onApprovals={() => setTab("APPROVALS")} onRetry={() => setReloadKey(k => k + 1)} onView={(title, record) => setViewRecord({ title, record })} />}
+            {tab === "DAILY_SALES" && <DailySalesView isAdmin={isAdmin} sales={sales.filter(isSalesRecord)} jobCosts={jobCosts} onJobs={() => setTab("JOB_COSTING")} onUpdate={s => { setSales(p => p.map(item => item.invoiceId === s.invoiceId ? s : s.clientId && item.clientId === s.clientId ? { ...item, email: s.email } : item)); setReloadKey(k => k + 1); }} onDelete={id => deleteFromApi("sales", id, () => { const removed = sales.find(item => item.invoiceId === id); const linkedJob = jobCosts.find(item => item.jobCostId === removed?.jobCostId); setSales(p => p.filter(item => item.invoiceId !== id)); if (removed?.jobCostId) setJobCosts(p => p.filter(item => item.jobCostId !== removed.jobCostId)); if (linkedJob?.inquiryId) setInquiries(p => p.map(i => i.inquiryId === linkedJob.inquiryId ? { ...i, status: "Pending" } : i)); })} />}
+            {tab === "JOB_COSTING" && <JobCostingView goldRate={goldRate} jobCosts={jobCosts} inquiries={inquiries} inventory={inventory} selectedInquiryId={selectedInquiryForCosting} clearSelectedInquiry={() => setSelectedInquiryForCosting(null)} onAdd={j => { setReloadKey(k => k + 1); setJobCosts(p => [j, ...p]); if (j.sale) setSales(p => [j.sale!, ...p.filter(s => s.invoiceId !== j.sale!.invoiceId)]); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Approved" } : i)); }} onUpdate={j => { setReloadKey(k => k + 1); setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? j : item)); if (j.sale) setSales(p => p.map(s => s.invoiceId === j.sale!.invoiceId ? j.sale! : s)); }} onDelete={j => deleteFromApi("job-cost", j.jobCostId, () => { setJobCosts(p => p.filter(item => item.jobCostId !== j.jobCostId)); setSales(p => p.filter(s => s.invoiceId !== j.invoiceId)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Pending" } : i)); })} onApprove={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/approve`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Costing could not be approved."); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Costing could not be approved."); } }} onReady={async j => { try { const response = await apiFetch(`${BASE_URL}/job-cost/${encodeURIComponent(j.jobCostId)}/ready`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Item could not be marked ready."); const reason = data.notification?.sent ? (data.notification.reason ?? "Customer notification sent.") : (data.notification?.reason ?? "Customer notification could not be sent."); alert(`Marked ready for pickup. ${reason}`); setReloadKey(k => k + 1); } catch (error) { alert(error instanceof Error ? error.message : "Item could not be marked ready."); } }} onFinish={async (j, materials) => { const response = await apiFetch(`${BASE_URL}/sales/${encodeURIComponent(j.invoiceId)}/finish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ invoiceId: j.invoiceId, clientName: j.clientName, materials }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Sale could not be finished."); const sale = normalizeSale(data); setSales(p => [sale, ...p.filter(item => item.invoiceId !== sale.invoiceId)]); setJobCosts(p => p.map(item => item.jobCostId === j.jobCostId ? { ...item, status: "Finished", sale } : item)); setInquiries(p => p.map(i => i.inquiryId === j.inquiryId ? { ...i, status: "Finished" } : i)); setReloadKey(k => k + 1); notify("Sale completed."); }} />}
+            {tab === "INVENTORY" && <GoldInventoryView inventory={inventory} goldRate={goldRate} onAdd={e => { setInventory(p => [...p, e]); setReloadKey(k => k + 1); }} onUpdate={e => { setInventory(p => p.map(item => item.id === e.id ? e : item)); setReloadKey(k => k + 1); }} onDelete={id => deleteFromApi("inventory", id, () => { setInventory(p => p.filter(item => item.id !== id)); setReloadKey(k => k + 1); })} />}
+            {tab === "INQUIRIES" && <InquiriesView inquiries={inquiries} onAdd={i => setInquiries(p => [i, ...p])} onUpdate={i => setInquiries(p => p.map(item => item.inquiryId === i.inquiryId ? i : item))} onDelete={id => deleteFromApi("inquiries", id, () => setInquiries(p => p.filter(item => item.inquiryId !== id)))} onStartCosting={id => { setSelectedInquiryForCosting(id); setTab("JOB_COSTING"); }} />}
+            {tab === "EXPENSES" && <ExpensesView expenses={expenses} onAdd={e => setExpenses(p => [e, ...p])} onUpdate={e => setExpenses(p => p.map(item => item.expenseId === e.expenseId ? e : item))} onDelete={id => deleteFromApi("expenses", id, () => setExpenses(p => p.filter(item => item.expenseId !== id)))} />}
+            {tab === "PROFIT_ANALYSIS" && <ProfitAnalysisView sales={sales.filter(isCompletedSale)} jobCosts={jobCosts} expenses={expenses} onRefresh={() => setReloadKey(k => k + 1)} />}
+            {tab === "APPROVALS" && isAdmin && <ApprovalQueueView onResolved={() => setReloadKey(k => k + 1)} />}
+            {tab === "AUDIT_LOGS" && isAdmin && <AuditLogsView />}
+            {tab === "USERS" && isAdmin && <UsersPage base={BASE_URL} actorId={user.empId} />}
+            {tab === "CHANGE_PASSWORD" && <PasswordPage base={BASE_URL} onChanged={next => { setUser(next); setTab("DASHBOARD"); notify("Password changed."); }} onCancel={() => setTab("DASHBOARD")} />}
           </div>
         </main>
       </div>
