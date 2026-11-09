@@ -1,5 +1,5 @@
 import { UsersPage, PasswordPage } from "./components/UserManagement";
-import { changeCostingService, optionalCostValue, applyInquiryToCosting } from "../costingForm";
+import { quotedLaborCost, changeCostingService, optionalCostValue, applyInquiryToCosting } from "../costingForm";
 import { SERVICE_RULES, stripDisallowedFields, getInquiryServiceType, type ServiceType } from "../lib/serviceRules";
 import { JobsTable } from "./components/JobsTable";
 import { FinishSaleModal } from "./components/FinishSaleModal";
@@ -131,7 +131,7 @@ const normalizeJobCost = (row: any): JobCost => {
   const summary = costingSummary(String(row.goldUsed ?? 0), String(row.goldScrap ?? 0), String(goldCostPerG), String(row.stoneCost ?? 0), String(row.laborCost ?? 0), String(sellingPrice), serviceType);
   const goldCost = summary.goldCost;
   const totalCost = roundTwo(summary.total + numeric(row.otherCost));
-  return { serviceType, jobDate: row.jobDate ? String(row.jobDate) : undefined, jobCostId: String(row.jobCostId ?? ""), invoiceId: String(row.invoiceId ?? sale?.invoiceId ?? ""), clientName: String(row.clientName ?? sale?.client?.clientName ?? row.inquiry?.customerName ?? ""), itemName: row.itemName ?? "", deadline: row.deadline || row.deliveryDate ? String(row.deadline ?? row.deliveryDate).slice(0, 10) : "", empId: row.empId, inquiryId: row.inquiryId ?? row.inquiry?.inquiryId, status: statusLabel(row.status), sale: sale ? normalizeSale(sale) : undefined, goldUsed: rules.gold ? numeric(row.goldUsed) : 0, goldScrap: rules.scrap ? numeric(row.goldScrap) : 0, goldKarat: row.goldKarat == null ? null : numeric(row.goldKarat), goldCostPerG, goldCost, stoneCost: rules.stone && row.stoneCost != null ? roundTwo(numeric(row.stoneCost)) : null, laborCost: roundTwo(numeric(row.laborCost)), totalCost, sellingPrice, profit: roundTwo(sellingPrice - totalCost), marginPct: roundTwo(sellingPrice ? ((sellingPrice - totalCost) / sellingPrice) * 100 : 0) };
+  return { quotedPrice: row.inquiry?.quotedPrice != null ? numeric(row.inquiry.quotedPrice) : sellingPrice, serviceType, jobDate: row.jobDate ? String(row.jobDate) : undefined, jobCostId: String(row.jobCostId ?? ""), invoiceId: String(row.invoiceId ?? sale?.invoiceId ?? ""), clientName: String(row.clientName ?? sale?.client?.clientName ?? row.inquiry?.customerName ?? ""), itemName: row.itemName ?? "", deadline: row.deadline || row.deliveryDate ? String(row.deadline ?? row.deliveryDate).slice(0, 10) : "", empId: row.empId, inquiryId: row.inquiryId ?? row.inquiry?.inquiryId, status: statusLabel(row.status), sale: sale ? normalizeSale(sale) : undefined, goldUsed: rules.gold ? numeric(row.goldUsed) : 0, goldScrap: rules.scrap ? numeric(row.goldScrap) : 0, goldKarat: row.goldKarat == null ? null : numeric(row.goldKarat), goldCostPerG, goldCost, stoneCost: rules.stone && row.stoneCost != null ? roundTwo(numeric(row.stoneCost)) : null, laborCost: roundTwo(numeric(row.laborCost)), totalCost, sellingPrice, profit: roundTwo(sellingPrice - totalCost), marginPct: roundTwo(sellingPrice ? ((sellingPrice - totalCost) / sellingPrice) * 100 : 0) };
 };
 const normalizeInventory = (row: any): InvEntry => ({ id: row.referenceId, jobCostId: row.jobCostId ?? null, date: apiDate(row.updatedAt ?? row.date), referenceId: row.referenceId, itemName: row.itemName ?? row.referenceId, category: row.category ?? "GOLD", goldKarat: (row.sourceKarat ?? row.goldKarat) == null ? null : numeric(row.sourceKarat ?? row.goldKarat), quantityIn: numeric(row.quantityIn ?? row.goldIn), quantityOut: numeric(row.quantityOut ?? row.goldOut), quantityLoss: numeric(row.quantityLoss ?? row.scraps ?? row.scrap), balance: numeric(row.balance ?? row.totalGold), unit: row.unit ?? "grams", unitPrice: row.unitPrice == null ? null : numeric(row.unitPrice) });
 const normalizeInquiry = (row: any): Inquiry => ({ serviceType: getInquiryServiceType(row), inquiryId: String(row.inquiryId ?? ""), date: apiDate(row.inqDate ?? row.date), customerName: String(row.customerName ?? ""), contactInfo: normalizeContactInput(String(row.contactInfo ?? "")), email: String(row.email ?? ""), details: String(row.details ?? ""), category: String(row.category ?? ""), quotedPrice: numeric(row.quotedPrice), isFullyPaid: Boolean(row.isFullyPaid), status: statusLabel(row.status) as InqStatus });
@@ -157,7 +157,7 @@ interface JobCost {
   serviceType: ServiceType;
   jobDate?: string;
   jobCostId: string; invoiceId: string; clientName: string; itemName: string; deadline: string; empId?: string;
-  inquiryId?: string; status: string; sale?: Sale; goldKarat?: number | null;
+  quotedPrice?: number; inquiryId?: string; status: string; sale?: Sale; goldKarat?: number | null;
   goldUsed: number; goldScrap: number; goldCostPerG: number; goldCost: number;
   stoneCost: number | null; laborCost: number; totalCost: number;
   sellingPrice: number; profit: number; marginPct: number;
@@ -599,8 +599,11 @@ function JobCostingView({ jobCosts, inquiries, inventory, goldRate, selectedInqu
   const goldSources = useMemo(() => goldStockSources(inventory, editingId), [inventory, editingId]);
   const selectedGoldSource = goldSources.find(source => source.referenceId === form.goldSourceId);
   const rules = SERVICE_RULES[form.serviceType];
-  const stockError = rules.gold ? goldStockError(form.goldUsed, rules.scrap ? form.goldScrap : "0", selectedGoldSource) : "";
-  const live = costingSummary(form.goldUsed, form.goldScrap, form.goldCostPerG, form.stoneCost, form.laborCost, form.sellingPrice, form.serviceType);
+  const goldSourceRequired = form.serviceType === "Custom";
+  const savedQuote = inquiries.find(inquiry => inquiry.inquiryId === form.inquiryId)?.quotedPrice ?? (editingId ? jobCosts.find(job => job.jobCostId === editingId)?.quotedPrice : undefined);
+  const automaticLabor = quotedLaborCost(savedQuote);
+  const stockError = rules.gold && (goldSourceRequired || !!form.goldSourceId) ? goldStockError(form.goldUsed, rules.scrap ? form.goldScrap : "0", selectedGoldSource) : "";
+  const live = costingSummary(form.goldUsed, form.goldScrap, form.goldCostPerG, form.stoneCost, automaticLabor, form.sellingPrice, form.serviceType);
   const liveMargin = live.margin;
   const updateGold = (changes: Partial<typeof form>) => { setStockServerError(""); setCostFormError(""); setForm(current => ({ ...current, ...changes })); };
   const editJob = (j: JobCost) => {
@@ -621,9 +624,9 @@ function JobCostingView({ jobCosts, inquiries, inventory, goldRate, selectedInqu
     const goldScrap = form.goldScrap || "0";
     const goldCostPerG = rules.gold ? roundTwo(form.goldCostPerG) : 0;
     const stoneCost = rules.stone ? optionalCostValue(form.stoneCost) : null;
-    const laborCost = roundTwo(form.laborCost);
+    const laborCost = roundTwo(automaticLabor);
     const sellingPrice = roundTwo(form.sellingPrice);
-    if (!Number.isFinite(laborCost) || (stoneCost !== null && (!Number.isFinite(stoneCost) || stoneCost < 0)) || laborCost < 0 || !Number.isFinite(goldCostPerG) || (rules.gold && goldCostPerG <= 0) || !Number.isFinite(sellingPrice) || sellingPrice <= 0) {
+    if (!Number.isFinite(laborCost) || (stoneCost !== null && (!Number.isFinite(stoneCost) || stoneCost < 0)) || laborCost < 0 || !Number.isFinite(goldCostPerG) || (rules.gold && ((goldSourceRequired || !!form.goldSourceId) ? goldCostPerG <= 0 : goldCostPerG < 0)) || !Number.isFinite(sellingPrice) || sellingPrice <= 0) {
       setCostFormError("Enter valid costs and a selling price greater than zero.");
       setIsSubmitting(false); submittingRef.current = false; return;
     }
@@ -661,7 +664,7 @@ function JobCostingView({ jobCosts, inquiries, inventory, goldRate, selectedInqu
       <JobsTable jobs={jobCosts} onEdit={editJob} onDelete={onDelete} onApprove={onApprove} onReady={onReady} onFinish={finishJob} />
 
       {finishTarget && <FinishSaleModal key={finishTarget.jobCostId} job={finishTarget} inventory={inventory} onClose={() => setFinishTarget(null)} onFinish={materials => onFinish(finishTarget, materials)} />}
-      {open && <Modal title={editingId ? "Edit job costing" : "Cost a pending inquiry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Save changes" : "Save costing"} isSubmitting={isSubmitting} submitDisabled={(rules.gold && !form.goldUsed.trim()) || !!stockError || !!stockServerError} stickyLayout className="job-costing-modal max-w-6xl" formClassName="job-costing-form">
+      {open && <Modal title={editingId ? "Edit job costing" : "Cost a pending inquiry"} onClose={closeModal} onSubmit={submit} submitLabel={editingId ? "Save changes" : "Save costing"} isSubmitting={isSubmitting} submitDisabled={(rules.gold && (goldSourceRequired || !!form.goldSourceId) && !form.goldUsed.trim()) || !!stockError || !!stockServerError} stickyLayout className="job-costing-modal max-w-6xl" formClassName="job-costing-form">
         {costFormError && <p className="cost-form-error" role="alert">{costFormError}</p>}
         <div className="job-costing-layout">
           <div className="job-costing-fields">
@@ -683,16 +686,16 @@ function JobCostingView({ jobCosts, inquiries, inventory, goldRate, selectedInqu
               <FF label="Delivery date / deadline (optional)"><DatePicker min={todayISO()} label="Delivery date" value={form.deadline} onChange={deadline => setForm(f => ({ ...f, deadline }))} disabled={isSubmitting} /></FF>
             </div></section>
             <section className="job-costing-group"><div className="job-costing-group-heading"><h2>Materials</h2><p>Enter material use and workshop costs.</p></div><div className="job-costing-field-grid">
-              {rules.gold && <div className="col-span-2"><FF label="Gold source"><select aria-label="Gold source" className={ic} value={form.goldSourceId} onChange={e => updateGold({ goldSourceId: e.target.value })} required><option value="">Select a gold source</option>{goldSources.map(source => <option key={source.referenceId} value={source.referenceId}>{source.itemName} · {milligramsToGrams(source.availableMg)} g available</option>)}</select>{!goldSources.length && <p className="mt-1 text-xs text-warning">Add gold stock with a recorded karat before costing.</p>}</FF></div>}
+              {rules.gold && <div className="col-span-2"><FF label={goldSourceRequired ? "Gold source" : "Gold source (optional)"} helper={goldSourceRequired ? "Required for Custom jobs." : "Leave blank when no inventory gold is used."}><select aria-label="Gold source" className={ic} value={form.goldSourceId} onChange={e => updateGold({ goldSourceId: e.target.value })} required={goldSourceRequired}><option value="">{goldSourceRequired ? "Select a gold source" : "No gold source"}</option>{goldSources.map(source => <option key={source.referenceId} value={source.referenceId}>{source.itemName} · {milligramsToGrams(source.availableMg)} g available</option>)}</select>{goldSourceRequired && !goldSources.length && <p className="mt-1 text-xs text-warning">Add gold stock with a recorded karat before costing.</p>}</FF></div>}
               {rules.gold && <FF label="Gold used (g)">
-                <input aria-label="Gold used in grams" aria-invalid={!!stockServerError || (!!form.goldUsed && !!stockError)} aria-describedby={stockServerError || stockError ? "cost-gold-available cost-gold-error" : "cost-gold-available"} type="text" inputMode="decimal" className={ic} value={form.goldUsed} onChange={e => updateGold({ goldUsed: e.target.value })} required />
+                <input aria-label="Gold used in grams" aria-invalid={!!stockServerError || (!!form.goldUsed && !!stockError)} aria-describedby={stockServerError || stockError ? "cost-gold-available cost-gold-error" : "cost-gold-available"} type="text" inputMode="decimal" className={ic} value={form.goldUsed} onChange={e => updateGold({ goldUsed: e.target.value })} required={goldSourceRequired || !!form.goldSourceId} />
                 <p id="cost-gold-available" className="mt-1 text-xs text-muted-foreground">{selectedGoldSource ? `Available: ${milligramsToGrams(selectedGoldSource.availableMg)} g` : "Select a gold source to see available stock."}</p>
                 {(stockServerError || (form.goldSourceId && stockError)) && <p id="cost-gold-error" className="field-error" role="alert">{stockServerError || stockError}</p>}
               </FF>}
-              {rules.scrap && <FF label="Gold scrap (g, optional)" helper="Added to Scrap gold inventory."><input aria-label="Gold scrap in grams" type="text" inputMode="decimal" className={ic} value={form.goldScrap} onChange={e => updateGold({ goldScrap: e.target.value })} /></FF>}
-              {rules.gold && <FF label="Gold price per g" helper={goldRate === null ? "Today's 24K: rate unavailable" : `Today's 24K: ₱${goldRate.toLocaleString("en-PH", { maximumFractionDigits: 0 })}/g`}><CurrencyInput aria-label="Gold price per gram" className={ic} value={form.goldCostPerG} onChange={goldCostPerG => setForm(f => ({ ...f, goldCostPerG }))} required /></FF>}
+              {rules.scrap && <FF label="Gold scrap (g, optional)" helper={form.goldSourceId ? "Added to Scrap gold inventory." : "A gold source is needed to recover scrap into inventory."}><input aria-label="Gold scrap in grams" type="text" inputMode="decimal" className={ic} value={form.goldScrap} onChange={e => updateGold({ goldScrap: e.target.value })} /></FF>}
+              {rules.gold && <FF label="Gold price per g" helper={goldRate === null ? "Today's 24K: rate unavailable" : `Today's 24K: ₱${goldRate.toLocaleString("en-PH", { maximumFractionDigits: 0 })}/g`}><CurrencyInput aria-label="Gold price per gram" className={ic} value={form.goldCostPerG} onChange={goldCostPerG => setForm(f => ({ ...f, goldCostPerG }))} required={goldSourceRequired || !!form.goldSourceId} /></FF>}
               {rules.stone && <FF label="Stone cost (optional)"><CurrencyInput aria-label="Stone cost (optional)" className={ic} value={form.stoneCost} onChange={stoneCost => setForm(f => ({ ...f, stoneCost }))} /></FF>}
-              {rules.labor && <FF label="Labor cost"><CurrencyInput aria-label="Labor cost" className={ic} value={form.laborCost} onChange={laborCost => setForm(f => ({ ...f, laborCost }))} required /></FF>}
+              {rules.labor && <FF label="Labor cost (automatic)" helper="30% of the saved quoted price."><CurrencyInput aria-label="Labor cost" className={`${ic} read-only-field`} value={automaticLabor} onChange={() => {}} readOnly placeholder="Select an inquiry" /></FF>}
             </div>{!rules.gold && !rules.scrap && !rules.stone && <p className="mt-3 text-xs text-muted-foreground">Cleaning doesn't use gold or stones.</p>}</section>
             <section className="job-costing-group"><div className="job-costing-group-heading"><h2>Pricing</h2><p>Set the quoted selling price for this job.</p></div><div className="job-costing-field-grid">
               <FF label="Selling price"><CurrencyInput aria-label="Selling price" className={ic} value={form.sellingPrice} onChange={sellingPrice => setForm(f => ({ ...f, sellingPrice }))} required /></FF>
@@ -702,7 +705,7 @@ function JobCostingView({ jobCosts, inquiries, inventory, goldRate, selectedInqu
             {rules.gold && <div><dt>Gold <small>{milligramsToGrams(gramsToMilligrams(form.goldUsed || "0") ?? 0)} g × {php(Number(form.goldCostPerG) || 0)}</small></dt><dd>{php(live.gold)}</dd></div>}
             {rules.scrap && <div><dt>Scrap <small>{milligramsToGrams(gramsToMilligrams(form.goldScrap || "0") ?? 0)} g</small></dt><dd>{php(live.scrap)}</dd></div>}
             {rules.stone && <div><dt>Stone</dt><dd>{php(Number(form.stoneCost) || 0)}</dd></div>}
-            {rules.labor && <div><dt>Labor</dt><dd>{php(Number(form.laborCost) || 0)}</dd></div>}
+            {rules.labor && <div><dt>Labor <small>30% of quoted price</small></dt><dd>{php(Number(automaticLabor) || 0)}</dd></div>}
             <div className="cost-summary-total"><dt>Total cost</dt><dd>{php(live.total)}</dd></div>
             <div><dt>Profit</dt><dd className={live.profit < 0 ? "text-danger" : "text-success"}>{php(live.profit)}</dd></div>
             <div><dt>Margin</dt><dd>{liveMargin === null ? <span className="text-muted-foreground">—</span> : <Badge variant={marginVariant(liveMargin)}>{pct(liveMargin)}</Badge>}</dd></div>

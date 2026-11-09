@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { changeCostingService, optionalCostValue, applyInquiryToCosting } from "../src/costingForm.ts";
+import { quotedLaborCost, changeCostingService, optionalCostValue, applyInquiryToCosting } from "../src/costingForm.ts";
 import { stripDisallowedFields } from "../src/lib/serviceRules.ts";
 import { costingSummary } from "../src/goldStock.ts";
 const custom = { serviceType: "Custom", goldSourceId: "18K-IN", goldUsed: "1", goldScrap: ".2", goldCostPerG: "8000", stoneCost: "500", laborCost: "1000", sellingPrice: "15000", clientName: "Mia", note: null };
@@ -71,4 +71,13 @@ test("changing the populated Custom form directly to Cleaning clears every gold 
   assert.equal(changed.sellingPrice, custom.sellingPrice);
   const payload = stripDisallowedFields(changed.serviceType, changed);
   for (const field of ["goldSourceId", "goldUsed", "goldScrap", "goldCostPerG", "stoneCost"]) assert.equal(payload[field], null);
+});
+
+
+test("automatic labor uses the saved quote and rounds to cents", () => {
+  assert.equal(quotedLaborCost(15000), "4500.00");
+  assert.equal(quotedLaborCost(100.05), "30.02");
+  assert.equal(quotedLaborCost(0), "0.00");
+  assert.equal(quotedLaborCost(undefined), "");
+  assert.equal(quotedLaborCost(-1), "");
 });

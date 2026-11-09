@@ -20,3 +20,10 @@ export function applyInquiryToCosting<T extends Record<string, unknown> & { serv
   const updated = { ...form, inquiryId: inquiry?.inquiryId ?? "", clientName: inquiry?.customerName ?? "", contactNum: inquiry?.contactInfo ?? "", sellingPrice: inquiry ? String(inquiry.quotedPrice) : "" };
   return inquiry?.serviceType ? changeCostingService(updated, inquiry.serviceType) : updated;
 }
+
+/** Match the API's 30% labor calculation from the saved quote, in cents. */
+export function quotedLaborCost(quotedPrice: number | null | undefined): string {
+  if (quotedPrice == null || !Number.isFinite(quotedPrice) || quotedPrice < 0) return "";
+  const cents = Math.round(roundTwo(quotedPrice) * 100);
+  return (Math.round(cents * 30 / 100) / 100).toFixed(2);
+}
