@@ -1,3 +1,4 @@
+import { readableError } from "../../lib/readableError";
 import { useEffect, useState, type FormEvent } from 'react';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
@@ -22,7 +23,7 @@ export function PasswordPage({ base, forced = false, onChanged, onCancel }: { ba
     if (newPassword !== confirmation) { setError('Passwords do not match.'); return; }
     setBusy(true);
     try { const data = await accountRequest(base, '/auth/change-password', { newPassword, ...(!forced ? { currentPassword } : {}) }); setCurrent(''); setPassword(''); setConfirmation(''); onChanged(data.user); }
-    catch (error) { setError(error instanceof Error ? error.message : 'Password could not be changed.'); }
+    catch (error) { setError(readableError(error instanceof Error ? error.message : 'Password could not be changed.')); }
     finally { setBusy(false); }
   };
   return <section className="mx-auto w-full max-w-md rounded-xl border border-border bg-card p-6">
@@ -49,12 +50,12 @@ export function UsersPage({ base, actorId }: { base: string; actorId: string }) 
   const [secret, setSecret] = useState<{ temporaryPassword: string; expiresAt: string; user: User } | null>(null);
   const [copied, setCopied] = useState(false);
   const [pending, setPending] = useState<{ user: User; action: 'reset' | 'status' | 'role'; role?: string } | null>(null);
-  const load = async () => { setLoading(true); try { setUsers(await accountRequest(base, '/users')); } catch (error) { setError((error as Error).message); } finally { setLoading(false); } };
+  const load = async () => { setLoading(true); try { setUsers(await accountRequest(base, '/users')); } catch (error) { setError(readableError((error as Error).message)); } finally { setLoading(false); } };
   useEffect(() => { void load(); }, [base]);
   const create = async (event: FormEvent) => {
     event.preventDefault(); setBusy(true); setError('');
     try { const result = await accountRequest(base, '/users', { empName: name, userName: username, empRole: role }); setCreating(false); setName(''); setUsername(''); setRole('Staff'); setCopied(false); setSecret(result); await load(); }
-    catch (error) { setError((error as Error).message); } finally { setBusy(false); }
+    catch (error) { setError(readableError((error as Error).message)); } finally { setBusy(false); }
   };
   const apply = async () => {
     if (!pending) return;
@@ -64,7 +65,7 @@ export function UsersPage({ base, actorId }: { base: string; actorId: string }) 
       if (pending.action === 'reset') { const result = await accountRequest(base, path + '/reset-password', {}); setCopied(false); setSecret(result); }
       else await accountRequest(base, path, pending.action === 'role' ? { empRole: pending.role } : { active: Boolean(pending.user.deletedAt) }, 'PATCH');
       setPending(null); await load();
-    } catch (error) { setPending(null); setError((error as Error).message); } finally { setBusy(false); }
+    } catch (error) { setPending(null); setError(readableError((error as Error).message)); } finally { setBusy(false); }
   };
   return <div className="space-y-4">
     <PageHeader title="Users" description="Manage accounts, roles, and access. Deactivated users remain in audit history." action={<Button variant="primary" onClick={() => { setError(''); setCreating(true); }}>Create user</Button>} />

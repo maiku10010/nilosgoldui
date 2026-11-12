@@ -1,3 +1,4 @@
+import { readableError } from "../lib/readableError";
 import { recordDay, recordDayLabel } from "../recordDay";
 import { UsersPage, PasswordPage } from "./components/UserManagement";
 import { quotedLaborCost, changeCostingService, optionalCostValue, applyInquiryToCosting } from "../costingForm";
@@ -45,7 +46,7 @@ const apiFetch = (input: RequestInfo | URL, init: RequestInit = {}) => fetch(inp
 type ToastMessage = { message: string; actionLabel?: string; onAction?: () => void };
 const notify = (message: string | ToastMessage) => window.dispatchEvent(new CustomEvent("nilosgold:toast", { detail: typeof message === "string" ? { message } : message }));
 // Keep existing call sites on the in-app toast surface instead of native dialogs.
-const alert = notify;
+const alert = (message: string) => notify(readableError(message));
 
 function ToastHost() {
   const [toast, setToast] = useState<ToastMessage | null>(null);
@@ -646,12 +647,12 @@ function JobCostingView({ jobCosts, inquiries, inventory, goldRate, selectedInqu
       const response = await apiFetch(`${BASE_URL}/job-cost${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, { method: editingId ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await response.json();
       if (response.status === 202) { notify(data.message); closeModal(); return; }
-      if (!response.ok) { if (["goldUsed", "goldSourceId"].includes(data.field)) { setStockServerError(data.error); return; } throw new Error(data.error ?? "Job costing could not be saved."); }
+      if (!response.ok) { if (["goldUsed", "goldSourceId"].includes(data.field)) { setStockServerError(readableError(data.error)); return; } throw new Error(data.error ?? "Job costing could not be saved."); }
       const saved = normalizeJobCost(data);
       if (editingId) onUpdate(saved); else onAdd(saved);
       closeModal();
     } catch (error) {
-      setCostFormError(error instanceof Error ? error.message : "Job costing could not be saved.");
+      setCostFormError(readableError(error instanceof Error ? error.message : "Job costing could not be saved."));
     } finally {
       setIsSubmitting(false); submittingRef.current = false;
     }
@@ -1265,7 +1266,7 @@ function ApprovalQueueView({ onResolved }: { onResolved: () => void }) {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error ?? "Approval requests could not be loaded.");
     setRows(asRows(data)); setError("");
-  }).catch(err => setError(err instanceof Error ? err.message : "Approval requests could not be loaded."));
+  }).catch(err => setError(readableError(err instanceof Error ? err.message : "Approval requests could not be loaded.")));
   useEffect(() => { void load(); }, []);
   const undo = async (row: any) => {
     try {
@@ -1343,7 +1344,7 @@ function AuditLogsView() {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error ?? "Audit logs could not be loaded.");
     setRows(asRows(data)); setError("");
-  }).catch(err => setError(err instanceof Error ? err.message : "Audit logs could not be loaded."));
+  }).catch(err => setError(readableError(err instanceof Error ? err.message : "Audit logs could not be loaded.")));
   useEffect(() => { void load(); }, []);
   const actionLabel = (action: string) => ({ POST: "Created", PUT: "Updated", PATCH: "Updated", DELETE: "Deleted", LOGIN: "Logged in", LOGOUT: "Logged out", LOGIN_FAILED: "Login failed", POST_REQUESTED: "Creation requested", PUT_REQUESTED: "Update requested", DELETE_REQUESTED: "Deletion requested", APPROVAL_APPROVED: "Request approved", APPROVAL_REJECTED: "Request rejected", APPROVAL_UNDONE: "Approval undone" } as Record<string, string>)[action] ?? sentenceCase(action);
   const actionVariant = (action: string) => ["POST", "LOGIN", "APPROVAL_APPROVED"].includes(action) ? "success" as const : ["DELETE", "DELETE_REQUESTED", "LOGIN_FAILED", "APPROVAL_REJECTED"].includes(action) ? "danger" as const : ["POST_REQUESTED", "PUT_REQUESTED", "PATCH", "PUT"].includes(action) ? "warning" as const : "neutral" as const;
@@ -1687,7 +1688,7 @@ function LoginScreen({ onLogin }: { onLogin: (user: any) => void }) {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Unable to sign in");
       onLogin(data.user);
-    } catch (err: any) { setError(err.message); } finally { setBusy(false); }
+    } catch (err: any) { setError(readableError(err.message)); } finally { setBusy(false); }
   };
   return <div className="min-h-screen bg-background flex items-center justify-center p-6">
     <form onSubmit={submit} className="w-full max-w-sm rounded-2xl border border-border bg-card p-8 shadow-2xl">
