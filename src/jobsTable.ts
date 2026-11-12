@@ -1,7 +1,9 @@
+import { recordDay } from './recordDay.ts';
 export type JobFilter = 'all' | 'inProgress' | 'finished';
 export type JobSortKey = 'jobId' | 'clientName' | 'type' | 'sellingPrice' | 'totalCost' | 'profit' | 'marginPct' | 'status';
 export interface JobTableRecord {
   serviceType?: string;
+  jobDate?: string;
   jobCostId: string; invoiceId: string; clientName: string; status: string;
   goldUsed: number; goldScrap?: number; goldCostPerG: number; goldCost: number; stoneCost: number | null; laborCost: number;
   sellingPrice: number; totalCost: number; profit: number; marginPct: number;
@@ -29,6 +31,8 @@ export function selectJobs<T extends JobTableRecord>(jobs: T[], options: {
     : options.sortKey === 'type' ? jobType(job)
     : options.sortKey === 'marginPct' && job.totalCost === 0 ? null : job[options.sortKey];
   const sorted = visibleJobs.filter(job => options.filter === 'all' || jobGroup(job.status) === options.filter).sort((a, b) => {
+    const dayOrder = recordDay(b.jobDate).localeCompare(recordDay(a.jobDate));
+    if (dayOrder) return dayOrder;
     const left = value(a), right = value(b);
     // An unrecorded cost has no meaningful margin; keep it last in either direction.
     if (left === null || right === null) return left === right ? 0 : left === null ? 1 : -1;
@@ -38,5 +42,6 @@ export function selectJobs<T extends JobTableRecord>(jobs: T[], options: {
   const pageCount = Math.max(1, Math.ceil(sorted.length / options.pageSize));
   const page = Math.max(1, Math.min(options.page, pageCount));
   const start = (page - 1) * options.pageSize;
-  return { rows: sorted.slice(start, start + options.pageSize), counts, missingCostsCount, total: sorted.length, page, pageCount, start };
+  const continuedDay = start > 0 && recordDay(sorted[start - 1]?.jobDate) === recordDay(sorted[start]?.jobDate);
+  return { rows: sorted.slice(start, start + options.pageSize), continuedDay, counts, missingCostsCount, total: sorted.length, page, pageCount, start };
 }

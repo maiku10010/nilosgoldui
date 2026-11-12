@@ -1,3 +1,4 @@
+import { recordDay, recordDayLabel } from "../recordDay";
 import { UsersPage, PasswordPage } from "./components/UserManagement";
 import { quotedLaborCost, changeCostingService, optionalCostValue, applyInquiryToCosting } from "../costingForm";
 import { SERVICE_RULES, stripDisallowedFields, getInquiryServiceType, type ServiceType } from "../lib/serviceRules";
@@ -832,6 +833,7 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortSpec>({ key: "date", direction: -1 });
   const [activeStatus, setActiveStatus] = useState("All");
+  const [paymentFilter, setPaymentFilter] = useState("all");
   const [selectedInquiry, setSelectedInquiry] = useState<Inquiry | null>(null);
   const toggleSort = (key: string) => setSort(s => ({ key, direction: s.key === key ? (s.direction === 1 ? -1 : 1) : 1 }));
   const [open, setOpen] = useState(false);
@@ -844,8 +846,8 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
   const tabs = ["All", "Pending", "Quoted", "Converted to job", "Closed"];
   const counts = Object.fromEntries(tabs.map(tab => [tab, inquiries.filter(inquiry => statusForTab(inquiry, tab)).length]));
   const filtered = sortRecords(useMemo(() => inquiries.filter(i =>
-    statusForTab(i, activeStatus) && [i.customerName, i.category, i.details, i.email, i.inquiryId].some(v => v.toLowerCase().includes(q.toLowerCase()))
-  ), [inquiries, q, activeStatus]), sort);
+    statusForTab(i, activeStatus) && (paymentFilter === "all" || i.isFullyPaid === (paymentFilter === "paid")) && [i.customerName, i.category, i.details, i.email, i.inquiryId].some(v => v.toLowerCase().includes(q.toLowerCase()))
+  ), [inquiries, q, activeStatus, paymentFilter]), sort).sort((a, b) => sort.key === "date" ? recordDay(a.date).localeCompare(recordDay(b.date)) * sort.direction : recordDay(b.date).localeCompare(recordDay(a.date)));
 
   const resetForm = () => setForm({ customerName: "", contactInfo: "", email: "", details: "", category: "", quotedPrice: "", isFullyPaid: false, status: "Pending" });
   const closeModal = () => { setOpen(false); setEditingId(null); resetForm(); };
@@ -893,7 +895,7 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
       <div role="tablist" aria-label="Inquiry status" className="flex flex-wrap gap-2">
         {tabs.map(tab => <Button key={tab} role="tab" aria-selected={activeStatus === tab} variant={activeStatus === tab ? "secondary" : "ghost"} onClick={() => setActiveStatus(tab)} className="gap-2 text-sm">{tab}<span className="text-xs tabular-nums text-muted-foreground">{counts[tab]}</span></Button>)}
       </div>
-      <SearchBar value={q} onChange={setQ} placeholder="Search client, service type…" />
+      <div className="flex flex-wrap items-center gap-3"><select aria-label="Filter inquiries by payment" className={ic + " w-auto"} value={paymentFilter} onChange={event => setPaymentFilter(event.target.value)}><option value="all">All payments</option><option value="paid">Paid</option><option value="unpaid">Unpaid</option></select><SearchBar value={q} onChange={setQ} placeholder="Search client, service type…" /></div>
     </div>
     {inquiries.length === 0 ? <div className="flex min-h-72 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card px-6 py-10 text-center">
       <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground"><MessageSquare size={22} /></div>
@@ -907,9 +909,9 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
           <SortableHeader label="Client" sortKey="customerName" sort={sort} onSort={toggleSort} />
           <SortableHeader label="Category" sortKey="category" sort={sort} onSort={toggleSort} />
           <SortableHeader label="Quoted price" sortKey="quotedPrice" sort={sort} onSort={toggleSort} />
-          <th className={thc}>Paid</th><SortableHeader label="Status" sortKey="status" sort={sort} onSort={toggleSort} /><th className={thc + " w-56 text-right"}>Actions</th>
+          <SortableHeader label="Paid" sortKey="isFullyPaid" sort={sort} onSort={toggleSort} /><SortableHeader label="Status" sortKey="status" sort={sort} onSort={toggleSort} /><th className={thc + " w-56 text-right"}>Actions</th>
         </tr></thead>
-        <tbody>{filtered.map(i => <TRow key={i.inquiryId} onClick={() => setSelectedInquiry(i)}>
+        <tbody>{filtered.map((i, index) => <Fragment key={i.inquiryId}>{(index === 0 || recordDay(filtered[index - 1].date) !== recordDay(i.date)) && <tr className="record-day"><th colSpan={7} scope="rowgroup">{recordDayLabel(recordDay(i.date))}</th></tr>}<TRow onClick={() => setSelectedInquiry(i)}>
           <td className={tdc}>{fmtDate(i.date)}</td>
           <td className={tdc + " truncate font-medium"} title={i.customerName}>{i.customerName}</td>
           <td className={tdc + " truncate"} title={i.category}>{i.category}</td>
@@ -920,7 +922,7 @@ function InquiriesView({ inquiries, onAdd, onUpdate, onDelete, onStartCosting }:
             {i.status === "Pending" && <Button variant="secondary" type="button" onClick={event => { event.stopPropagation(); onStartCosting(i.inquiryId); }} className="whitespace-nowrap text-xs">Convert to job</Button>}
             {i.status === "Pending" && <div className="table-row-actions"><Button variant="ghost" size="icon" aria-label="Edit inquiry" type="button" onClick={event => { event.stopPropagation(); setEditingId(i.inquiryId); setForm({ customerName: i.customerName, contactInfo: i.contactInfo, email: i.email, details: i.details, category: i.category, quotedPrice: String(i.quotedPrice), isFullyPaid: i.isFullyPaid, status: i.status }); setOpen(true); }} title="Edit"><PenSquare size={16} /></Button><Button variant="ghost" size="icon" className="row-action-delete" aria-label="Delete inquiry" type="button" onClick={event => { event.stopPropagation(); onDelete(i.inquiryId); }} title="Delete"><Trash2 size={16} /></Button></div>}
           </div></td>
-        </TRow>)}</tbody>
+        </TRow></Fragment>)}</tbody>
       </table>
     </div>}
     <Sheet open={!!selectedInquiry} onOpenChange={open => { if (!open) setSelectedInquiry(null); }}>

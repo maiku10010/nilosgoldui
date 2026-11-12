@@ -384,6 +384,7 @@ small { font-size: 12px; }
 .expense-day th.expense-number { text-align: right; }
 .expense-day th.expense-number > span { margin-right: 12px; color: var(--muted-foreground); }
 .expense-day strong { font-size: 14px; font-weight: 600; white-space: nowrap; }
+.record-day th { padding: 10px 16px; background: var(--muted); border-bottom: 1px solid var(--border); color: var(--foreground); font-size: 12px; font-weight: 600; text-align: left; }
 .expense-table .expense-id { color: var(--muted-foreground); font-size: 12px; white-space: nowrap; }
 .expense-table .expense-description { min-width: 280px; }
 .expense-table .expense-actions-heading, .expense-table .expense-actions-cell { width: 80px; min-width: 80px; padding-inline: 8px; }

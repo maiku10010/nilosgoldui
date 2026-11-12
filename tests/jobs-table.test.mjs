@@ -4,6 +4,19 @@ import { selectJobs, jobId, jobGroup, jobType } from '../src/jobsTable.ts';
 const job = (id, overrides = {}) => ({ jobCostId: `internal-${id}`, invoiceId: `JOB-${id}`, clientName: `Client ${id}`, status: 'In Progress', goldUsed: 2, goldCostPerG: 500, goldCost: 1000, stoneCost: 0, laborCost: 100, sellingPrice: 2000, totalCost: 1100, profit: 900, marginPct: 45, sale: { serviceType: 'Repair' }, ...overrides });
 const options = { query: '', filter: 'all', sortKey: 'jobId', direction: 1, page: 1, pageSize: 10 };
 
+test('groups days before pagination, sorts within each day and marks continued groups', () => {
+  const jobs = [job(1, { jobDate: '2026-11-12', profit: 500 }), job(2, { jobDate: '2026-11-13', profit: 300 }), job(3, { jobDate: '2026-11-12T17:00:00Z', profit: 100 }), job(4)];
+  const first = selectJobs(jobs, { ...options, sortKey: 'profit', pageSize: 1 });
+  assert.deepEqual(first.rows.map(jobId), ['JOB-3']);
+  assert.equal(first.continuedDay, false);
+  const second = selectJobs(jobs, { ...options, sortKey: 'profit', pageSize: 1, page: 2 });
+  assert.deepEqual(second.rows.map(jobId), ['JOB-2']);
+  assert.equal(second.continuedDay, true);
+  const third = selectJobs(jobs, { ...options, sortKey: 'profit', pageSize: 1, page: 3 });
+  assert.deepEqual(third.rows.map(jobId), ['JOB-1']);
+  assert.equal(third.continuedDay, false);
+});
+
 test('active job filters include pending, approved and ready jobs without a completed sale', () => {
   const jobs = ['Pending', 'Approved', 'In Progress', 'Ready for Pickup', 'Finished', 'Cancelled'].map((status, i) => job(i, { status, sale: undefined }));
   const result = selectJobs(jobs, { ...options, filter: 'inProgress' });

@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState } from "react";
+import { recordDay, recordDayLabel } from "../../recordDay";
 import { ArrowUpDown, ChevronDown, ChevronRight, ChevronUp, PenSquare, Search, Trash2 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -73,10 +74,11 @@ export function JobsTable<T extends JobTableRecord>({ jobs, onEdit, onDelete, on
             {column.label}{sort.key === column.key ? sort.direction === 1 ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" /> : <ArrowUpDown size={14} aria-hidden="true" className="opacity-50" />}
           </Button>
         </th>)}<th scope="col">Actions</th></tr></thead>
-        <tbody>{result.rows.map(job => {
+        <tbody>{result.rows.map((job, index) => {
           const id = jobId(job), isExpanded = expanded.has(job.jobCostId);
           const detailsId = `job-breakdown-${encodeURIComponent(job.jobCostId)}`;
           return <Fragment key={job.jobCostId}>
+            {(index === 0 || recordDay(result.rows[index - 1].jobDate) !== recordDay(job.jobDate)) && <tr className="record-day"><th colSpan={9} scope="rowgroup">{recordDayLabel(recordDay(job.jobDate))}{index === 0 && result.continuedDay ? ' · continued' : ''}</th></tr>}
             <tr>
               <td><div className="flex items-center gap-1">
                 <Button variant="ghost" size="icon" aria-expanded={isExpanded} aria-controls={detailsId} aria-label={`${isExpanded ? "Hide" : "Show"} cost breakdown for ${id}`}
