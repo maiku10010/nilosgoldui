@@ -629,7 +629,7 @@ function JobCostingView({ jobCosts, inquiries, inventory, goldRate, selectedInqu
     const stoneCost = rules.stone ? optionalCostValue(form.stoneCost) : null;
     const laborCost = roundTwo(automaticLabor);
     const sellingPrice = roundTwo(form.sellingPrice);
-    if (!Number.isFinite(laborCost) || (stoneCost !== null && (!Number.isFinite(stoneCost) || stoneCost < 0)) || laborCost < 0 || !Number.isFinite(goldCostPerG) || (rules.gold && ((!customerGold && (goldSourceRequired || !!form.goldSourceId)) ? goldCostPerG <= 0 : goldCostPerG < 0)) || !Number.isFinite(sellingPrice) || sellingPrice <= 0) {
+    if (!Number.isFinite(laborCost) || (stoneCost !== null && (!Number.isFinite(stoneCost) || stoneCost < 0)) || laborCost < 0 || !Number.isFinite(goldCostPerG) || (rules.gold && ((!customerGold && !!form.goldSourceId) ? goldCostPerG <= 0 : goldCostPerG < 0)) || !Number.isFinite(sellingPrice) || sellingPrice <= 0) {
       setCostFormError("Enter valid costs and a selling price greater than zero.");
       setIsSubmitting(false); submittingRef.current = false; return;
     }
@@ -696,7 +696,7 @@ function JobCostingView({ jobCosts, inquiries, inventory, goldRate, selectedInqu
                 {(stockServerError || (form.goldSourceId && stockError)) && <p id="cost-gold-error" className="field-error" role="alert">{stockServerError || stockError}</p>}
               </FF>}
               {rules.scrap && <FF label="Gold scrap (g, optional)" helper={customerGold ? "Customer scrap stays outside shop inventory." : form.goldSourceId ? "Added to Scrap gold inventory." : "A gold source is needed to recover scrap into inventory."}><input aria-label="Gold scrap in grams" type="text" inputMode="decimal" className={ic} value={form.goldScrap} onChange={e => updateGold({ goldScrap: e.target.value })} /></FF>}
-              {rules.gold && <FF label="Gold price per g" helper={goldRate === null ? "Today's 24K: rate unavailable" : `Today's 24K: ₱${goldRate.toLocaleString("en-PH", { maximumFractionDigits: 0 })}/g`}><CurrencyInput aria-label="Gold price per gram" readOnly={!form.goldSourceId || customerGold} className={ic} value={form.goldCostPerG} onChange={goldCostPerG => setForm(f => ({ ...f, goldCostPerG }))} required={!customerGold && (goldSourceRequired || !!form.goldSourceId)} /></FF>}
+              {rules.gold && <FF label={!form.goldSourceId || customerGold ? "Gold price per g (optional)" : "Gold price per g"} helper={goldRate === null ? "Today's 24K: rate unavailable" : `Today's 24K: ₱${goldRate.toLocaleString("en-PH", { maximumFractionDigits: 0 })}/g`}><CurrencyInput aria-label="Gold price per gram" className={ic} value={form.goldCostPerG} onChange={goldCostPerG => setForm(f => ({ ...f, goldCostPerG }))} required={!customerGold && !!form.goldSourceId} /></FF>}
               {rules.stone && <FF label="Stone cost (optional)"><CurrencyInput aria-label="Stone cost (optional)" className={ic} value={form.stoneCost} onChange={stoneCost => setForm(f => ({ ...f, stoneCost }))} /></FF>}
               {rules.labor && <FF label="Labor cost (automatic)" helper="30% of the saved quoted price."><CurrencyInput aria-label="Labor cost" className={`${ic} read-only-field`} value={automaticLabor} onChange={() => {}} readOnly placeholder="Select an inquiry" /></FF>}
             </div>{!rules.gold && !rules.scrap && !rules.stone && <p className="mt-3 text-xs text-muted-foreground">Cleaning doesn't use gold or stones.</p>}</section>
