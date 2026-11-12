@@ -363,6 +363,7 @@ tr:focus-within > td > .inventory-item-actions { opacity: 1; pointer-events: aut
 .inventory-child-header th:first-child { text-align: left; }
 .inventory-ledger table { font-size: 14px; line-height: 1.5; }
 .inventory-ledger table td { font-size: 14px; padding-top: 12px; padding-bottom: 12px; }
+.inventory-ledger table td, .inventory-ledger .inventory-child-header th { text-align: left; }
 .inventory-ledger table th, .inventory-ledger thead button { font-size: 12px; font-weight: 600; }
 .inventory-ledger table th:last-child, .inventory-ledger table td:last-child { width: 88px; min-width: 88px; padding-left: 8px; padding-right: 8px; }
 .inventory-ledger .inventory-item-actions, .inventory-ledger .table-row-actions { justify-content: center; gap: 4px; }
