@@ -40,3 +40,9 @@ test("itemized gold and scrap costs both contribute to total, profit and low-mar
   assert.equal(costingSummary("0.001", "0", "8000", "0", "0", "10").gold, 8);
   assert.equal(costingSummary("0.0005", "0", "8000", "0", "0", "10").gold, 4);
 });
+
+test("customer gold bypasses shop availability but validates weights", () => {
+  assert.equal(goldStockError("100", "1", undefined, true), "");
+  assert.match(goldStockError("-1", "0", undefined, true), /non-negative/);
+  assert.match(goldStockError("1", "0.0001", undefined, true), /3 decimal/);
+});

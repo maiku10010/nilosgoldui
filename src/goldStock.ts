@@ -46,12 +46,12 @@ export function goldStockSources(inventory: GoldMovement[], editingJobId?: strin
   })).sort((a, b) => b.karat - a.karat);
 }
 
-export function goldStockError(used: string, scrap: string, source: ReturnType<typeof goldStockSources>[number] | undefined) {
-  if (!source) return "Choose a gold source.";
+export function goldStockError(used: string, scrap: string, source: ReturnType<typeof goldStockSources>[number] | undefined, customerGold = false) {
+  if (!source && !customerGold) return "Choose a gold source.";
   const usedMg = gramsToMilligrams(used || "0");
   const scrapMg = gramsToMilligrams(scrap || "0");
   if (usedMg === null || scrapMg === null) return "Enter non-negative weights with at most 3 decimal places.";
-  if (usedMg > source.availableMg) return `Insufficient ${source.itemName}: gold used must not exceed ${milligramsToGrams(source.availableMg)} g available.`;
+  if (source && !customerGold && usedMg > source.availableMg) return `Insufficient ${source.itemName}: gold used must not exceed ${milligramsToGrams(source.availableMg)} g available.`;
   return "";
 }
 
