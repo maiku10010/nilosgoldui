@@ -337,7 +337,7 @@ small { font-size: 12px; }
 .inventory-movement-toggle button { min-height: 32px; padding: 4px 12px; white-space: nowrap; }
 .inventory-stat { min-width: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--card); padding: 16px; }
 .inventory-stat-value { margin-top: 10px; font-size: 24px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.inventory-stat-note { margin-top: 6px; min-height: 30px; font-size: 12px; color: var(--muted-foreground); line-height: 1.45; }
+.inventory-stat .section-label { font-weight: 700; }
 .inventory-stock-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
 .inventory-stock-card { border: 1px solid var(--border); border-radius: 10px; background: var(--card); padding: 16px; }
 .inventory-stock-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
