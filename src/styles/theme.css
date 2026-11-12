@@ -479,9 +479,35 @@ tr:hover .table-row-actions, tr:focus-within .table-row-actions { opacity: 1; }
 .sale-balance-unpaid { background: var(--warning-tint); color: var(--warning); }
 .sale-balance-paid { background: var(--success-tint); color: var(--success); }
 .modal-footer-note { color: var(--muted-foreground); text-align: center; font-size: 12px; }
-@media (max-width: 760px) {
+@media (max-width: 900px) {
   .job-costing-layout { grid-template-columns: minmax(0, 1fr); }
-  .job-costing-summary { position: static; grid-row: 1; }
+  .job-costing-summary { position: static; }
+  .job-costing-fields, .job-costing-group, .job-costing-field-grid > * { min-width: 0; }
+  .dashboard-shell, .dashboard-shell[data-collapsed="true"] { --sidebar-width: 64px; }
+  .dashboard-sidebar > div > span, .dashboard-sidebar .sidebar-nav-item > span,
+  .dashboard-sidebar nav .section-label, .dashboard-sidebar .sidebar-toggle { display: none; }
+  .dashboard-sidebar { padding-top: 8px; padding-bottom: max(8px, env(safe-area-inset-bottom)); }
+  .dashboard-sidebar nav { margin-top: 12px; }
+  .dashboard-topbar > div { padding-inline: 12px; gap: 8px; }
+  .dashboard-content { padding: 16px 12px; }
+  .page-header { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .page-header p { white-space: normal; }
+  .page-header-action { width: 100%; }
+  .page-header-action button { width: 100%; min-height: 44px; }
+  .job-costing-modal { width: 100%; max-width: 100%; height: 100dvh; max-height: 100dvh; margin: 0; border-radius: 0; }
+  .job-costing-modal .modal-header { padding: 12px 16px; padding-top: max(12px, env(safe-area-inset-top)); }
+  .job-costing-modal .modal-header > span { font-size: 18px; }
+  .job-costing-modal .modal-header button { min-width: 44px; min-height: 44px; }
+  .job-costing-modal .modal-scroll-body { padding: 16px; overscroll-behavior: contain; scroll-padding-block: 16px; }
+  .job-costing-modal .modal-pinned-footer { padding: 12px 16px max(12px, env(safe-area-inset-bottom)); }
+  .job-costing-modal .modal-pinned-footer button { flex: 1; min-height: 44px; }
+  .job-costing-modal input, .job-costing-modal select, .job-costing-modal .single-date-trigger { min-height: 44px; font-size: 16px; }
+  .job-costing-modal select { width: 100%; min-width: 0; }
+  .job-costing-summary dl > div { flex-wrap: wrap; }
+
 }
-@media (max-width: 520px) { .job-costing-field-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 520px) {
+  .job-costing-field-grid { grid-template-columns: minmax(0, 1fr); }
+  .job-costing-field-grid > .col-span-2 { grid-column: 1 / -1; }
+}
 @media (hover: none) { .expense-actions, .table-row-actions { opacity: 1; } }
