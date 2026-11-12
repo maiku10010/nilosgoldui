@@ -47,3 +47,11 @@ Open the local URL printed in the terminal.
 The backend must allow the frontend’s local origin in its CORS configuration.
 
 Database credentials belong in the backend configuration, never in the frontend.
+
+## Hosted API and sign-in
+
+Production builds use `/api` on the frontend domain. The API rewrite in
+`vercel.json` forwards these requests to the backend before the SPA fallback.
+This keeps the HttpOnly session cookie first-party, including on iPhone and
+iPad Safari where cross-site cookies are blocked. `VITE_API_BASE_URL` is only
+used during local development; production builds always use the same-origin proxy.

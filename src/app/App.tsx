@@ -38,7 +38,8 @@ import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle, SheetDescri
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuItem } from "./components/ui/dropdown-menu";
 
 // ── config ─────────────────────────────────────────────────────────────────
-const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "https://nilosgold.vercel.app").replace(/\/$/, "");
+// Keep deployed sessions first-party so Safari can retain the HttpOnly cookie.
+const BASE_URL = (import.meta.env.PROD ? "/api" : (import.meta.env.VITE_API_BASE_URL ?? "/api")).replace(/\/$/, "");
 const apiFetch = (input: RequestInfo | URL, init: RequestInit = {}) => fetch(input, { ...init, credentials: "include" });
 type ToastMessage = { message: string; actionLabel?: string; onAction?: () => void };
 const notify = (message: string | ToastMessage) => window.dispatchEvent(new CustomEvent("nilosgold:toast", { detail: typeof message === "string" ? { message } : message }));
