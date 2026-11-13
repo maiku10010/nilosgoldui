@@ -1280,7 +1280,7 @@ function ProfitAnalysisView({ sales, jobCosts, expenses, onRefresh }: { sales: S
 }
 
 // ── header kpi card ─────────────────────────────────────────────────────────
-function ApprovalQueueView({ onResolved }: { onResolved: () => void }) {
+function ApprovalQueueView({ onResolved, onPendingCountChange }: { onResolved: () => void; onPendingCountChange: (count: number) => void }) {
   const [rows, setRows] = useState<any[]>([]);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState<"PENDING" | "APPROVED" | "REJECTED">("PENDING");
@@ -1291,7 +1291,9 @@ function ApprovalQueueView({ onResolved }: { onResolved: () => void }) {
   const load = () => apiFetch(BASE_URL + "/approvals").then(async response => {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error ?? "Approval requests could not be loaded.");
-    setRows(asRows(data)); setError("");
+    const requests = asRows(data);
+    setRows(requests); setError("");
+    onPendingCountChange(requests.filter(row => row.status === "PENDING").length);
   }).catch(err => setError(readableError(err instanceof Error ? err.message : "Approval requests could not be loaded.")));
   useEffect(() => { void load(); }, []);
   const undo = async (row: any) => {
@@ -1455,6 +1457,7 @@ function AppContent() {
   });
   const [tab, setTab] = useState<Tab>("DASHBOARD");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [startMonth, setStartMonth] = useState(0);
   const [endMonth, setEndMonth] = useState(new Date().getMonth());
@@ -1473,6 +1476,28 @@ function AppContent() {
   const [reloadKey, setReloadKey] = useState(0);
   const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
   const isAdmin = String(user?.empRole ?? "").toLowerCase() === "admin";
+
+  useEffect(() => {
+    if (!user?.empId || user.mustChangePassword || !isAdmin) {
+      setPendingApprovalCount(0);
+      return;
+    }
+    let active = true;
+    let loading = false;
+    const refresh = async () => {
+      if (loading) return;
+      loading = true;
+      try {
+        const rows = await loadDashboardApprovals();
+        if (active) setPendingApprovalCount(rows.filter(row => row.status === "PENDING").length);
+      } catch { /* Keep the last known count when a background refresh fails. */ }
+      finally { loading = false; }
+    };
+    void refresh();
+    const timer = window.setInterval(refresh, 30000);
+    window.addEventListener("focus", refresh);
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener("focus", refresh); };
+  }, [user?.empId, user?.mustChangePassword, isAdmin, reloadKey, tab]);
 
   // Apply dark class and persist preference
   useEffect(() => {
@@ -1613,10 +1638,13 @@ function AppContent() {
   };
   const renderNavItem = (destination: Tab) => {
     const Icon = NAV_ICONS[destination];
-    return <Button variant="ghost" key={destination} type="button" onClick={() => setTab(destination)} aria-current={tab === destination ? "page" : undefined} aria-label={TAB_LABELS[destination]} title={sidebarCollapsed ? TAB_LABELS[destination] : undefined}
+    const hasPendingApprovals = destination === "APPROVALS" && isAdmin && pendingApprovalCount > 0;
+    const label = hasPendingApprovals ? `${TAB_LABELS[destination]}, ${pendingApprovalCount} pending approvals` : TAB_LABELS[destination];
+    return <Button variant="ghost" key={destination} type="button" onClick={() => setTab(destination)} aria-current={tab === destination ? "page" : undefined} aria-label={label} title={sidebarCollapsed ? label : undefined}
       className="sidebar-nav-item">
       <Icon size={18} className="shrink-0" aria-hidden="true" />
       {!sidebarCollapsed && <span>{TAB_LABELS[destination]}</span>}
+      {hasPendingApprovals && <span className="approval-nav-badge" aria-hidden="true">{pendingApprovalCount}</span>}
     </Button>;
   };
 
@@ -1682,7 +1710,7 @@ function AppContent() {
             {tab === "INQUIRIES" && <InquiriesView inquiries={inquiries} onAdd={i => setInquiries(p => [i, ...p])} onUpdate={i => setInquiries(p => p.map(item => item.inquiryId === i.inquiryId ? i : item))} onDelete={id => deleteFromApi("inquiries", id, () => setInquiries(p => p.filter(item => item.inquiryId !== id)))} onStartCosting={id => { setSelectedInquiryForCosting(id); setTab("JOB_COSTING"); }} />}
             {tab === "EXPENSES" && <ExpensesView expenses={expenses} onAdd={e => setExpenses(p => [e, ...p])} onUpdate={e => setExpenses(p => p.map(item => item.expenseId === e.expenseId ? e : item))} onDelete={id => deleteFromApi("expenses", id, () => setExpenses(p => p.filter(item => item.expenseId !== id)))} />}
             {tab === "PROFIT_ANALYSIS" && <ProfitAnalysisView sales={sales.filter(isCompletedSale)} jobCosts={jobCosts} expenses={expenses} onRefresh={() => setReloadKey(k => k + 1)} />}
-            {tab === "APPROVALS" && isAdmin && <ApprovalQueueView onResolved={() => setReloadKey(k => k + 1)} />}
+            {tab === "APPROVALS" && isAdmin && <ApprovalQueueView onPendingCountChange={setPendingApprovalCount} onResolved={() => setReloadKey(k => k + 1)} />}
             {tab === "AUDIT_LOGS" && isAdmin && <AuditLogsView />}
             {tab === "USERS" && isAdmin && <UsersPage base={BASE_URL} actorId={user.empId} />}
             {tab === "CHANGE_PASSWORD" && <PasswordPage base={BASE_URL} onChanged={next => { setUser(next); setTab("DASHBOARD"); notify("Password changed."); }} onCancel={() => setTab("DASHBOARD")} />}

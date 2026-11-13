@@ -527,3 +527,7 @@ tr:hover .table-row-actions, tr:focus-within .table-row-actions { opacity: 1; }
   .job-costing-field-grid > .col-span-2 { grid-column: 1 / -1; }
 }
 @media (hover: none) { .expense-actions, .table-row-actions { opacity: 1; } }
+
+/* Keep approval notifications visible in expanded, collapsed, and mobile navigation. */
+.sidebar-nav-item:has(.approval-nav-badge) { padding-right: 36px; }
+.dashboard-sidebar .sidebar-nav-item > .approval-nav-badge { position: absolute; top: 2px; right: 2px; display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding-inline: 5px; border-radius: 999px; background: #b91c1c; color: white; font-size: 11px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; pointer-events: none; }
